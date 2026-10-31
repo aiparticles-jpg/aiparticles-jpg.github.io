@@ -1,24 +1,59 @@
+
 package com.example.filebridge
 
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.ScrollView
+import android.view.ViewGroup
+import android.graphics.Typeface
 
 class MainActivity : Activity() {
 
     private lateinit var output: TextView
+    private lateinit var executeButton: Button
+    private var currentCommand: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         output = TextView(this).apply {
-            textSize = 18f
-            setPadding(32, 48, 32, 32)
+            textSize = 16f
+            setPadding(32, 32, 32, 32)
+            typeface = Typeface.MONOSPACE
         }
 
-        setContentView(output)
+        executeButton = Button(this).apply {
+            text = "Execute command"
+            isEnabled = false
+            setOnClickListener {
+                executeCommand()
+            }
+        }
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(16, 16, 16, 16)
+
+            addView(
+                ScrollView(this@MainActivity).apply {
+                    addView(output)
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
+
+            addView(executeButton)
+        }
+
+        setContentView(layout)
         handleIntent(intent)
     }
 
@@ -30,6 +65,10 @@ class MainActivity : Activity() {
 
     private fun handleIntent(intent: Intent?) {
         val uri: Uri? = intent?.data
+        currentCommand = uri?.getQueryParameter("command")
+            ?.takeIf { it.isNotBlank() }
+
+        executeButton.isEnabled = currentCommand != null
 
         output.text = if (uri != null) {
             """
@@ -52,12 +91,86 @@ class MainActivity : Activity() {
 
             URL:
             ${uri.getQueryParameter("url")}
+
+            Command:
+            ${currentCommand ?: "(not provided)"}
+
+            ${if (currentCommand != null) {
+                "Review the command above before executing it."
+            } else {
+                "No command to execute."
+            }}
             """.trimIndent()
         } else {
             """
             FileBridge started.
 
             Waiting for HTTPS App Link...
+            """.trimIndent()
+        }
+    }
+
+    private fun executeCommand() {
+        val command = currentCommand ?: return
+
+        try {
+            val termuxIntent = Intent().apply {
+                setClassName(
+                    "com.termux",
+                    "com.termux.app.RunCommandService"
+                )
+
+                action = "com.termux.RUN_COMMAND"
+
+                putExtra(
+                    "com.termux.RUN_COMMAND_PATH",
+                    "/data/data/com.termux/files/usr/bin/bash"
+                )
+
+                putExtra(
+                    "com.termux.RUN_COMMAND_ARGUMENTS",
+                    arrayOf("-lc", command)
+                )
+
+                putExtra(
+                    "com.termux.RUN_COMMAND_WORKDIR",
+                    "/data/data/com.termux/files/home"
+                )
+
+                putExtra(
+                    "com.termux.RUN_COMMAND_BACKGROUND",
+                    false
+                )
+
+                putExtra(
+                    "com.termux.RUN_COMMAND_SESSION_ACTION",
+                    "0"
+                )
+
+                putExtra(
+                    "com.termux.RUN_COMMAND_COMMAND_LABEL",
+                    "FileBridge command"
+                )
+            }
+
+            startService(termuxIntent)
+
+            output.text = """
+                COMMAND SENT TO TERMUX
+
+                $command
+
+                Check the Termux terminal for execution output.
+            """.trimIndent()
+
+            executeButton.isEnabled = false
+
+        } catch (e: Exception) {
+            output.text = """
+                FAILED TO START COMMAND
+
+                ${e.javaClass.simpleName}:
+                ${e.message}
             """.trimIndent()
         }
     }
