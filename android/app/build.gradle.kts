@@ -1,3 +1,4 @@
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -11,8 +12,23 @@ android {
         applicationId = "com.example.filebridge"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    signingConfigs {
+        create("persistent") {
+            storeFile = file("filebridge.jks")
+            storePassword = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
+            keyAlias = "filebridge"
+            keyPassword = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("persistent")
+        }
     }
 
     compileOptions {
