@@ -13,7 +13,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
-import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
 
@@ -25,7 +24,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 import java.net.URL
-import java.net.URLConnection
 import java.net.URLDecoder
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
@@ -178,7 +176,10 @@ class MainActivity : Activity() {
         if (requestCode != REQUEST_AUTHORIZATION) return
 
         if (resultCode != RESULT_OK || data == null) {
-            showError("Authorization cancelled", Exception("No authorization result"))
+            showError(
+                "Authorization cancelled",
+                Exception("No authorization result")
+            )
             return
         }
 
@@ -196,19 +197,28 @@ class MainActivity : Activity() {
 
     private fun continueWithToken(token: String?) {
         if (token.isNullOrBlank()) {
-            showError("Empty access token", Exception("Google returned no token"))
+            showError(
+                "Empty access token",
+                Exception("Google returned no token")
+            )
             return
         }
 
-        val url = sourceUrl ?: return showError(
-            "Missing source URL",
-            Exception("The App Link has no url parameter")
-        )
+        val url = sourceUrl ?: run {
+            showError(
+                "Missing source URL",
+                Exception("The App Link has no url parameter")
+            )
+            return
+        }
 
-        val folder = folderId ?: return showError(
-            "Missing folder ID",
-            Exception("The App Link has no folder_id parameter")
-        )
+        val folder = folderId ?: run {
+            showError(
+                "Missing folder ID",
+                Exception("The App Link has no folder_id parameter")
+            )
+            return
+        }
 
         val filename = requestedFilename
 
@@ -217,6 +227,7 @@ class MainActivity : Activity() {
         executor.execute {
             try {
                 val downloaded = downloadFile(url, filename)
+
                 val result = uploadToDrive(
                     token,
                     folder,
@@ -254,56 +265,67 @@ class MainActivity : Activity() {
         explicitFilename: String?
     ): Pair<String, ByteArray> {
 
-        val connection = URL(source).openConnection().apply {
+        val connection = (URL(source).openConnection()
+            as java.net.HttpURLConnection).apply {
             connectTimeout = 30000
             readTimeout = 60000
             instanceFollowRedirects = true
         }
 
-        connection.connect()
+        try {
+            connection.connect()
 
-        val statusConnection = connection as? java.net.HttpURLConnection
-        val status = statusConnection?.responseCode
+            val status = connection.responseCode
 
-        if (status != null && status !in 200..299) {
-            throw Exception("Source server returned HTTP $status")
-        }
-
-        val disposition = connection.getHeaderField("Content-Disposition")
-        val filename = determineFilename(explicitFilename, disposition, source)
-
-        val length = connection.contentLengthLong
-        if (length > MAX_DOWNLOAD_BYTES) {
-            throw Exception("File exceeds 100 MB limit")
-        }
-
-        val bytes = BufferedInputStream(connection.getInputStream()).use { input ->
-            val output = ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            var total = 0L
-
-            while (true) {
-                val count = input.read(buffer)
-                if (count == -1) break
-
-                total += count
-                if (total > MAX_DOWNLOAD_BYTES) {
-                    throw Exception("File exceeds 100 MB limit")
-                }
-
-                output.write(buffer, 0, count)
+            if (status !in 200..299) {
+                throw Exception("Source server returned HTTP $status")
             }
 
-            output.toByteArray()
+            val disposition =
+                connection.getHeaderField("Content-Disposition")
+
+            val filename = determineFilename(
+                explicitFilename,
+                disposition,
+                source
+            )
+
+            val length = connection.contentLengthLong
+
+            if (length > MAX_DOWNLOAD_BYTES) {
+                throw Exception("File exceeds 100 MB limit")
+            }
+
+            val bytes = BufferedInputStream(connection.inputStream).use { input ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                var total = 0L
+
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count == -1) break
+
+                    total += count
+
+                    if (total > MAX_DOWNLOAD_BYTES) {
+                        throw Exception("File exceeds 100 MB limit")
+                    }
+
+                    output.write(buffer, 0, count)
+                }
+
+                output.toByteArray()
+            }
+
+            if (bytes.isEmpty()) {
+                throw Exception("Downloaded file is empty")
+            }
+
+            return Pair(filename, bytes)
+
+        } finally {
+            connection.disconnect()
         }
-
-        statusConnection?.disconnect()
-
-        if (bytes.isEmpty()) {
-            throw Exception("Downloaded file is empty")
-        }
-
-        return Pair(filename, bytes)
     }
 
     private fun determineFilename(
@@ -325,7 +347,9 @@ class MainActivity : Activity() {
             throw Exception("Invalid filename")
         }
 
-        if (safe.any { it.code < 32 || it in "<>:\"|?*" }) {
+        if (safe.any {
+            it.code < 32 || it in "<>:\"|?*"
+        }) {
             throw Exception("Filename contains invalid characters")
         }
 
@@ -373,18 +397,22 @@ class MainActivity : Activity() {
         bytes: ByteArray
     ): Pair<String, String> {
 
-        val escapedName = filename.replace("\\", "\\\\")
+        val escapedName = filename
+            .replace("\\", "\\\\")
             .replace("'", "\\'")
 
-        val escapedFolder = folderId.replace("\\", "\\\\")
+        val escapedFolder = folderId
+            .replace("\\", "\\\\")
             .replace("'", "\\'")
 
-        val query = "name = '$escapedName' and '$escapedFolder' in parents and trashed = false"
+        val query =
+            "name = '$escapedName' and '$escapedFolder' in parents and trashed = false"
 
-        val searchUrl = "https://www.googleapis.com/drive/v3/files" +
-            "?q=${Uri.encode(query)}" +
-            "&fields=files(id,name,mimeType,parents)" +
-            "&pageSize=100"
+        val searchUrl =
+            "https://www.googleapis.com/drive/v3/files" +
+                "?q=${Uri.encode(query)}" +
+                "&fields=files(id,name,mimeType,parents)" +
+                "&pageSize=100"
 
         val searchRequest = Request.Builder()
             .url(searchUrl)
@@ -393,6 +421,7 @@ class MainActivity : Activity() {
             .build()
 
         val searchJson = executeJson(searchRequest)
+
         val files = searchJson.optJSONArray("files")
             ?: throw Exception("Invalid Drive search response")
 
@@ -425,18 +454,21 @@ class MainActivity : Activity() {
 
         val metadata = JSONObject().apply {
             put("name", filename)
-            put("parents", org.json.JSONArray().put(folderId))
+            put(
+                "parents",
+                org.json.JSONArray().put(folderId)
+            )
         }
 
         val boundary = "FileBridgeBoundary123456"
 
         val multipart = (
             "--$boundary\r\n" +
-            "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-            metadata.toString() + "\r\n" +
-            "--$boundary\r\n" +
-            "Content-Type: application/octet-stream\r\n\r\n"
-        ).toByteArray(Charsets.UTF_8) + bytes +
+                "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+                metadata.toString() + "\r\n" +
+                "--$boundary\r\n" +
+                "Content-Type: application/octet-stream\r\n\r\n"
+            ).toByteArray(Charsets.UTF_8) + bytes +
             "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
 
         val createRequest = Request.Builder()
@@ -453,7 +485,11 @@ class MainActivity : Activity() {
             .build()
 
         val created = executeJson(createRequest)
-        return Pair(created.getString("id"), "New file created")
+
+        return Pair(
+            created.getString("id"),
+            "New file created"
+        )
     }
 
     private fun executeJson(request: Request): JSONObject {
@@ -466,7 +502,11 @@ class MainActivity : Activity() {
                 )
             }
 
-            return if (text.isBlank()) JSONObject() else JSONObject(text)
+            return if (text.isBlank()) {
+                JSONObject()
+            } else {
+                JSONObject(text)
+            }
         }
     }
 
