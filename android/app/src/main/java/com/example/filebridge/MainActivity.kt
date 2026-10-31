@@ -13,20 +13,41 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
+
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+
+import org.json.JSONObject
+
+import java.net.URL
+import java.net.URLConnection
+import java.net.URLDecoder
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
 
     private lateinit var output: TextView
-    private lateinit var authorizeButton: Button
+    private lateinit var downloadButton: Button
 
-    private var currentUri: Uri? = null
+    private val executor = Executors.newSingleThreadExecutor()
+    private val httpClient = OkHttpClient()
+
+    private var sourceUrl: String? = null
+    private var folderId: String? = null
+    private var requestedFilename: String? = null
 
     companion object {
         private const val REQUEST_AUTHORIZATION = 1001
         private const val DRIVE_SCOPE =
             "https://www.googleapis.com/auth/drive"
+        private const val MAX_DOWNLOAD_BYTES = 100L * 1024L * 1024L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,10 +58,10 @@ class MainActivity : Activity() {
             setPadding(24, 24, 24, 24)
         }
 
-        authorizeButton = Button(this).apply {
-            text = "Authorize Google Drive"
+        downloadButton = Button(this).apply {
+            text = "Download to Google Drive"
             setOnClickListener {
-                requestDriveAuthorization()
+                startDownload()
             }
         }
 
@@ -59,7 +80,7 @@ class MainActivity : Activity() {
                 )
             )
 
-            addView(authorizeButton)
+            addView(downloadButton)
         }
 
         setContentView(layout)
@@ -73,46 +94,52 @@ class MainActivity : Activity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        currentUri = intent?.data
+        val uri = intent?.data
 
-        val uri = currentUri
+        sourceUrl = uri?.getQueryParameter("url")
+        folderId = uri?.getQueryParameter("folder_id")
+        requestedFilename = uri?.getQueryParameter("filename")
 
-        output.text = if (uri != null) {
-            """
+        val validUrl = sourceUrl?.let {
+            try {
+                val parsed = Uri.parse(it)
+                parsed.scheme == "https" || parsed.scheme == "http"
+            } catch (_: Exception) {
+                false
+            }
+        } == true
+
+        val validFolder = !folderId.isNullOrBlank()
+
+        downloadButton.isEnabled = validUrl && validFolder
+
+        output.text = """
             FILEBRIDGE
 
-            App Link received.
+            Source URL:
+            ${sourceUrl ?: "(missing)"}
 
-            URL:
-            ${uri.getQueryParameter("url") ?: "(not provided)"}
-
-            Folder ID:
-            ${uri.getQueryParameter("folder_id") ?: "(not provided)"}
+            Destination folder ID:
+            ${folderId ?: "(missing)"}
 
             Filename:
-            ${uri.getQueryParameter("filename") ?: "(automatic)"}
+            ${requestedFilename ?: "(automatic)"}
 
-            Ready to test Google Drive authorization.
-            """.trimIndent()
-        } else {
-            """
-            FILEBRIDGE
-
-            Waiting for an HTTPS App Link.
-
-            You can test Google Drive authorization below.
-            """.trimIndent()
-        }
+            Status:
+            ${if (validUrl && validFolder) {
+                "Ready to download."
+            } else {
+                "A valid URL and folder_id are required."
+            }}
+        """.trimIndent()
     }
 
-    private fun requestDriveAuthorization() {
-        authorizeButton.isEnabled = false
+    private fun startDownload() {
+        downloadButton.isEnabled = false
         output.text = "Requesting Google Drive authorization..."
 
         val request = AuthorizationRequest.builder()
-            .setRequestedScopes(
-                listOf(Scope(DRIVE_SCOPE))
-            )
+            .setRequestedScopes(listOf(Scope(DRIVE_SCOPE)))
             .build()
 
         Identity.getAuthorizationClient(this)
@@ -132,11 +159,11 @@ class MainActivity : Activity() {
                         showError("Could not open authorization screen", e)
                     }
                 } else {
-                    handleAuthorizationSuccess(result.accessToken)
+                    continueWithToken(result.accessToken)
                 }
             }
             .addOnFailureListener { e ->
-                showError("Authorization request failed", e)
+                showError("Authorization failed", e)
             }
     }
 
@@ -151,8 +178,7 @@ class MainActivity : Activity() {
         if (requestCode != REQUEST_AUTHORIZATION) return
 
         if (resultCode != RESULT_OK || data == null) {
-            authorizeButton.isEnabled = true
-            output.text = "Google Drive authorization was cancelled."
+            showError("Authorization cancelled", Exception("No authorization result"))
             return
         }
 
@@ -161,37 +187,291 @@ class MainActivity : Activity() {
                 Identity.getAuthorizationClient(this)
                     .getAuthorizationResultFromIntent(data)
 
-            handleAuthorizationSuccess(result.accessToken)
+            continueWithToken(result.accessToken)
 
         } catch (e: Exception) {
-            showError("Could not retrieve authorization result", e)
+            showError("Could not retrieve access token", e)
         }
     }
 
-    private fun handleAuthorizationSuccess(accessToken: String?) {
-        authorizeButton.isEnabled = true
-
-        if (accessToken.isNullOrBlank()) {
-            output.text = "Authorization returned an empty access token."
+    private fun continueWithToken(token: String?) {
+        if (token.isNullOrBlank()) {
+            showError("Empty access token", Exception("Google returned no token"))
             return
         }
 
-        // Do not display or log the access token.
-        output.text = """
-            GOOGLE DRIVE AUTHORIZATION SUCCESSFUL
+        val url = sourceUrl ?: return showError(
+            "Missing source URL",
+            Exception("The App Link has no url parameter")
+        )
 
-            FileBridge received an access token.
+        val folder = folderId ?: return showError(
+            "Missing folder ID",
+            Exception("The App Link has no folder_id parameter")
+        )
 
-            The token is not displayed or saved.
+        val filename = requestedFilename
 
-            Google Drive authorization test passed.
-        """.trimIndent()
+        output.text = "Downloading file..."
 
-        authorizeButton.text = "Authorization successful"
+        executor.execute {
+            try {
+                val downloaded = downloadFile(url, filename)
+                val result = uploadToDrive(
+                    token,
+                    folder,
+                    downloaded.first,
+                    downloaded.second
+                )
+
+                runOnUiThread {
+                    output.text = """
+                        SUCCESS
+
+                        Filename:
+                        ${downloaded.first}
+
+                        Drive file ID:
+                        ${result.first}
+
+                        Operation:
+                        ${result.second}
+                    """.trimIndent()
+
+                    downloadButton.isEnabled = true
+                }
+
+            } catch (e: Exception) {
+                runOnUiThread {
+                    showError("Download or upload failed", e)
+                }
+            }
+        }
+    }
+
+    private fun downloadFile(
+        source: String,
+        explicitFilename: String?
+    ): Pair<String, ByteArray> {
+
+        val connection = URL(source).openConnection().apply {
+            connectTimeout = 30000
+            readTimeout = 60000
+            instanceFollowRedirects = true
+        }
+
+        connection.connect()
+
+        val statusConnection = connection as? java.net.HttpURLConnection
+        val status = statusConnection?.responseCode
+
+        if (status != null && status !in 200..299) {
+            throw Exception("Source server returned HTTP $status")
+        }
+
+        val disposition = connection.getHeaderField("Content-Disposition")
+        val filename = determineFilename(explicitFilename, disposition, source)
+
+        val length = connection.contentLengthLong
+        if (length > MAX_DOWNLOAD_BYTES) {
+            throw Exception("File exceeds 100 MB limit")
+        }
+
+        val bytes = BufferedInputStream(connection.getInputStream()).use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0L
+
+            while (true) {
+                val count = input.read(buffer)
+                if (count == -1) break
+
+                total += count
+                if (total > MAX_DOWNLOAD_BYTES) {
+                    throw Exception("File exceeds 100 MB limit")
+                }
+
+                output.write(buffer, 0, count)
+            }
+
+            output.toByteArray()
+        }
+
+        statusConnection?.disconnect()
+
+        if (bytes.isEmpty()) {
+            throw Exception("Downloaded file is empty")
+        }
+
+        return Pair(filename, bytes)
+    }
+
+    private fun determineFilename(
+        explicit: String?,
+        disposition: String?,
+        source: String
+    ): String {
+
+        val candidate = explicit?.takeIf { it.isNotBlank() }
+            ?: extractDispositionFilename(disposition)
+            ?: extractUrlFilename(source)
+            ?: throw Exception("Could not determine filename")
+
+        val safe = candidate.substringAfterLast('/')
+            .substringAfterLast('\\')
+            .trim()
+
+        if (safe.isBlank() || safe == "." || safe == "..") {
+            throw Exception("Invalid filename")
+        }
+
+        if (safe.any { it.code < 32 || it in "<>:\"|?*" }) {
+            throw Exception("Filename contains invalid characters")
+        }
+
+        return safe
+    }
+
+    private fun extractDispositionFilename(value: String?): String? {
+        if (value.isNullOrBlank()) return null
+
+        val encoded = Regex(
+            """filename\*\s*=\s*UTF-8''([^;]+)""",
+            RegexOption.IGNORE_CASE
+        ).find(value)?.groupValues?.get(1)
+
+        if (encoded != null) {
+            return try {
+                URLDecoder.decode(encoded, "UTF-8")
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        val regular = Regex(
+            """filename\s*=\s*"?([^";]+)"?""",
+            RegexOption.IGNORE_CASE
+        ).find(value)?.groupValues?.get(1)
+
+        return regular?.trim()
+    }
+
+    private fun extractUrlFilename(source: String): String? {
+        val path = Uri.parse(source).lastPathSegment ?: return null
+
+        return try {
+            URLDecoder.decode(path, "UTF-8")
+        } catch (_: Exception) {
+            path
+        }.takeIf { it.isNotBlank() }
+    }
+
+    private fun uploadToDrive(
+        token: String,
+        folderId: String,
+        filename: String,
+        bytes: ByteArray
+    ): Pair<String, String> {
+
+        val escapedName = filename.replace("\\", "\\\\")
+            .replace("'", "\\'")
+
+        val escapedFolder = folderId.replace("\\", "\\\\")
+            .replace("'", "\\'")
+
+        val query = "name = '$escapedName' and '$escapedFolder' in parents and trashed = false"
+
+        val searchUrl = "https://www.googleapis.com/drive/v3/files" +
+            "?q=${Uri.encode(query)}" +
+            "&fields=files(id,name,mimeType,parents)" +
+            "&pageSize=100"
+
+        val searchRequest = Request.Builder()
+            .url(searchUrl)
+            .header("Authorization", "Bearer $token")
+            .get()
+            .build()
+
+        val searchJson = executeJson(searchRequest)
+        val files = searchJson.optJSONArray("files")
+            ?: throw Exception("Invalid Drive search response")
+
+        if (files.length() > 1) {
+            throw Exception(
+                "Multiple files named '$filename' exist in the destination folder"
+            )
+        }
+
+        val body = bytes.toRequestBody(
+            "application/octet-stream".toMediaType()
+        )
+
+        if (files.length() == 1) {
+            val fileId = files.getJSONObject(0).getString("id")
+
+            val updateRequest = Request.Builder()
+                .url(
+                    "https://www.googleapis.com/upload/drive/v3/files/" +
+                        "$fileId?uploadType=media"
+                )
+                .header("Authorization", "Bearer $token")
+                .patch(body)
+                .build()
+
+            executeJson(updateRequest)
+
+            return Pair(fileId, "Existing file updated")
+        }
+
+        val metadata = JSONObject().apply {
+            put("name", filename)
+            put("parents", org.json.JSONArray().put(folderId))
+        }
+
+        val boundary = "FileBridgeBoundary123456"
+
+        val multipart = (
+            "--$boundary\r\n" +
+            "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+            metadata.toString() + "\r\n" +
+            "--$boundary\r\n" +
+            "Content-Type: application/octet-stream\r\n\r\n"
+        ).toByteArray(Charsets.UTF_8) + bytes +
+            "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
+
+        val createRequest = Request.Builder()
+            .url(
+                "https://www.googleapis.com/upload/drive/v3/files" +
+                    "?uploadType=multipart&fields=id,name"
+            )
+            .header("Authorization", "Bearer $token")
+            .post(
+                multipart.toRequestBody(
+                    "multipart/related; boundary=$boundary".toMediaType()
+                )
+            )
+            .build()
+
+        val created = executeJson(createRequest)
+        return Pair(created.getString("id"), "New file created")
+    }
+
+    private fun executeJson(request: Request): JSONObject {
+        httpClient.newCall(request).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+
+            if (!response.isSuccessful) {
+                throw Exception(
+                    "Google Drive HTTP ${response.code}: $text"
+                )
+            }
+
+            return if (text.isBlank()) JSONObject() else JSONObject(text)
+        }
     }
 
     private fun showError(message: String, error: Exception) {
-        authorizeButton.isEnabled = true
+        downloadButton.isEnabled = true
 
         output.text = """
             $message
@@ -199,5 +479,10 @@ class MainActivity : Activity() {
             ${error.javaClass.simpleName}:
             ${error.message ?: "No additional details"}
         """.trimIndent()
+    }
+
+    override fun onDestroy() {
+        executor.shutdown()
+        super.onDestroy()
     }
 }
