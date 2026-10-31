@@ -1,0 +1,66 @@
+name: Build FileBridge
+
+on:
+  push:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build APK
+        working-directory: android
+        run: gradle assembleDebug
+
+      - name: Extract APK certificate fingerprint
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+
+          SHA256=$("$APKSIGNER" verify --print-certs "$APK" \
+            | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2}')
+
+          FINGERPRINT=$(echo "$SHA256" \
+            | sed 's/../&:/g; s/:$//' \
+            | tr '[:lower:]' '[:upper:]')
+
+          echo "$FINGERPRINT" > android/sha256-fingerprint.txt
+
+          echo "APK SHA-256: $FINGERPRINT"
+
+      - name: Upload APK and fingerprint
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileBridge
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/sha256-fingerprint.txt
+          retention-days: 30
