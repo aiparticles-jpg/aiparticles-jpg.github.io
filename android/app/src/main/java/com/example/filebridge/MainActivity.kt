@@ -7,7 +7,6 @@ import android.content.IntentSender
 import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -32,7 +31,6 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
 
     private lateinit var output: TextView
-    private lateinit var downloadButton: Button
 
     private val executor = Executors.newSingleThreadExecutor()
     private val httpClient = OkHttpClient()
@@ -40,6 +38,12 @@ class MainActivity : Activity() {
     private var sourceUrl: String? = null
     private var folderId: String? = null
     private var requestedFilename: String? = null
+
+    private var isBusy = false
+
+    private var pendingSourceUrl: String? = null
+    private var pendingFolderId: String? = null
+    private var pendingFilename: String? = null
 
     companion object {
         private const val REQUEST_AUTHORIZATION = 1001
@@ -52,15 +56,9 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         output = TextView(this).apply {
-            textSize = 15f
+            textSize = 16f
             setPadding(24, 24, 24, 24)
-        }
-
-        downloadButton = Button(this).apply {
-            text = "Download to Google Drive"
-            setOnClickListener {
-                startDownload()
-            }
+            text = "FileBridge started."
         }
 
         val layout = LinearLayout(this).apply {
@@ -77,11 +75,10 @@ class MainActivity : Activity() {
                     1f
                 )
             )
-
-            addView(downloadButton)
         }
 
         setContentView(layout)
+
         handleIntent(intent)
     }
 
@@ -92,6 +89,12 @@ class MainActivity : Activity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        if (isBusy) {
+            output.text =
+                "A previous download is still in progress. Please wait."
+            return
+        }
+
         val uri = intent?.data
 
         sourceUrl = uri?.getQueryParameter("url")
@@ -109,8 +112,6 @@ class MainActivity : Activity() {
 
         val validFolder = !folderId.isNullOrBlank()
 
-        downloadButton.isEnabled = validUrl && validFolder
-
         output.text = """
             FILEBRIDGE
 
@@ -122,18 +123,32 @@ class MainActivity : Activity() {
 
             Filename:
             ${requestedFilename ?: "(automatic)"}
-
-            Status:
-            ${if (validUrl && validFolder) {
-                "Ready to download."
-            } else {
-                "A valid URL and folder_id are required."
-            }}
         """.trimIndent()
+
+        if (!validUrl || !validFolder) {
+            output.append(
+                "\n\nMissing or invalid URL or folder ID. " +
+                    "Open FileBridge using a valid download link."
+            )
+            return
+        }
+
+        // Start automatically. No button press is required.
+        startDownload()
     }
 
     private fun startDownload() {
-        downloadButton.isEnabled = false
+        if (isBusy) return
+
+        val url = sourceUrl ?: return
+        val folder = folderId ?: return
+        val filename = requestedFilename
+
+        pendingSourceUrl = url
+        pendingFolderId = folder
+        pendingFilename = filename
+
+        isBusy = true
         output.text = "Requesting Google Drive authorization..."
 
         val request = AuthorizationRequest.builder()
@@ -154,7 +169,10 @@ class MainActivity : Activity() {
                             0
                         )
                     } catch (e: IntentSender.SendIntentException) {
-                        showError("Could not open authorization screen", e)
+                        showError(
+                            "Could not open authorization screen",
+                            e
+                        )
                     }
                 } else {
                     continueWithToken(result.accessToken)
@@ -204,29 +222,34 @@ class MainActivity : Activity() {
             return
         }
 
-        val url = sourceUrl ?: run {
+        val url = pendingSourceUrl ?: run {
             showError(
                 "Missing source URL",
-                Exception("The App Link has no url parameter")
+                Exception("No pending source URL")
             )
             return
         }
 
-        val folder = folderId ?: run {
+        val folder = pendingFolderId ?: run {
             showError(
                 "Missing folder ID",
-                Exception("The App Link has no folder_id parameter")
+                Exception("No pending folder ID")
             )
             return
         }
 
-        val filename = requestedFilename
+        val filename = pendingFilename
 
-        output.text = "Downloading file..."
+        output.text = "Downloading file automatically..."
 
         executor.execute {
             try {
                 val downloaded = downloadFile(url, filename)
+
+                runOnUiThread {
+                    output.text =
+                        "Downloaded ${downloaded.first}. Uploading to Google Drive..."
+                }
 
                 val result = uploadToDrive(
                     token,
@@ -247,9 +270,11 @@ class MainActivity : Activity() {
 
                         Operation:
                         ${result.second}
+
+                        Download and upload completed automatically.
                     """.trimIndent()
 
-                    downloadButton.isEnabled = true
+                    isBusy = false
                 }
 
             } catch (e: Exception) {
@@ -511,7 +536,7 @@ class MainActivity : Activity() {
     }
 
     private fun showError(message: String, error: Exception) {
-        downloadButton.isEnabled = true
+        isBusy = false
 
         output.text = """
             $message
