@@ -3,35 +3,44 @@ package com.example.filebridge
 
 import android.app.Activity
 import android.content.Intent
+import android.content.IntentSender
 import android.net.Uri
 import android.os.Bundle
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.ScrollView
-import android.view.ViewGroup
-import android.graphics.Typeface
+import android.widget.TextView
+
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.Scope
 
 class MainActivity : Activity() {
 
     private lateinit var output: TextView
-    private lateinit var executeButton: Button
-    private var currentCommand: String? = null
+    private lateinit var authorizeButton: Button
+
+    private var currentUri: Uri? = null
+
+    companion object {
+        private const val REQUEST_AUTHORIZATION = 1001
+        private const val DRIVE_SCOPE =
+            "https://www.googleapis.com/auth/drive"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         output = TextView(this).apply {
-            textSize = 16f
-            setPadding(32, 32, 32, 32)
-            typeface = Typeface.MONOSPACE
+            textSize = 15f
+            setPadding(24, 24, 24, 24)
         }
 
-        executeButton = Button(this).apply {
-            text = "Execute command"
-            isEnabled = false
+        authorizeButton = Button(this).apply {
+            text = "Authorize Google Drive"
             setOnClickListener {
-                executeCommand()
+                requestDriveAuthorization()
             }
         }
 
@@ -50,7 +59,7 @@ class MainActivity : Activity() {
                 )
             )
 
-            addView(executeButton)
+            addView(authorizeButton)
         }
 
         setContentView(layout)
@@ -64,114 +73,131 @@ class MainActivity : Activity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val uri: Uri? = intent?.data
-        currentCommand = uri?.getQueryParameter("command")
-            ?.takeIf { it.isNotBlank() }
+        currentUri = intent?.data
 
-        executeButton.isEnabled = currentCommand != null
+        val uri = currentUri
 
         output.text = if (uri != null) {
             """
-            INTENT RECEIVED
+            FILEBRIDGE
 
-            Action:
-            ${intent.action}
-
-            Full URI:
-            $uri
-
-            Host:
-            ${uri.host}
-
-            Path:
-            ${uri.path}
-
-            Message:
-            ${uri.getQueryParameter("message")}
+            App Link received.
 
             URL:
-            ${uri.getQueryParameter("url")}
+            ${uri.getQueryParameter("url") ?: "(not provided)"}
 
-            Command:
-            ${currentCommand ?: "(not provided)"}
+            Folder ID:
+            ${uri.getQueryParameter("folder_id") ?: "(not provided)"}
 
-            ${if (currentCommand != null) {
-                "Review the command above before executing it."
-            } else {
-                "No command to execute."
-            }}
+            Filename:
+            ${uri.getQueryParameter("filename") ?: "(automatic)"}
+
+            Ready to test Google Drive authorization.
             """.trimIndent()
         } else {
             """
-            FileBridge started.
+            FILEBRIDGE
 
-            Waiting for HTTPS App Link...
+            Waiting for an HTTPS App Link.
+
+            You can test Google Drive authorization below.
             """.trimIndent()
         }
     }
 
-    private fun executeCommand() {
-        val command = currentCommand ?: return
+    private fun requestDriveAuthorization() {
+        authorizeButton.isEnabled = false
+        output.text = "Requesting Google Drive authorization..."
+
+        val request = AuthorizationRequest.builder()
+            .setRequestedScopes(
+                listOf(Scope(DRIVE_SCOPE))
+            )
+            .build()
+
+        Identity.getAuthorizationClient(this)
+            .authorize(request)
+            .addOnSuccessListener { result ->
+                if (result.hasResolution()) {
+                    try {
+                        startIntentSenderForResult(
+                            result.pendingIntent!!.intentSender,
+                            REQUEST_AUTHORIZATION,
+                            null,
+                            0,
+                            0,
+                            0
+                        )
+                    } catch (e: IntentSender.SendIntentException) {
+                        showError("Could not open authorization screen", e)
+                    }
+                } else {
+                    handleAuthorizationSuccess(result.accessToken)
+                }
+            }
+            .addOnFailureListener { e ->
+                showError("Authorization request failed", e)
+            }
+    }
+
+    @Deprecated("Using startIntentSenderForResult for compatibility")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode != REQUEST_AUTHORIZATION) return
+
+        if (resultCode != RESULT_OK || data == null) {
+            authorizeButton.isEnabled = true
+            output.text = "Google Drive authorization was cancelled."
+            return
+        }
 
         try {
-            val termuxIntent = Intent().apply {
-                setClassName(
-                    "com.termux",
-                    "com.termux.app.RunCommandService"
-                )
+            val result =
+                Identity.getAuthorizationClient(this)
+                    .getAuthorizationResultFromIntent(data)
 
-                action = "com.termux.RUN_COMMAND"
-
-                putExtra(
-                    "com.termux.RUN_COMMAND_PATH",
-                    "/data/data/com.termux/files/usr/bin/bash"
-                )
-
-                putExtra(
-                    "com.termux.RUN_COMMAND_ARGUMENTS",
-                    arrayOf("-lc", command)
-                )
-
-                putExtra(
-                    "com.termux.RUN_COMMAND_WORKDIR",
-                    "/data/data/com.termux/files/home"
-                )
-
-                putExtra(
-                    "com.termux.RUN_COMMAND_BACKGROUND",
-                    false
-                )
-
-                putExtra(
-                    "com.termux.RUN_COMMAND_SESSION_ACTION",
-                    "0"
-                )
-
-                putExtra(
-                    "com.termux.RUN_COMMAND_COMMAND_LABEL",
-                    "FileBridge command"
-                )
-            }
-
-            startService(termuxIntent)
-
-            output.text = """
-                COMMAND SENT TO TERMUX
-
-                $command
-
-                Check the Termux terminal for execution output.
-            """.trimIndent()
-
-            executeButton.isEnabled = false
+            handleAuthorizationSuccess(result.accessToken)
 
         } catch (e: Exception) {
-            output.text = """
-                FAILED TO START COMMAND
-
-                ${e.javaClass.simpleName}:
-                ${e.message}
-            """.trimIndent()
+            showError("Could not retrieve authorization result", e)
         }
+    }
+
+    private fun handleAuthorizationSuccess(accessToken: String?) {
+        authorizeButton.isEnabled = true
+
+        if (accessToken.isNullOrBlank()) {
+            output.text = "Authorization returned an empty access token."
+            return
+        }
+
+        // Do not display or log the access token.
+        output.text = """
+            GOOGLE DRIVE AUTHORIZATION SUCCESSFUL
+
+            FileBridge received an access token.
+
+            The token is not displayed or saved.
+
+            Google Drive authorization test passed.
+        """.trimIndent()
+
+        authorizeButton.text = "Authorization successful"
+    }
+
+    private fun showError(message: String, error: Exception) {
+        authorizeButton.isEnabled = true
+
+        output.text = """
+            $message
+
+            ${error.javaClass.simpleName}:
+            ${error.message ?: "No additional details"}
+        """.trimIndent()
     }
 }
