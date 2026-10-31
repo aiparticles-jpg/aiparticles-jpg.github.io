@@ -7,7 +7,8 @@
       "namespace": "android_app",
       "package_name": "com.example.filebridge",
       "sha256_cert_fingerprints": [
-        "ED:2F:09:1B:B3:45:CB:A1:FE:06:A3:4E:2A:CE:97:6C:8C:91:29:30:7F:15:7D:EC:B0:19:63:C6:29:01:A4:E0"
+        "ED:2F:09:1B:B3:45:CB:A1:FE:06:A3:4E:2A:CE:97:6C:8C:91:29:30:7F:15:7D:EC:B0:19:63:C6:29:01:A4:E0",
+        "67:7A:10:5D:0C:5E:5F:39:D8:17:50:E9:56:FB:A5:23:EC:E0:09:F0:88:09:E9:05:2D:0D:24:4C:0E:DE:D5:02"
       ]
     }
   }
