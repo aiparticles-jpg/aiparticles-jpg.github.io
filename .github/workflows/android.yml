@@ -87,4 +87,6 @@ jobs:
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/sha256-fingerprint.txt
+            android/sha1-fingerprint.txt
           retention-days: 30
+
