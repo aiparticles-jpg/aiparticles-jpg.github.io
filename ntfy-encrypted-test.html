@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>Voice Link — проверка шифрованного ntfy</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#101827; color:#e8eef8; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:24px 14px 48px; }
+    main { max-width:720px; margin:auto; }
+    h1 { font-size:1.55rem; margin:0 0 8px; }
+    p { color:#b8c5d8; line-height:1.5; }
+    .card { background:#192538; border:1px solid #30415b; border-radius:14px; padding:18px; margin:16px 0; }
+    label { display:block; font-size:.9rem; color:#b8c5d8; margin:14px 0 6px; }
+    input, textarea, select, button { font:inherit; border-radius:9px; }
+    input, textarea, select { width:100%; padding:11px; color:#f4f7fc; background:#0e1929; border:1px solid #40516b; }
+    textarea { min-height:80px; resize:vertical; }
+    button { padding:10px 14px; border:0; color:white; background:#2867c7; cursor:pointer; margin:8px 6px 0 0; }
+    button.secondary { background:#40516b; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .row > * { flex:1; min-width:130px; }
+    .status { padding:10px; border-radius:8px; background:#0e1929; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .log { max-height:260px; overflow:auto; font: .85rem/1.5 ui-monospace,monospace; }
+    .warn { border-left:3px solid #e5a83b; padding-left:12px; }
+    .good { color:#8fe0ad; } .bad { color:#ff9b9b; }
+    small { color:#9fb0c8; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Проверка сквозного шифрования через ntfy</h1>
+  <p>Тестовая страница: сообщения публикуются в публичные ntfy-топики, но их содержимое перед отправкой шифруется в браузере AES-256-GCM.</p>
+  <section class="card">
+    <div class="warn"><strong>Важно:</strong> топики публичные. Не используйте здесь реальные SDP/ICE или личные сообщения. Ключ не отправляется на ntfy и не сохраняется в URL.</div>
+    <label for="role">Роль этого устройства</label>
+    <select id="role"><option value="A">Устройство A (отправляет A→B)</option><option value="B">Устройство B (отправляет B→A)</option></select>
+    <label for="topic">Общий идентификатор теста (одинаковый на обоих устройствах)</label>
+    <input id="topic" value="voice-encrypted-test-izmir-2026-11-01-7f3a9c2e">
+    <label for="key">Общий секретный ключ — 64 шестнадцатеричных символа</label>
+    <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Вставьте один и тот же ключ на обоих устройствах">
+    <div class="row">
+      <button id="generate" type="button" class="secondary">Создать новый ключ</button>
+      <button id="copy-key" type="button" class="secondary">Скопировать ключ</button>
+    </div>
+    <small>Нажмите «Создать новый ключ» на одном устройстве, затем передайте его второму участнику доверенным способом. Не публикуйте его в ntfy.</small>
+    <div class="row" style="margin-top:12px">
+      <button id="connect" type="button">Подключиться</button>
+      <button id="disconnect" type="button" class="secondary" disabled>Отключиться</button>
+    </div>
+    <div id="status" class="status" role="status">Не подключено.</div>
+  </section>
+  <section class="card">
+    <label for="message">Тестовое сообщение</label>
+    <textarea id="message" placeholder="Напишите короткое сообщение для второго устройства"></textarea>
+    <button id="send" type="button" disabled>Зашифровать и отправить</button>
+    <p><small>В логе будет видно, что сервер принял зашифрованный пакет. Сам текст должен появиться только на втором устройстве после расшифровки.</small></p>
+  </section>
+  <section class="card">
+    <strong>Журнал событий</strong>
+    <div id="log" class="status log" aria-live="polite">Ожидаем действий.</div>
+  </section>
+</main>
+<script type="module">
+const $ = id => document.getElementById(id);
+const state = { source: null, key: null, role: null, topic: null, seen: new Set() };
+const enc = new TextEncoder();
+const toB64 = bytes => {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+};
+const fromHex = hex => Uint8Array.from(hex.match(/.{2}/g) || [], x => parseInt(x, 16));
+const log = (message, cls="") => {
+  const line = document.createElement("div");
+  line.textContent = new Date().toLocaleTimeString("ru-RU", {hour12:false}) + "  " + message;
+  if (cls) line.className = cls;
+  $("log").append(line);
+  $("log").scrollTop = $("log").scrollHeight;
+};
+function setStatus(message) { $("status").textContent = message; }
+function topics() {
+  const base = state.topic;
+  return { outbound: base + (state.role === "A" ? "-a2b" : "-b2a"), inbound: base + (state.role === "A" ? "-b2a" : "-a2b") };
+}
+async function deriveKey(direction) {
+  const material = await crypto.subtle.importKey("raw", state.key, "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({
+    name:"HKDF", hash:"SHA-256", salt:enc.encode(state.topic),
+    info:enc.encode("voice-link-ntfy-test-v1:" + direction)
+  }, material, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+async function encryptMessage(text) {
+  const direction = state.role === "A" ? "A-to-B" : "B-to-A";
+  const key = await deriveKey(direction);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const aad = enc.encode(state.topic + "|" + state.role + "|v1");
+  const ciphertext = await crypto.subtle.encrypt({name:"AES-GCM", iv, additionalData:aad}, key, enc.encode(text));
+  return JSON.stringify({v:1, from:state.role, iv:toB64(iv), data:toB64(new Uint8Array(ciphertext))});
+}
+function fromB64(value) {
+  const s = atob(value.replace(/-/g,"+").replace(/_/g,"/") + "=".repeat((4-value.length%4)%4));
+  return Uint8Array.from(s, c => c.charCodeAt(0));
+}
+async function decryptMessage(envelope) {
+  if (envelope.v !== 1 || envelope.from !== (state.role === "A" ? "B" : "A")) throw new Error("Неверная версия или роль отправителя");
+  const direction = envelope.from === "A" ? "A-to-B" : "B-to-A";
+  const key = await deriveKey(direction);
+  const aad = enc.encode(state.topic + "|" + envelope.from + "|v1");
+  const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv:fromB64(envelope.iv), additionalData:aad}, key, fromB64(envelope.data));
+  return new TextDecoder().decode(plain);
+}
+async function connect() {
+  if (!window.isSecureContext || !crypto.subtle) throw new Error("Web Crypto API недоступен. Откройте страницу по HTTPS.");
+  const role = $("role").value;
+  const topic = $("topic").value.trim();
+  const hex = $("key").value.trim();
+  if (!/^[a-f0-9]{64}$/i.test(hex)) throw new Error("Ключ должен содержать ровно 64 hex-символа.");
+  if (!/^[a-zA-Z0-9_-]{8,80}$/.test(topic)) throw new Error("Идентификатор теста: 8–80 символов A–Z, a–z, 0–9, _ или -.");
+  state.role = role; state.topic = topic; state.key = fromHex(hex);
+  const {inbound} = topics();
+  state.source = new EventSource("https://ntfy.sh/" + encodeURIComponent(inbound) + "/sse");
+  state.source.onopen = () => { setStatus("Подписка активна. Входящий топик: " + inbound); log("SSE подключён: " + inbound, "good"); };
+  state.source.onerror = () => { setStatus("SSE переподключается или соединение временно недоступно."); log("Ошибка/переподключение SSE", "bad"); };
+  state.source.onmessage = async event => {
+    try {
+      const item = JSON.parse(event.data);
+      if (!item.message || !item.id || state.seen.has(item.id)) return;
+      state.seen.add(item.id);
+      if (state.seen.size > 300) state.seen.delete(state.seen.values().next().value);
+      const envelope = JSON.parse(item.message);
+      const plain = await decryptMessage(envelope);
+      log("ПОЛУЧЕНО и расшифровано: " + plain, "good");
+    } catch (error) {
+      log("Пакет пропущен: не удалось проверить/расшифровать (" + error.message + ")", "bad");
+    }
+  };
+  $("connect").disabled = true; $("disconnect").disabled = false; $("send").disabled = false;
+  $("role").disabled = true; $("topic").readOnly = true; $("key").readOnly = true;
+  log("Роль " + role + "; подписка запущена. Исходящий топик: " + topics().outbound);
+}
+function disconnect() {
+  state.source?.close(); state.source = null; state.key = null; state.role = null; state.topic = null; state.seen.clear();
+  $("connect").disabled = false; $("disconnect").disabled = true; $("send").disabled = true;
+  $("role").disabled = false; $("topic").readOnly = false; $("key").readOnly = false;
+  setStatus("Отключено."); log("Подписка закрыта.");
+}
+$("generate").onclick = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  $("key").value = Array.from(bytes, b => b.toString(16).padStart(2,"0")).join("");
+  log("Создан новый случайный 256-битный ключ в этом браузере.");
+};
+$("copy-key").onclick = async () => {
+  if (!$("key").value) return log("Сначала создайте или вставьте ключ.", "bad");
+  try { await navigator.clipboard.writeText($("key").value); log("Ключ скопирован. Передавайте его только доверенному собеседнику.", "good"); }
+  catch { log("Не удалось скопировать ключ; выделите поле и скопируйте вручную.", "bad"); }
+};
+$("connect").onclick = async () => {
+  try { await connect(); } catch (e) { setStatus(e.message); log(e.message, "bad"); }
+};
+$("disconnect").onclick = disconnect;
+$("send").onclick = async () => {
+  const plain = $("message").value;
+  if (!plain.trim()) return;
+  $("send").disabled = true;
+  try {
+    const envelope = await encryptMessage(plain);
+    const {outbound} = topics();
+    const response = await fetch("https://ntfy.sh/" + encodeURIComponent(outbound), {
+      method:"POST", headers:{"Content-Type":"text/plain;charset=UTF-8"}, body:envelope, cache:"no-store"
+    });
+    if (!response.ok) throw new Error("ntfy вернул HTTP " + response.status);
+    log("ОТПРАВЛЕНО: сервер принял зашифрованный пакет (" + envelope.length + " символов); открытый текст не отправлялся.", "good");
+    $("message").value = "";
+  } catch (e) { log("Ошибка отправки: " + e.message, "bad"); }
+  finally { $("send").disabled = false; }
+};
+window.addEventListener("pagehide", () => state.source?.close());
+</script>
+</body>
+</html>
