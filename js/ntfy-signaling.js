@@ -11,7 +11,7 @@ export class NtfySecureSignaling {
  constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError}) {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});
-  this.es=null;this.identity=null;this.hello=null;this.answer=null;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.retry=null;this.closed=false;
+  this.es=null;this.identity=null;this.hello=null;this.answer=null;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.retry=null;this.retryDelay=5000;this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.publishCooldownUntil=0;this.closed=false;
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -29,8 +29,40 @@ export class NtfySecureSignaling {
   return crypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},k,un64(sig),enc.encode(stable(payload)));
  }
  async publish(to,msg){
-  const r=await fetch(BASE+await this.topic(to),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});
-  if(!r.ok)throw Error("ntfy HTTP "+r.status);
+  const task=async()=>{
+   for(let attempt=0;attempt<2;attempt++){
+    const wait=Math.max(0,this.lastPublishAt+1100-Date.now(),this.publishCooldownUntil-Date.now());
+    if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+    const r=await fetch(BASE+await this.topic(to),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});
+    this.lastPublishAt=Date.now();
+    if(r.ok)return;
+    if(r.status===429){
+     const h=r.headers.get("Retry-After");
+     const retryMs=h?(Number.isFinite(Number(h))?Number(h)*1000:Math.max(1000,Date.parse(h)-Date.now())):15000;
+     this.publishCooldownUntil=Date.now()+Math.max(1000,retryMs);
+     if(attempt===0)continue;
+    }
+    throw Error("ntfy HTTP "+r.status+(r.status===429?"; повторить через "+Math.ceil((this.publishCooldownUntil-Date.now())/1000)+" с":""));
+   }
+  };
+  const result=this.publishQueue.then(task,task);
+  this.publishQueue=result.catch(()=>{});
+  return result;
+ }
+ scheduleHelloRetry(){
+  clearTimeout(this.retry);
+  if(this.closed||this.ready||this.role!=="A")return;
+  const delay=this.retryDelay;
+  this.retry=setTimeout(()=>{
+   this.sendHello().then(()=>{
+    this.retryDelay=5000;
+    this.scheduleHelloRetry();
+   }).catch(err=>{
+    this.onError(err);
+    this.retryDelay=Math.min(Math.max(this.retryDelay*2,10000),60000);
+    this.scheduleHelloRetry();
+   });
+  },delay);
  }
  async signed(type,payload){return {v:1,type,payload,sig:await this.sign({type,payload})}}
  async start(){
@@ -45,8 +77,10 @@ export class NtfySecureSignaling {
    es.onmessage=e=>this.handle(e).catch(err=>this.onError(err));
    setTimeout(()=>{if(!settled){settled=true;reject(Error("Тайм-аут подключения к ntfy"))}},15000);
   });
-  if(this.role==="A"){await this.sendHello();this.retry=setInterval(()=>this.sendHello().catch(this.onError),5000)}
-  else this.onStatus("Ожидаем запрос от "+this.peer+"…");
+  if(this.role==="A"){
+   try{await this.sendHello();this.scheduleHelloRetry()}
+   catch(err){this.onError(err);this.retryDelay=10000;this.scheduleHelloRetry()}
+  } else this.onStatus("Ожидаем запрос от "+this.peer+"…");
  }
  async sendHello(){
   if(this.closed||this.ready||this.role!=="A")return;
@@ -64,7 +98,7 @@ export class NtfySecureSignaling {
   if(m.v!==1||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me)return;
   const p=m.payload;
   if(m.type==="hello"&&this.role==="B"){
-   if(this.hello){if(p.sid===this.hello.sid&&this.answer)await this.publish(this.peer,await this.signed("answer",this.answer));return;}
+   if(this.hello){return;}
    if(this.ready)return;
    if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись собеседника недействительна.");
    await this.checkPinned(p.identity);
@@ -104,7 +138,7 @@ export class NtfySecureSignaling {
   const mk=dir=>crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt:hash,info:enc.encode("voice-link-v1|"+dir)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
   const [ab,ba]=await Promise.all([mk("A-to-B"),mk("B-to-A")]);
   this.sendKey=this.role==="A"?ab:ba;this.recvKey=this.role==="A"?ba:ab;this.session=hello.sid;this.ready=true;
-  clearInterval(this.retry);
+  clearTimeout(this.retry);
   const pinned=await this.checkPinned(remote);
   if(pinned){this.confirmed=true;this.onReady({trusted:true,sas:this.sas});}
   else this.onVerify({sas:this.sas,peer:this.peer});
@@ -122,5 +156,5 @@ export class NtfySecureSignaling {
   const data=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:enc.encode(this.session+"|"+dir)},this.sendKey,plain);
   await this.publish(this.peer,{v:1,type:"data",payload:{sid:this.session,from:this.me,to:this.peer,iv:b64u(iv),data:b64u(data)}});
  }
- close(){this.closed=true;clearInterval(this.retry);this.es?.close();}
+ close(){this.closed=true;clearTimeout(this.retry);this.es?.close();}
 }
