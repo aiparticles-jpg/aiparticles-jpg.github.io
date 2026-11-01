@@ -13,6 +13,7 @@ export class WebRtcAudio {
     this.statsTimer = null;
     this.statsInProgress = false;
     this.previousRtpStats = new Map();
+    this.previousIcePairStats = new Map();
   }
 
   async ensureMedia() {
@@ -140,6 +141,7 @@ export class WebRtcAudio {
   startStatsMonitoring(pc) {
     if (this.statsTimer) clearInterval(this.statsTimer);
     this.previousRtpStats.clear();
+    this.previousIcePairStats.clear();
     this.statsTimer = setInterval(() => {
       this.logMediaStats(pc);
     }, 1000);
@@ -176,6 +178,34 @@ export class WebRtcAudio {
         this.previousRtpStats.set(report.id, {
           packetsReceived: report.packetsReceived,
           packetsSent: report.packetsSent
+        });
+      }
+
+      // ICE candidate-pair counters help distinguish media loss from failed
+      // ICE connectivity/consent checks. Log per-second deltas, not totals.
+      const pair = reports.find(report =>
+        report.type === "candidate-pair" &&
+        (report.selected === true ||
+          (report.nominated === true && report.state === "succeeded"))
+      );
+      if (pair) {
+        const previous = this.previousIcePairStats.get(pair.id);
+        const counters = [
+          ["requestsSent", "ICE req→"],
+          ["responsesReceived", "ICE resp←"],
+          ["consentRequestsSent", "consent→"]
+        ];
+        for (const [field, label] of counters) {
+          if (!Number.isFinite(pair[field])) continue;
+          const delta = previous && Number.isFinite(previous[field])
+            ? pair[field] - previous[field]
+            : null;
+          fields.push(label + " Δ=" + (delta === null ? "n/a" : delta));
+        }
+        this.previousIcePairStats.set(pair.id, {
+          requestsSent: pair.requestsSent,
+          responsesReceived: pair.responsesReceived,
+          consentRequestsSent: pair.consentRequestsSent
         });
       }
 
@@ -246,6 +276,7 @@ export class WebRtcAudio {
       this.statsTimer = null;
     }
     this.previousRtpStats.clear();
+    this.previousIcePairStats.clear();
     if (this.pc) {
       this.pc.ontrack = null;
       this.pc.close();
