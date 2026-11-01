@@ -1,10 +1,11 @@
 import { STUN_URL } from "./config.js";
 
 export class WebRtcAudio {
-  constructor({ sendSignal, onRemoteStream, onState }) {
+  constructor({ sendSignal, onRemoteStream, onState, onError }) {
     this.sendSignal = sendSignal;
     this.onRemoteStream = onRemoteStream;
     this.onState = onState || (() => {});
+    this.onError = onError || (() => {});
     this.pc = null;
     this.localStream = null;
     this.pendingCandidates = [];
@@ -35,9 +36,21 @@ export class WebRtcAudio {
 
     for (const track of stream.getAudioTracks()) pc.addTrack(track, stream);
 
-    pc.onicecandidate = event => {
-      if (event.candidate) this.sendSignal({ candidate: event.candidate.toJSON() });
+    pc.onicecandidate = async event => {
+      if (event.candidate) {
+        try {
+          await this.sendSignal({ candidate: event.candidate.toJSON() });
+        } catch (error) {
+          this.onError(new Error("Не удалось передать ICE-кандидат: " + error.message));
+        }
+      } else {
+        this.onState("ice-gathering-complete");
+      }
     };
+
+    pc.onicegatheringstatechange = () => this.onState("ice-gathering-" + pc.iceGatheringState);
+    pc.onsignalingstatechange = () => this.onState("signaling-" + pc.signalingState);
+    pc.oniceconnectionstatechange = () => this.onState("ice-" + pc.iceConnectionState);
 
     pc.ontrack = event => {
       const remoteStream = event.streams && event.streams[0];
@@ -45,14 +58,7 @@ export class WebRtcAudio {
     };
 
     pc.onconnectionstatechange = () => {
-      this.onState(pc.connectionState);
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === "failed") this.onState("failed");
-      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-        this.onState("connected");
-      }
+      this.onState("connection-" + pc.connectionState);
     };
 
     this.pc = pc;
@@ -63,7 +69,7 @@ export class WebRtcAudio {
     const pc = await this.createPeerConnection();
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    this.sendSignal({ description: pc.localDescription });
+    await this.sendSignal({ description: pc.localDescription });
   }
 
   async handleSignal(payload) {
@@ -81,7 +87,7 @@ export class WebRtcAudio {
       if (description.type === "offer") {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        this.sendSignal({ description: pc.localDescription });
+        await this.sendSignal({ description: pc.localDescription });
       }
     } else if (payload.candidate) {
       if (this.remoteDescriptionSet) {
