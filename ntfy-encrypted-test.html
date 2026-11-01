@@ -108,7 +108,7 @@ async function handle(e){
    await verifyPinned(p.identity);
    await establish(S.hello,p);log("Ответ аутентифицирован.","good");
  }else if(m.type==="data"&&S.ready&&S.confirmed&&p.sid===S.session){
-   const iv=un64(p.iv),cipher=un64(p.data),dir=p.from==="A"?"A-to-B":"B-to-A";
+   const iv=un64(p.iv),cipher=un64(p.data),dir=p.from<p.to?"A-to-B":"B-to-A";
    const aad=enc.encode(S.session+"|"+dir);const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv,additionalData:aad},S.recvKey,cipher);
    log("СОБЕСЕДНИК: "+dec.decode(plain),"good");
  }
