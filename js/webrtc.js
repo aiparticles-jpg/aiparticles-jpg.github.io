@@ -10,6 +10,9 @@ export class WebRtcAudio {
     this.localStream = null;
     this.pendingCandidates = [];
     this.remoteDescriptionSet = false;
+    this.statsTimer = null;
+    this.statsInProgress = false;
+    this.previousRtpStats = new Map();
   }
 
   async ensureMedia() {
@@ -66,6 +69,7 @@ export class WebRtcAudio {
     };
 
     this.pc = pc;
+    this.startStatsMonitoring(pc);
     return pc;
   }
 
@@ -124,6 +128,76 @@ export class WebRtcAudio {
     }
   }
 
+  startStatsMonitoring(pc) {
+    if (this.statsTimer) clearInterval(this.statsTimer);
+    this.previousRtpStats.clear();
+    this.statsTimer = setInterval(() => {
+      this.logMediaStats(pc);
+    }, 1000);
+  }
+
+  async logMediaStats(pc) {
+    if (this.statsInProgress || this.pc !== pc) return;
+    this.statsInProgress = true;
+    try {
+      const stats = await pc.getStats();
+      if (this.pc !== pc) return;
+
+      const reports = Array.from(stats.values());
+      const audioReports = reports.filter(report =>
+        (report.type === "inbound-rtp" || report.type === "outbound-rtp") &&
+        (report.kind === "audio" || report.mediaType === "audio")
+      );
+      const fields = [];
+
+      for (const report of audioReports) {
+        const previous = this.previousRtpStats.get(report.id);
+        const packetField = report.type === "inbound-rtp" ? "packetsReceived" : "packetsSent";
+        const packets = Number.isFinite(report[packetField]) ? report[packetField] : null;
+        const delta = packets !== null && previous && Number.isFinite(previous[packetField])
+          ? packets - previous[packetField]
+          : null;
+        const label = report.type === "inbound-rtp" ? "in" : "out";
+        fields.push(label + " Δpkts=" + (delta === null ? "n/a" : delta));
+
+        if (report.type === "inbound-rtp") {
+          if (Number.isFinite(report.packetsLost)) fields.push("lost=" + report.packetsLost);
+          if (Number.isFinite(report.jitter)) fields.push("jitter=" + (report.jitter * 1000).toFixed(1) + "ms");
+        }
+        this.previousRtpStats.set(report.id, {
+          packetsReceived: report.packetsReceived,
+          packetsSent: report.packetsSent
+        });
+      }
+
+      const remoteInbound = reports.find(report =>
+        report.type === "remote-inbound-rtp" &&
+        (report.kind === "audio" || report.mediaType === "audio")
+      );
+      if (remoteInbound && Number.isFinite(remoteInbound.roundTripTime)) {
+        fields.push("remoteRTT=" + Math.round(remoteInbound.roundTripTime * 1000) + "ms");
+      }
+
+      const pair = reports.find(report =>
+        report.type === "candidate-pair" &&
+        (report.selected === true ||
+          (report.nominated === true && report.state === "succeeded"))
+      );
+      if (pair && Number.isFinite(pair.currentRoundTripTime)) {
+        fields.push("ICE-RTT=" + Math.round(pair.currentRoundTripTime * 1000) + "ms");
+      }
+
+      this.onState(
+        "RTP stats [" + pc.iceConnectionState + "/" + pc.connectionState + "]: " +
+        (fields.length ? fields.join("; ") : "аудиостатистика пока недоступна")
+      );
+    } catch (error) {
+      this.onState("RTP stats: getStats error: " + error.message);
+    } finally {
+      this.statsInProgress = false;
+    }
+  }
+
   async createOffer() {
     const pc = await this.createPeerConnection();
     const offer = await pc.createOffer();
@@ -158,6 +232,11 @@ export class WebRtcAudio {
   }
 
   async close({ stopTracks = false } = {}) {
+    if (this.statsTimer) {
+      clearInterval(this.statsTimer);
+      this.statsTimer = null;
+    }
+    this.previousRtpStats.clear();
     if (this.pc) {
       this.pc.ontrack = null;
       this.pc.close();
