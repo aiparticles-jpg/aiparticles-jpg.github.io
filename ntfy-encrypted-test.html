@@ -70,7 +70,7 @@ const enc = new TextEncoder();
 const toB64 = bytes => {
   let s = "";
   for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 };
 const fromHex = hex => Uint8Array.from(hex.match(/.{2}/g) || [], x => parseInt(x, 16));
 const log = (message, cls="") => {
