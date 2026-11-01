@@ -11,7 +11,7 @@ export class NtfySecureSignaling {
  constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError}) {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});
-  this.es=null;this.identity=null;this.hello=null;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.retry=null;this.closed=false;
+  this.es=null;this.identity=null;this.hello=null;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.retry=null;this.closed=false;
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -77,11 +77,11 @@ export class NtfySecureSignaling {
    if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись ответа недействительна.");
    await this.checkPinned(p.identity);await this.derive(this.hello,p);return;
   }
-  if(m.type==="data"&&this.ready&&this.confirmed&&p.sid===this.session){
+  if(m.type==="data"&&this.ready&&p.sid===this.session){
    const dir=p.from<p.to?"A-to-B":"B-to-A";
    const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(p.iv),additionalData:enc.encode(this.session+"|"+dir)},this.recvKey,un64(p.data));
    const msg=JSON.parse(new TextDecoder().decode(plain));
-   if(msg.type==="signal")await this.onSignal(msg.payload);
+   if(msg.type==="signal"){if(this.confirmed)await this.onSignal(msg.payload);else this.pendingSignals.push(msg.payload)}
   }
  }
  async checkPinned(jwk){
