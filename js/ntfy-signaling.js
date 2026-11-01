@@ -15,7 +15,7 @@ export class NtfySecureSignaling {
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
- async identity(){
+ async loadIdentity(){
   const key="vl.identity.v1."+this.me,raw=localStorage.getItem(key);
   if(raw){const j=JSON.parse(raw);return {privateKey:await crypto.subtle.importKey("jwk",j.privateKey,{name:"ECDSA",namedCurve:"P-256"},true,["sign"]),publicJwk:j.publicKey}}
   const pair=await crypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);
@@ -36,7 +36,7 @@ export class NtfySecureSignaling {
  async start(){
   if(!validName(this.me)||!validName(this.peer)||this.me===this.peer)throw Error("Имена: 3–24 символа, латинские буквы, цифры, _ или -. Имена должны различаться.");
   if(!crypto.subtle||!window.isSecureContext)throw Error("Для защищённого соединения нужен браузер с Web Crypto и HTTPS.");
-  this.identity=await this.identity();
+  this.identity=await this.loadIdentity();
   const url=BASE+await this.topic(this.me)+"/sse";
   await new Promise((resolve,reject)=>{
    const es=new EventSource(url);this.es=es;let settled=false;
