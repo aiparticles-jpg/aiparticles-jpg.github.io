@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>ntfy — тест сигнализации</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; background: #101827; color: #e8eef8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px 16px; }
+    main { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: clamp(1.6rem, 5vw, 2.2rem); margin: 0 0 8px; }
+    p { color: #aab8ca; line-height: 1.5; }
+    .panel { background: #192538; border: 1px solid #30415a; border-radius: 14px; padding: 18px; margin: 16px 0; }
+    label { display: block; font-size: .9rem; color: #b9c7d9; margin: 12px 0 6px; }
+    input, button { font: inherit; border-radius: 9px; padding: 12px; }
+    input { width: 100%; color: #edf4ff; background: #101827; border: 1px solid #42536c; }
+    button { border: 0; background: #77a9ff; color: #0c1930; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    .send-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .status { display: flex; gap: 8px; align-items: center; font-weight: 650; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #d6a34b; }
+    .dot.ok { background: #45cb8a; } .dot.bad { background: #ed6b73; }
+    #log { min-height: 180px; max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: #0d1522; border-radius: 9px; padding: 12px; color: #d7e4f5; font: 13px/1.5 ui-monospace, monospace; }
+    .small { font-size: .85rem; }
+    code { overflow-wrap: anywhere; color: #b9d3ff; }
+    @media (max-width: 480px) { .send-row { grid-template-columns: 1fr; } button { width: 100%; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Тест ntfy для Voice Link</h1>
+  <p>Отдельная диагностическая страница. Проверяет подключение браузера к ntfy через EventSource (SSE) и отправку сообщений через HTTP POST. Основное приложение не затрагивается.</p>
+
+  <section class="panel">
+    <div class="status"><span id="dot" class="dot"></span><span id="status">Подключаемся к ntfy…</span></div>
+    <p class="small">Топик: <code id="topic"></code></p>
+    <label for="message">Тестовое сообщение</label>
+    <div class="send-row">
+      <input id="message" maxlength="500" value="Привет из Voice Link test page">
+      <button id="send" type="button">Отправить POST</button>
+    </div>
+    <p id="send-status" class="small" aria-live="polite"></p>
+  </section>
+
+  <section class="panel">
+    <strong>Входящие события</strong>
+    <p class="small">Открой эту страницу на обоих устройствах. Отправленное на одном устройстве сообщение должно появиться в журнале другого.</p>
+    <pre id="log" aria-live="polite">Ожидаем события…</pre>
+    <button id="clear" type="button">Очистить журнал</button>
+  </section>
+
+  <p class="small">Важно: топик публичный. Не отправляй сюда SDP, ICE, пароли, ссылки-приглашения или личные данные. Эта страница предназначена только для безобидных тестовых строк.</p>
+</main>
+<script>
+(() => {
+  const topic = "voice-test-izmir-2026-11-01";
+  const base = "https://ntfy.sh/" + topic;
+  const status = document.getElementById("status");
+  const dot = document.getElementById("dot");
+  const log = document.getElementById("log");
+  const sendButton = document.getElementById("send");
+  const sendStatus = document.getElementById("send-status");
+  document.getElementById("topic").textContent = topic;
+
+  function addLog(line) {
+    if (log.textContent === "Ожидаем события…") log.textContent = "";
+    log.textContent += (log.textContent ? "\n" : "") + line;
+    const lines = log.textContent.split("\n");
+    if (lines.length > 100) log.textContent = lines.slice(-100).join("\n");
+    log.scrollTop = log.scrollHeight;
+  }
+
+  const stream = new EventSource(base + "/sse?since=now");
+  stream.onopen = () => {
+    status.textContent = "SSE подключён";
+    dot.className = "dot ok";
+    addLog("[" + new Date().toLocaleTimeString() + "] SSE: соединение открыто");
+  };
+  stream.onmessage = (event) => {
+    let detail = event.data;
+    try {
+      const parsed = JSON.parse(event.data);
+      if (parsed.event === "message") {
+        detail = "Сообщение: " + parsed.message;
+        if (parsed.time) detail += " (серверное время: " + new Date(parsed.time * 1000).toLocaleTimeString() + ")";
+      } else {
+        detail = event.data;
+      }
+    } catch {}
+    addLog("[" + new Date().toLocaleTimeString() + "] " + detail);
+  };
+  stream.onerror = () => {
+    if (stream.readyState === EventSource.CLOSED) {
+      status.textContent = "SSE закрыт — проверь соединение";
+      dot.className = "dot bad";
+    } else {
+      status.textContent = "SSE переподключается…";
+      dot.className = "dot";
+    }
+    addLog("[" + new Date().toLocaleTimeString() + "] SSE: ошибка или попытка переподключения");
+  };
+
+  sendButton.addEventListener("click", async () => {
+    const message = document.getElementById("message").value.trim();
+    if (!message) { sendStatus.textContent = "Введите сообщение."; return; }
+    sendButton.disabled = true;
+    sendStatus.textContent = "Отправляем…";
+    try {
+      const response = await fetch(base, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: message
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      sendStatus.textContent = "POST принят сервером (HTTP " + response.status + "). ID: " + (result.id || "получен");
+      addLog("[" + new Date().toLocaleTimeString() + "] POST отправлен: " + message);
+    } catch (error) {
+      sendStatus.textContent = "Ошибка POST: " + error.message;
+      addLog("[" + new Date().toLocaleTimeString() + "] POST ERROR: " + error.message);
+    } finally {
+      sendButton.disabled = false;
+    }
+  });
+
+  document.getElementById("clear").addEventListener("click", () => {
+    log.textContent = "Журнал очищен.";
+  });
+})();
+</script>
+</body>
+</html>
