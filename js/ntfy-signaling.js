@@ -63,8 +63,9 @@ export class NtfySecureSignaling {
   let m;try{m=JSON.parse(n.message)}catch{return}
   if(m.v!==1||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me)return;
   const p=m.payload;
-  if(m.type==="hello"&&this.role==="B"&&!this.ready){
+  if(m.type==="hello"&&this.role==="B"){
    if(this.hello){if(p.sid===this.hello.sid&&this.answer)await this.publish(this.peer,await this.signed("answer",this.answer));return;}
+   if(this.ready)return;
    if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись собеседника недействительна.");
    await this.checkPinned(p.identity);
    this.hello=p;
