@@ -50,7 +50,11 @@ export class WebRtcAudio {
 
     pc.onicegatheringstatechange = () => this.onState("ice-gathering-" + pc.iceGatheringState);
     pc.onsignalingstatechange = () => this.onState("signaling-" + pc.signalingState);
-    pc.oniceconnectionstatechange = () => this.onState("ice-" + pc.iceConnectionState);
+    pc.oniceconnectionstatechange = () => {
+      const iceState = pc.iceConnectionState;
+      this.onState("ice-" + iceState);
+      this.logSelectedCandidatePair("ice-" + iceState, pc);
+    };
 
     pc.ontrack = event => {
       const remoteStream = event.streams && event.streams[0];
