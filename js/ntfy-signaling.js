@@ -33,7 +33,9 @@ export class NtfySecureSignaling {
    for(let attempt=0;attempt<2;attempt++){
     const wait=Math.max(0,this.lastPublishAt+1100-Date.now(),this.publishCooldownUntil-Date.now());
     if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+    console.log(`[ntfy] POST → ${msg.type} (попытка ${attempt+1}/2)`);
     const r=await fetch(BASE+await this.topic(to),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});
+    console.log(`[ntfy] POST ← ${r.status} (${msg.type}, попытка ${attempt+1}/2)`);
     this.lastPublishAt=Date.now();
     if(r.ok)return;
     if(r.status===429){
