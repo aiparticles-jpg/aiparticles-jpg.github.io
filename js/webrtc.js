@@ -105,10 +105,19 @@ export class WebRtcAudio {
       const remote = stats.get(pair.remoteCandidateId);
       const describe = candidate => {
         if (!candidate) return "unknown";
-        const parts = [candidate.candidateType || "?", candidate.protocol || "?"];
+        const parts = [
+          (candidate.candidateType || "?") + "/" + (candidate.protocol || "?")
+        ];
+        if (candidate.address) {
+          parts.push(candidate.address + (candidate.port ? ":" + candidate.port : ""));
+        }
+        if (candidate.relatedAddress) {
+          parts.push("related=" + candidate.relatedAddress +
+            (candidate.relatedPort ? ":" + candidate.relatedPort : ""));
+        }
         if (candidate.relayProtocol) parts.push("relay=" + candidate.relayProtocol);
         if (candidate.tcpType) parts.push("tcpType=" + candidate.tcpType);
-        return parts.join("/");
+        return parts.join(" ");
       };
 
       const rtt = Number.isFinite(pair.currentRoundTripTime)
