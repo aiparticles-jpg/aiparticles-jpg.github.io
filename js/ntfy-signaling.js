@@ -8,9 +8,9 @@ const hex=b=>Array.from(bytes(b),x=>x.toString(16).padStart(2,"0")).join("");
 const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
 const validName=s=>/^[a-z0-9_-]{3,24}$/.test(s);
 export class NtfySecureSignaling {
- constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError}) {
+ constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError,onDebug}) {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
-  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});
+  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});
   this.es=null;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.retry=null;this.retryDelay=5000;this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.publishCooldownUntil=0;this.closed=false;
  }
  static validName(s){return validName(s)}
@@ -33,9 +33,9 @@ export class NtfySecureSignaling {
    for(let attempt=0;attempt<2;attempt++){
     const wait=Math.max(0,this.lastPublishAt+1100-Date.now(),this.publishCooldownUntil-Date.now());
     if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
-    console.log(`[ntfy] POST → ${msg.type} (попытка ${attempt+1}/2)`);
+    this.onDebug(`[ntfy] POST → ${msg.type} (попытка ${attempt+1}/2)`);
     const r=await fetch(BASE+await this.topic(to),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});
-    console.log(`[ntfy] POST ← ${r.status} (${msg.type}, попытка ${attempt+1}/2)`);
+    this.onDebug(`[ntfy] POST ← ${r.status} (${msg.type}, попытка ${attempt+1}/2)`);
     this.lastPublishAt=Date.now();
     if(r.ok)return;
     if(r.status===429){
