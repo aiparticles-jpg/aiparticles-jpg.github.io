@@ -217,11 +217,6 @@ export class WebRtcAudio {
         fields.push("remoteRTT=" + Math.round(remoteInbound.roundTripTime * 1000) + "ms");
       }
 
-      const pair = reports.find(report =>
-        report.type === "candidate-pair" &&
-        (report.selected === true ||
-          (report.nominated === true && report.state === "succeeded"))
-      );
       if (pair && Number.isFinite(pair.currentRoundTripTime)) {
         fields.push("ICE-RTT=" + Math.round(pair.currentRoundTripTime * 1000) + "ms");
       }
