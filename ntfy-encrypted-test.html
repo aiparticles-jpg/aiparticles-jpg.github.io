@@ -68,7 +68,7 @@ async function begin(){
  $("connect").disabled=true;status("Создаём/загружаем постоянную криптографическую идентичность…");
  S.identity=await getIdentity();S.identityJwk=S.identity.jwk;
  await subscribe();
- S.role=S.me.localeCompare(S.peer)<0?"A":"B";
+ S.role=S.me<S.peer?"A":"B";
  if(S.role==="A"){
    S.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
    S.hello={sid:b64u(crypto.getRandomValues(new Uint8Array(16))),from:S.me,to:S.peer,eph:b64u(await crypto.subtle.exportKey("raw",S.ecdh.publicKey)),identity:S.identityJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),time:Date.now()};
