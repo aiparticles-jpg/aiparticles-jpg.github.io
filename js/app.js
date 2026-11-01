@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=6";
+import { WebRtcAudio } from "./webrtc.js?v=7";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=3";
 
 const $=id=>document.getElementById(id);
