@@ -3,7 +3,7 @@ import { NtfySecureSignaling } from "./ntfy-signaling.js?v=2";
 
 const $=id=>document.getElementById(id);
 const els={
- my:$("my-name"),peer:$("peer-name"),connect:$("connect"),verify:$("verify-panel"),
+ my:$("my-name"),peer:$("peer-name"),connect:$("connect"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -105,6 +105,19 @@ els.confirm.addEventListener("click",async()=>{
  catch(e){showError(e.message);els.confirm.disabled=false}
 });
 els.hangup.addEventListener("click",hangup);
+els.resetPeer.addEventListener("click",async()=>{
+ const peer=els.peer.value.trim().toLowerCase();
+ if(!NtfySecureSignaling.validName(peer)){
+  showError("Сначала укажите корректное имя собеседника.");
+  return;
+ }
+ if(!window.confirm("Удалить сохранённое доверие к устройству с именем "+peer+" на этом браузере? Собственный ключ не удаляется. Для повторного сопряжения выполните сброс и на другом устройстве."))return;
+ await hangup();
+ localStorage.removeItem("vl.peer.v1."+peer);
+ clearError();
+ debug("Удалено сохранённое сопряжение с "+peer+". При следующем подключении потребуется сверить новый код.");
+ setStatus("Сопряжение сброшено","Подключитесь заново и сравните проверочные коды на обоих устройствах.","idle");
+});
 els.tcp.classList.add("hidden");
 els.my.value=localStorage.getItem("vl.last-name")||"";
 els.peer.value=localStorage.getItem("vl.last-peer")||"";
