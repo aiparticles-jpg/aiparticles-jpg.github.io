@@ -10,6 +10,7 @@ const validName=s=>/^[a-z0-9_-]{3,24}$/.test(s);
 export class NtfySecureSignaling {
  constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError,onDebug}) {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
+  this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});
   this.es=null;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.retry=null;this.retryDelay=5000;this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.publishCooldownUntil=0;this.closed=false;
  }
@@ -68,14 +69,16 @@ export class NtfySecureSignaling {
  }
  async signed(type,payload){return {v:1,type,payload,sig:await this.sign({type,payload})}}
  async start(){
+  this.onDebug(`[SSE ${this.debugId}] start() вызван`);
   if(!validName(this.me)||!validName(this.peer)||this.me===this.peer)throw Error("Имена: 3–24 символа, латинские буквы, цифры, _ или -. Имена должны различаться.");
   if(!crypto.subtle||!window.isSecureContext)throw Error("Для защищённого соединения нужен браузер с Web Crypto и HTTPS.");
   this.identity=await this.loadIdentity();
   const url=BASE+await this.topic(this.me)+"/sse";
   await new Promise((resolve,reject)=>{
    const es=new EventSource(url);this.es=es;let settled=false;
-   es.onopen=()=>{if(!settled){settled=true;resolve()}this.onStatus("Канал ntfy подключён. Ищем собеседника…")};
-   es.onerror=()=>{this.onStatus("Канал ntfy переподключается…");if(!settled){settled=true;reject(Error("Не удалось подключиться к ntfy"))}};
+   this.onDebug(`[SSE ${this.debugId}] EventSource создан; readyState=${es.readyState}`);
+   es.onopen=()=>{this.sseOpenCount++;this.onDebug(`[SSE ${this.debugId}] OPEN #${this.sseOpenCount}; readyState=${es.readyState}`);if(!settled){settled=true;resolve()}this.onStatus("Канал ntfy подключён. Ищем собеседника…")};
+   es.onerror=()=>{this.onDebug(`[SSE ${this.debugId}] ERROR; readyState=${es.readyState} (${es.readyState===EventSource.CONNECTING?"CONNECTING":es.readyState===EventSource.CLOSED?"CLOSED":"OPEN"})`);this.onStatus("Канал ntfy переподключается…");if(!settled){settled=true;reject(Error("Не удалось подключиться к ntfy"))}};
    es.onmessage=e=>this.handle(e).catch(err=>this.onError(err));
    setTimeout(()=>{if(!settled){settled=true;reject(Error("Тайм-аут подключения к ntfy"))}},15000);
   });
