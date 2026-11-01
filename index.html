@@ -89,6 +89,13 @@
       </div>
       <audio id="remote-audio" autoplay playsinline></audio>
       <p id="error-message" class="error-message hidden" role="alert"></p>
+
+      <details class="debug-panel" open>
+        <summary>Диагностика WebSocket</summary>
+        <div class="debug-meta">Адрес: <code id="debug-url">пока не подключались</code></div>
+        <div class="debug-meta">Состояние: <strong id="debug-state">—</strong></div>
+        <pre id="debug-log" class="debug-log">Ожидаем попытку подключения. Здесь появятся события WebSocket.</pre>
+      </details>
     </section>
 
     <footer>
