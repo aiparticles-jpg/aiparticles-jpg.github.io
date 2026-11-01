@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
+  <title>Voice Link — голосовой звонок</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Voice Link">
+        <span class="brand-mark">V</span>
+        <span>voice<span class="brand-light">link</span></span>
+      </a>
+      <span class="privacy-label"><span class="dot"></span> Без регистрации</span>
+    </header>
+
+    <section class="hero">
+      <div class="eyebrow">ПРЯМОЙ ГОЛОСОВОЙ ЗВОНОК</div>
+      <h1>Говорите напрямую.<br><span>Без лишнего.</span></h1>
+      <p class="intro">Создайте комнату и отправьте приглашение другу. Сначала приложение попробует прямое соединение, а если оно не получится — предложит TCP-аудио через сервер.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="room-title">
+      <div class="panel-heading">
+        <div>
+          <div class="step">01 / КОМНАТА</div>
+          <h2 id="room-title">Создать или подключиться</h2>
+        </div>
+        <span class="lock-icon" aria-hidden="true">⌑</span>
+      </div>
+
+      <button id="create-room" class="button button-primary" type="button">
+        <span aria-hidden="true">＋</span> Создать комнату
+      </button>
+
+      <div class="separator"><span>ИЛИ ПОДКЛЮЧИТЬСЯ</span></div>
+
+      <label class="field-label" for="invite-code">Код приглашения</label>
+      <div class="join-row">
+        <input id="invite-code" type="text" autocomplete="off" spellcheck="false" placeholder="Вставьте код или ссылку">
+        <button id="join-room" class="button button-secondary" type="button">Войти</button>
+      </div>
+
+      <div id="invite-panel" class="invite-panel hidden">
+        <div class="invite-title">Комната создана. Отправьте другу ссылку или код.</div>
+        <label class="field-label" for="invite-link">Ссылка-приглашение</label>
+        <div class="copy-row">
+          <input id="invite-link" type="text" readonly>
+          <button id="copy-link" class="button button-copy" type="button">Копировать</button>
+        </div>
+        <label class="field-label" for="display-code">Код приглашения</label>
+        <div class="copy-row">
+          <input id="display-code" type="text" readonly>
+          <button id="copy-code" class="button button-copy" type="button">Копировать</button>
+        </div>
+        <p class="hint">Код и ссылка содержат секрет для шифрования TCP-аудио. Передавайте их только собеседнику.</p>
+      </div>
+    </section>
+
+    <section class="panel call-panel" aria-labelledby="call-title">
+      <div class="panel-heading">
+        <div>
+          <div class="step">02 / СОЕДИНЕНИЕ</div>
+          <h2 id="call-title">Голосовой канал</h2>
+        </div>
+        <span id="connection-indicator" class="status-pill status-idle">Не подключено</span>
+      </div>
+
+      <div class="status-card">
+        <div class="status-icon" id="status-icon" aria-hidden="true">⌁</div>
+        <div class="status-copy">
+          <strong id="status-title">Ожидаем комнату</strong>
+          <span id="status-text">Создайте комнату или введите приглашение друга.</span>
+        </div>
+      </div>
+
+      <div class="transport-row">
+        <span>Транспорт</span>
+        <strong id="transport-label">Не выбран</strong>
+      </div>
+
+      <div class="actions">
+        <button id="tcp-fallback" class="button button-secondary hidden" type="button">Перейти на TCP-аудио</button>
+        <button id="hangup" class="button button-danger" type="button" disabled>Завершить звонок</button>
+      </div>
+      <audio id="remote-audio" autoplay playsinline></audio>
+      <p id="error-message" class="error-message hidden" role="alert"></p>
+    </section>
+
+    <footer>
+      <span>Voice Link · экспериментальный прототип</span>
+      <span>WebRTC P2P · TCP fallback</span>
+    </footer>
+  </main>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
