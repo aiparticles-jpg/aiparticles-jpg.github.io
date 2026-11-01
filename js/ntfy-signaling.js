@@ -11,7 +11,7 @@ export class NtfySecureSignaling {
  constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError}) {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});
-  this.es=null;this.identity=null;this.hello=null;this.answer=null;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.retry=null;this.retryDelay=5000;this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.publishCooldownUntil=0;this.closed=false;
+  this.es=null;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.retry=null;this.retryDelay=5000;this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.publishCooldownUntil=0;this.closed=false;
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -98,7 +98,13 @@ export class NtfySecureSignaling {
   if(m.v!==1||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me)return;
   const p=m.payload;
   if(m.type==="hello"&&this.role==="B"){
-   if(this.hello){return;}
+   if(this.hello){
+    if(p.sid===this.hello.sid&&this.answer&&Date.now()-this.lastAnswerAt>=10000){
+     await this.publish(this.peer,await this.signed("answer",this.answer));
+     this.lastAnswerAt=Date.now();
+    }
+    return;
+   }
    if(this.ready)return;
    if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись собеседника недействительна.");
    await this.checkPinned(p.identity);
@@ -107,6 +113,7 @@ export class NtfySecureSignaling {
    const answer={sid:p.sid,from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
    this.answer=answer;
    await this.publish(this.peer,await this.signed("answer",answer));
+   this.lastAnswerAt=Date.now();
    await this.derive(p,answer);return;
   }
   if(m.type==="answer"&&this.role==="A"&&!this.ready){
