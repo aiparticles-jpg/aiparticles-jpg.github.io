@@ -64,11 +64,13 @@ export class NtfySecureSignaling {
   if(m.v!==1||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me)return;
   const p=m.payload;
   if(m.type==="hello"&&this.role==="B"&&!this.ready){
+   if(this.hello){if(p.sid===this.hello.sid&&this.answer)await this.publish(this.peer,await this.signed("answer",this.answer));return;}
    if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись собеседника недействительна.");
    await this.checkPinned(p.identity);
    this.hello=p;
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
    const answer={sid:p.sid,from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
+   this.answer=answer;
    await this.publish(this.peer,await this.signed("answer",answer));
    await this.derive(p,answer);return;
   }
@@ -106,9 +108,11 @@ export class NtfySecureSignaling {
   if(pinned){this.confirmed=true;this.onReady({trusted:true,sas:this.sas});}
   else this.onVerify({sas:this.sas,peer:this.peer});
  }
- confirmPeer(){
+ async confirmPeer(){
   if(!this.ready||!this.peerJwk)throw Error("Ключ ещё не согласован.");
-  localStorage.setItem("vl.peer.v1."+this.peer,stable(this.peerJwk));this.confirmed=true;this.onReady({trusted:false,sas:this.sas});
+  localStorage.setItem("vl.peer.v1."+this.peer,stable(this.peerJwk));this.confirmed=true;
+  for(const payload of this.pendingSignals.splice(0))await this.onSignal(payload);
+  this.onReady({trusted:false,sas:this.sas});
  }
  async sendSignal(payload){
   if(!this.ready||!this.confirmed)throw Error("Защищённый канал ещё не подтверждён.");
