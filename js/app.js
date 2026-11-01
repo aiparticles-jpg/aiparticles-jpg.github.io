@@ -84,9 +84,10 @@ async function hangup(){
  setStatus("Звонок завершён","Чтобы позвонить снова, нажмите «Подключиться».","idle");
 }
 els.connect.addEventListener("click",connect);
-els.confirm.addEventListener("click",()=>{
- try{state.secure.confirmPeer();els.verify.classList.add("hidden");debug("Первичная проверка подтверждена пользователем.")}
- catch(e){showError(e.message)}
+els.confirm.addEventListener("click",async()=>{
+ els.confirm.disabled=true;
+ try{await state.secure.confirmPeer();els.verify.classList.add("hidden");debug("Первичная проверка подтверждена пользователем.")}
+ catch(e){showError(e.message);els.confirm.disabled=false}
 });
 els.hangup.addEventListener("click",hangup);
 els.tcp.classList.add("hidden");
