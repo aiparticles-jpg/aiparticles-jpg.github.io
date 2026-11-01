@@ -30,7 +30,7 @@ function debug(message) {
   if (!els.debugLog) return;
   const time = new Date().toLocaleTimeString("ru-RU", { hour12: false });
   const line = "[" + time + "] " + message;
-  els.debugLog.textContent = (els.debugLog.textContent + "\\n" + line).trim();
+  els.debugLog.textContent = (els.debugLog.textContent + "\n" + line).trim();
   els.debugLog.scrollTop = els.debugLog.scrollHeight;
 }
 
