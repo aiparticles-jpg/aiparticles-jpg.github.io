@@ -69,6 +69,61 @@ export class WebRtcAudio {
     return pc;
   }
 
+  async logSelectedCandidatePair(trigger, pc) {
+    try {
+      const stats = await pc.getStats();
+      if (this.pc !== pc) return;
+
+      const reports = Array.from(stats.values());
+      let pair = null;
+
+      for (const report of reports) {
+        if (report.type === "transport" && report.selectedCandidatePairId) {
+          pair = stats.get(report.selectedCandidatePairId);
+          if (pair) break;
+        }
+      }
+
+      if (!pair) {
+        pair = reports.find(report =>
+          report.type === "candidate-pair" &&
+          (report.selected === true ||
+            (report.nominated === true && report.state === "succeeded"))
+        );
+      }
+
+      if (!pair) {
+        this.onState("ICE pair [" + trigger + "]: выбранная пара пока не найдена");
+        return;
+      }
+
+      const local = stats.get(pair.localCandidateId);
+      const remote = stats.get(pair.remoteCandidateId);
+      const describe = candidate => {
+        if (!candidate) return "unknown";
+        const parts = [candidate.candidateType || "?", candidate.protocol || "?"];
+        if (candidate.relayProtocol) parts.push("relay=" + candidate.relayProtocol);
+        if (candidate.tcpType) parts.push("tcpType=" + candidate.tcpType);
+        return parts.join("/");
+      };
+
+      const rtt = Number.isFinite(pair.currentRoundTripTime)
+        ? Math.round(pair.currentRoundTripTime * 1000) + " ms"
+        : "n/a";
+      const sent = Number.isFinite(pair.bytesSent) ? pair.bytesSent : "?";
+      const received = Number.isFinite(pair.bytesReceived) ? pair.bytesReceived : "?";
+
+      this.onState(
+        "ICE pair [" + trigger + "]: local " + describe(local) +
+        " ↔ remote " + describe(remote) +
+        "; RTT=" + rtt +
+        "; bytes sent/received=" + sent + "/" + received
+      );
+    } catch (error) {
+      this.onState("ICE pair [" + trigger + "]: getStats error: " + error.message);
+    }
+  }
+
   async createOffer() {
     const pc = await this.createPeerConnection();
     const offer = await pc.createOffer();
