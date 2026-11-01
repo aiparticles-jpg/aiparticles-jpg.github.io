@@ -72,7 +72,7 @@
     log.scrollTop = log.scrollHeight;
   }
 
-  const stream = new EventSource(base + "/sse?since=now");
+  const stream = new EventSource(base + "/sse");
   stream.onopen = () => {
     status.textContent = "SSE подключён";
     dot.className = "dot ok";
@@ -99,7 +99,7 @@
       status.textContent = "SSE переподключается…";
       dot.className = "dot";
     }
-    addLog("[" + new Date().toLocaleTimeString() + "] SSE: ошибка или попытка переподключения");
+    addLog("[" + new Date().toLocaleTimeString() + "] SSE error; readyState=" + stream.readyState + "; URL=" + base + "/sse");
   };
 
   sendButton.addEventListener("click", async () => {
