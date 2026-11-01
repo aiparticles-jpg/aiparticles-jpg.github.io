@@ -78,7 +78,7 @@ export class NtfySecureSignaling {
    await this.checkPinned(p.identity);await this.derive(this.hello,p);return;
   }
   if(m.type==="data"&&this.ready&&this.confirmed&&p.sid===this.session){
-   const fromA=p.from===this.me?this.me:this.peer,dir=fromA<this.peer?"A-to-B":"B-to-A";
+   const dir=p.from<p.to?"A-to-B":"B-to-A";
    const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(p.iv),additionalData:enc.encode(this.session+"|"+dir)},this.recvKey,un64(p.data));
    const msg=JSON.parse(new TextDecoder().decode(plain));
    if(msg.type==="signal")await this.onSignal(msg.payload);
