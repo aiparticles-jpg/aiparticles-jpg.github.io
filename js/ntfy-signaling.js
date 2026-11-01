@@ -10,7 +10,7 @@ const validName=s=>/^[a-z0-9_-]{3,24}$/.test(s);
 export class NtfySecureSignaling {
  constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError,onDebug}) {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
-  this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;
+  this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});
   this.es=null;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.retry=null;this.retryDelay=5000;this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.publishCooldownUntil=0;this.closed=false;
  }
@@ -76,9 +76,26 @@ export class NtfySecureSignaling {
   const url=BASE+await this.topic(this.me)+"/sse";
   await new Promise((resolve,reject)=>{
    const es=new EventSource(url);this.es=es;let settled=false;
-   this.onDebug(`[SSE ${this.debugId}] EventSource создан; readyState=${es.readyState}`);
-   es.onopen=()=>{this.sseOpenCount++;this.onDebug(`[SSE ${this.debugId}] OPEN #${this.sseOpenCount}; readyState=${es.readyState}`);if(!settled){settled=true;resolve()}this.onStatus("Канал ntfy подключён. Ищем собеседника…")};
-   es.onerror=()=>{this.onDebug(`[SSE ${this.debugId}] ERROR; readyState=${es.readyState} (${es.readyState===EventSource.CONNECTING?"CONNECTING":es.readyState===EventSource.CLOSED?"CLOSED":"OPEN"})`);this.onStatus("Канал ntfy переподключается…");if(!settled){settled=true;reject(Error("Не удалось подключиться к ntfy"))}};
+   const createdAt=performance.now();let lastOpenAt=null;
+   const elapsed=()=>Math.round(performance.now()-createdAt);
+   const stateName=()=>es.readyState===EventSource.CONNECTING?"CONNECTING":es.readyState===EventSource.OPEN?"OPEN":es.readyState===EventSource.CLOSED?"CLOSED":String(es.readyState);
+   this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} CREATED; t=+0ms; readyState=${es.readyState} (${stateName()})`);
+   es.onopen=()=>{
+    const now=performance.now(),sincePrevious=lastOpenAt===null?"—":Math.round(now-lastOpenAt)+"ms";
+    this.sseOpenCount++;
+    this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} OPEN #${this.sseOpenCount}; since-create=+${elapsed()}ms; since-prev-open=${sincePrevious}; readyState(before)=${es.readyState} (${stateName()})`);
+    lastOpenAt=now;
+    if(!settled){settled=true;resolve()}
+    this.onStatus("Канал ntfy подключён. Ищем собеседника…");
+    this.onDebug(`[SSE ${this.debugId}] OPEN #${this.sseOpenCount} handler завершён; readyState(after)=${es.readyState} (${stateName()})`);
+   };
+   es.onerror=event=>{
+    this.sseErrorCount++;
+    this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} ERROR #${this.sseErrorCount}; since-create=+${elapsed()}ms; readyState(before)=${es.readyState} (${stateName()}); event=${event.type}; trusted=${event.isTrusted}`);
+    this.onStatus("Канал ntfy переподключается…");
+    if(!settled){settled=true;reject(Error("Не удалось подключиться к ntfy"))}
+    this.onDebug(`[SSE ${this.debugId}] ERROR #${this.sseErrorCount} handler завершён; readyState(after)=${es.readyState} (${stateName()})`);
+   };
    es.onmessage=e=>this.handle(e).catch(err=>this.onError(err));
    setTimeout(()=>{if(!settled){settled=true;reject(Error("Тайм-аут подключения к ntfy"))}},15000);
   });
@@ -168,5 +185,5 @@ export class NtfySecureSignaling {
   const data=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:enc.encode(this.session+"|"+dir)},this.sendKey,plain);
   await this.publish(this.peer,{v:1,type:"data",payload:{sid:this.session,from:this.me,to:this.peer,iv:b64u(iv),data:b64u(data)}});
  }
- close(){this.closed=true;clearTimeout(this.retry);this.es?.close();}
+ close(){this.closed=true;clearTimeout(this.retry);if(this.es){const before=this.es.readyState;this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван; readyState(before)=${before}`);this.es.close();this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() завершён; readyState(after)=${this.es.readyState}`)}else this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван без EventSource`);}
 }
