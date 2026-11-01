@@ -71,9 +71,24 @@ async function connect(){
    onError:e=>showError(e.message||String(e))
   });
   els.debugUrl.textContent="https://ntfy.sh/ · "+me;
+
+  // Request microphone while the user-initiated Connect click is still active.
+  // Do not wait for the asynchronous secure handshake before asking permission.
+  ensureWebRtc();
+  try {
+   await state.webrtc.ensureMedia();
+  } catch(e) {
+   throw new Error("Не удалось получить доступ к микрофону: "+e.message);
+  }
+
   await state.secure.start();
   els.hangup.disabled=false;
- }catch(e){showError(e.message||String(e));setStatus("Не удалось подключиться","Исправьте ошибку и попробуйте снова.","error");if(state.secure){state.secure.close();state.secure=null}}
+ }catch(e){
+  showError(e.message||String(e));
+  setStatus("Не удалось подключиться","Проверьте разрешения и попробуйте снова.","error");
+  if(state.secure){state.secure.close();state.secure=null}
+  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
+ }
  finally{setBusy(false)}
 }
 async function hangup(){
