@@ -28,12 +28,15 @@ function setBusy(value){state.connecting=value;els.connect.disabled=value;els.co
 async function ensureWebRtc(){
  if(state.webrtc)return;
  state.webrtc=new WebRtcAudio({
-  sendSignal:payload=>state.secure.sendSignal(payload).catch(showError),
-  onRemoteStream:stream=>{els.audio.srcObject=stream;els.audio.play().catch(()=>{})},
+  sendSignal:payload=>state.secure.sendSignal(payload),
+  onRemoteStream:stream=>{els.audio.srcObject=stream;els.audio.play().catch(e=>debug("Не удалось включить удалённый звук: "+e.message))},
+  onError:error=>showError(error.message||String(error)),
   onState:value=>{
-   if(value==="connected"){els.transport.textContent="Прямой WebRTC / P2P";setStatus("Вы на связи","Аудио передаётся напрямую между устройствами.","live")}
-   else if(value==="failed"){els.transport.textContent="WebRTC: соединение не установлено";setStatus("P2P не получилось","Сеть не позволила установить прямой аудиоканал. TURN-сервер пока не настроен.","error")}
-   else if(value==="connecting"||value==="checking")setStatus("Устанавливаем аудиосоединение","ICE проверяет доступные сетевые маршруты.","wait");
+   debug("WebRTC: "+value);
+   if(value==="connection-connected"){els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")}
+   else if(value==="connection-failed"||value==="ice-failed"){els.transport.textContent="WebRTC: соединение не установлено";setStatus("P2P не получилось","Сигнализация работает, но прямой аудиоканал не установился. TURN-сервер пока не настроен.","error")}
+   else if(value==="connection-connecting"||value==="ice-checking"||value==="ice-connected"||value==="ice-completed"){setStatus("Устанавливаем аудиосоединение","Проверяем сетевые маршруты между устройствами.","wait")}
+   else if(value==="connection-disconnected"||value==="ice-disconnected"){setStatus("Связь прервалась","WebRTC потерял сетевое соединение; ожидаем восстановления.","wait")}
   }
  });
 }
@@ -49,7 +52,7 @@ async function handleSignal(payload){
 }
 async function startWebRtcOffer(){
  if(state.callStarted)return;state.callStarted=true;
- try{await ensureWebRtc();await state.webrtc.createOffer();debug("WebRTC offer отправлен через зашифрованный ntfy-канал.")}
+ try{await ensureWebRtc();await state.webrtc.createOffer();debug("WebRTC offer передан в ntfy. Ожидаем answer от второго устройства и установления P2P.")}
  catch(e){state.callStarted=false;showError("Не удалось запустить WebRTC: "+e.message);setStatus("Не удалось начать звонок","Проверьте разрешение микрофона и повторите попытку.","error")}
 }
 async function connect(){
