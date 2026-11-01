@@ -1,6 +1,7 @@
 const ROOM_ID_RE = /^[a-f0-9]{32}$/;
 const ALLOWED_ORIGINS = new Set([
-  "https://aiparticles-jpg.github.io"
+  "https://aiparticles-jpg.github.io",
+  "https://minitool.io"
 ]);
 const MAX_SIGNAL_BYTES = 16 * 1024;
 const MAX_AUDIO_FRAME_BYTES = 8 * 1024;
