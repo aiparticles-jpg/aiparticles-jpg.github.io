@@ -2,62 +2,126 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101827">
-<title>Voice Link — автоматический handshake</title>
+<title>Voice Link — соединение по имени</title>
 <style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101827;color:#e8eef8}*{box-sizing:border-box}body{margin:0;padding:24px 14px 48px}main{max-width:720px;margin:auto}h1{font-size:1.5rem;margin:0 0 8px}p{color:#b8c5d8;line-height:1.5}.card{background:#192538;border:1px solid #30415b;border-radius:14px;padding:18px;margin:16px 0}label{display:block;font-size:.9rem;color:#b8c5d8;margin:14px 0 6px}input,textarea,button{font:inherit;border-radius:9px}input,textarea{width:100%;padding:11px;color:#f4f7fc;background:#0e1929;border:1px solid #40516b}textarea{min-height:76px;resize:vertical}button{padding:10px 14px;border:0;color:white;background:#2867c7;cursor:pointer;margin:8px 6px 0 0}button.secondary{background:#40516b}button:disabled{opacity:.5;cursor:not-allowed}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:130px}.status{padding:10px;border-radius:8px;background:#0e1929;white-space:pre-wrap;overflow-wrap:anywhere}.log{max-height:260px;overflow:auto;font:.85rem/1.5 ui-monospace,monospace}.warn{border-left:3px solid #e5a83b;padding-left:12px}.good{color:#8fe0ad}.bad{color:#ff9b9b}small{color:#9fb0c8}
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101827;color:#e8eef8}*{box-sizing:border-box}body{margin:0;padding:24px 14px 48px}main{max-width:720px;margin:auto}h1{font-size:1.5rem;margin:0 0 8px}p{color:#b8c5d8;line-height:1.5}.card{background:#192538;border:1px solid #30415b;border-radius:14px;padding:18px;margin:16px 0}label{display:block;font-size:.9rem;color:#b8c5d8;margin:14px 0 6px}input,textarea,button{font:inherit;border-radius:9px}input,textarea{width:100%;padding:11px;color:#f4f7fc;background:#0e1929;border:1px solid #40516b}textarea{min-height:76px;resize:vertical}button{padding:10px 14px;border:0;color:white;background:#2867c7;cursor:pointer;margin:8px 6px 0 0}button.secondary{background:#40516b}button:disabled{opacity:.5;cursor:not-allowed}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:130px}.status{padding:10px;border-radius:8px;background:#0e1929;white-space:pre-wrap;overflow-wrap:anywhere}.log{max-height:240px;overflow:auto;font:.85rem/1.5 ui-monospace,monospace}.warn{border-left:3px solid #e5a83b;padding-left:12px}.good{color:#8fe0ad}.bad{color:#ff9b9b}.code{font:700 1.35rem ui-monospace,monospace;letter-spacing:.12em;text-align:center;padding:16px;background:#0e1929;border-radius:9px;overflow-wrap:anywhere}
 </style></head>
 <body><main>
-<h1>Автоматический обмен ключами через ntfy</h1>
-<p>ECDH P-256 создаёт общий секрет прямо между браузерами. Открытые ключи идут через ntfy; их подлинность проверяется HMAC с секретом из ссылки-приглашения. После handshake тестовые сообщения шифруются AES-256-GCM.</p>
+<h1>Voice Link — соединение по имени</h1>
+<p>Оба участника выбирают имя и имя собеседника. Обмен ключами происходит автоматически через ntfy.</p>
 <section class="card">
-<div class="warn"><strong>Важно:</strong> ntfy-топики публичные. Шифрование защищает содержимое, но не скрывает факт обмена и метаданные. Секрет ссылки — это пароль комнаты: передавайте приглашение только собеседнику.</div>
-<div id="creator">
-<p><strong>Устройство A — создать комнату</strong></p>
-<button id="create" type="button">Создать приглашение</button>
+<div class="warn"><strong>Первое соединение:</strong> после обмена ключами на обоих устройствах появится одинаковый код. Сверьте его по телефону или другому независимому каналу и подтвердите. Это защищает от подмены при первом знакомстве. В дальнейшем сохранённый ключ проверяется автоматически.</div>
+<label for="myname">Моё имя пользователя</label><input id="myname" maxlength="24" autocomplete="username" placeholder="например damir">
+<label for="peername">Имя собеседника</label><input id="peername" maxlength="24" placeholder="например ivan">
+<button id="connect" type="button">Подключиться</button>
+<div id="status" class="status" role="status">Введите оба имени. Используйте латинские буквы, цифры, _ или -.</div>
+<div id="verifybox" hidden>
+<p><strong>Код проверки соединения</strong></p><div id="sas" class="code"></div>
+<p id="verifyhint">Сравните код на обоих устройствах. Подтверждайте только если коды совпадают.</p>
+<button id="confirm" type="button">Код совпадает — подтвердить собеседника</button>
 </div>
-<div id="joiner">
-<p><strong>Устройство B — открыть приглашение</strong></p>
-<p id="invite-state">Если вы получили ссылку от собеседника, откройте её в этом браузере.</p>
-</div>
-<label for="invite">Ссылка-приглашение</label>
-<input id="invite" readonly placeholder="Здесь появится ссылка для второго устройства">
-<div class="row"><button id="copy-invite" class="secondary" type="button" disabled>Скопировать приглашение</button><button id="start" type="button" disabled>Начать handshake</button></div>
-<div id="status" class="status" role="status">Сначала создайте комнату или откройте приглашение.</div>
 </section>
 <section class="card">
-<label for="message">Тестовое сообщение</label><textarea id="message" placeholder="Сообщение собеседнику"></textarea>
+<label for="message">Зашифрованное сообщение</label><textarea id="message" placeholder="Сообщение собеседнику"></textarea>
 <button id="send" type="button" disabled>Зашифровать и отправить</button>
-<p><small>Кнопка станет доступна после успешного обмена и проверки ключей.</small></p>
+<p><small>Сообщения шифруются AES-256-GCM. ntfy передаёт только зашифрованные данные.</small></p>
 </section>
-<section class="card"><strong>Журнал событий</strong><div id="log" class="status log" aria-live="polite">Ожидаем действий.</div></section>
+<section class="card"><strong>Журнал</strong><div id="log" class="status log" aria-live="polite">Ожидаем действий.</div></section>
 </main>
 <script type="module">
 const $=id=>document.getElementById(id), enc=new TextEncoder(), dec=new TextDecoder();
-const S={role:null,room:null,secret:null,session:null,source:null,ready:false,ecdh:null,helloNonce:null,sendKey:null,recvKey:null,seen:new Set(),started:false};
-const b64u=b=>{let s="";for(const x of b)s+=String.fromCharCode(x);return btoa(s).replaceAll("+","-").replaceAll("/","_").replace(/=+$/g,"")};
-const un64=s=>{const x=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4));return Uint8Array.from(x,c=>c.charCodeAt(0))};
-const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,"0")).join("");
+const BASE="https://ntfy.sh/";
+const S={me:"",peer:"",role:"",identity:null,identityJwk:null,source:null,ecdh:null,hello:null,peerJwk:null,peerKey:null,session:null,sendKey:null,recvKey:null,confirmed:false,ready:false,seen:new Set(),sas:""};
 const log=(m,c="")=>{const d=document.createElement("div");d.textContent=new Date().toLocaleTimeString("ru-RU",{hour12:false})+"  "+m;if(c)d.className=c;$("log").append(d);$("log").scrollTop=$("log").scrollHeight};
 const status=m=>$("status").textContent=m;
-function inviteUrl(){const u=new URL(location.href);u.search="";u.hash="";u.searchParams.set("room",S.room);u.hash="key="+b64u(S.secret)+"&session="+S.session;return u.href}
-function parseInvite(){const u=new URL(location.href),r=u.searchParams.get("room"),m=u.hash.match(/(?:^#|&)key=([^&]+)/),s=u.hash.match(/(?:^#|&)session=([^&]+)/);if(!r||!m||!s||!/^[a-f0-9]{32}$/.test(r))return false;const secret=un64(m[1]);if(secret.length!==32||!/^[a-f0-9]{32}$/.test(s[1]))return false;S.role="B";S.room=r;S.secret=secret;S.session=s[1];$("invite-state").textContent="Приглашение распознано. Вы подключаетесь как участник B.";return true}
-function topic(direction){return "vl-"+S.room+"-"+direction}
-function outbound(){return topic(S.role==="A"?"a2b":"b2a")}
-function inbound(){return topic(S.role==="A"?"b2a":"a2b")}
-async function hmac(data){const k=await crypto.subtle.importKey("raw",S.secret,{name:"HMAC",hash:"SHA-256"},false,["sign"]);return b64u(new Uint8Array(await crypto.subtle.sign("HMAC",k,enc.encode(data))))}
-async function verifyMac(data,mac){const k=await crypto.subtle.importKey("raw",S.secret,{name:"HMAC",hash:"SHA-256"},false,["verify"]);return crypto.subtle.verify("HMAC",k,un64(mac),enc.encode(data))}
-async function publish(obj){const r=await fetch("https://ntfy.sh/"+outbound(),{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify(obj),cache:"no-store"});if(!r.ok)throw Error("ntfy HTTP "+r.status)}
-async function openSubscription(){return new Promise((resolve,reject)=>{const es=new EventSource("https://ntfy.sh/"+inbound()+"/sse");S.source=es;let settled=false;es.onopen=()=>{if(!settled){settled=true;resolve()}status("Подписка активна: "+inbound())};es.onerror=()=>{log("SSE: ошибка или переподключение","bad");if(!settled){settled=true;reject(Error("Не удалось открыть SSE"))}};es.onmessage=e=>handleEvent(e).catch(err=>log("Пакет отклонён: "+err.message,"bad"));setTimeout(()=>{if(!settled){settled=true;reject(Error("Тайм-аут подключения к ntfy"))}},15000)})}
-async function pubKeyRaw(pub){return new Uint8Array(await crypto.subtle.exportKey("raw",pub))}
-async function deriveSession(remotePublic){const remote=await crypto.subtle.importKey("raw",un64(remotePublic),{name:"ECDH",namedCurve:"P-256"},false,[]);const shared=new Uint8Array(await crypto.subtle.deriveBits({name:"ECDH",public:remote},S.ecdh.privateKey,256));const ikm=new Uint8Array(shared.length+S.secret.length);ikm.set(shared);ikm.set(S.secret,shared.length);const material=await crypto.subtle.importKey("raw",ikm,"HKDF",false,["deriveKey"]);const salt=enc.encode(S.room+"|"+S.session);const info=enc.encode("voice-link-ntfy-e2e-v1");const derive=dir=>crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt,info:enc.encode("voice-link-ntfy-e2e-v1|"+dir)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);const [a,b]=await Promise.all([derive("A-to-B"),derive("B-to-A")]);S.sendKey=S.role==="A"?a:b;S.recvKey=S.role==="A"?b:a;S.ready=true;$("send").disabled=false;status("Защищённое соединение готово. Общий ключ получен и проверен.");log("ECDH общий секрет вычислен; HMAC проверен; AES-256-GCM активен.","good")}
-async function start(){if(S.started)return;S.started=true;$("start").disabled=true;try{status("Подключаемся к ntfy…");await openSubscription();if(S.role==="A"){S.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);S.helloNonce=b64u(crypto.getRandomValues(new Uint8Array(16)));const pub=b64u(await pubKeyRaw(S.ecdh.publicKey));const body=["hello",S.room,S.session,"A",pub,S.helloNonce].join("|");await publish({v:1,type:"hello",room:S.room,session:S.session,from:"A",pub,nonce:S.helloNonce,mac:await hmac(body)});status("Ожидаем ответ второго устройства…");log("ECDH public key отправлен; закрытый ключ остался в этом браузере.")}else{status("Ожидаем handshake от устройства A…");log("Устройство B слушает входящий handshake.")}}catch(e){S.started=false;$("start").disabled=false;status(e.message);log(e.message,"bad")}}
-function create(){S.role="A";S.room=hex(crypto.getRandomValues(new Uint8Array(16)));S.secret=crypto.getRandomValues(new Uint8Array(32));S.session=hex(crypto.getRandomValues(new Uint8Array(16)));$("invite").value=inviteUrl();$("copy-invite").disabled=false;$("start").disabled=false;$("create").disabled=true;$("invite-state").textContent="Комната создана. Передайте ссылку собеседнику.";status("Приглашение создано. Отправьте ссылку второму участнику, затем нажмите «Начать handshake».");log("Создана комната. Секрет находится только в ссылке-приглашении.","good")}
-async function send(){const text=$("message").value;if(!text.trim()||!S.ready)return;const iv=crypto.getRandomValues(new Uint8Array(12));const dir=S.role==="A"?"A-to-B":"B-to-A";const aad=enc.encode(S.room+"|"+S.session+"|"+dir);const data=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:aad},S.sendKey,enc.encode(text));await publish({v:1,type:"data",room:S.room,session:S.session,from:S.role,iv:b64u(iv),data:b64u(new Uint8Array(data))});log("Зашифрованное сообщение отправлено.","good");$("message").value=""}
-async function receiveData(m){if(!S.ready||m.type!=="data")return;const from=S.role==="A"?"B":"A",dir=from==="A"?"A-to-B":"B-to-A";if(m.from!==from)return;const aad=enc.encode(S.room+"|"+S.session+"|"+dir);const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(m.iv),additionalData:aad},S.recvKey,un64(m.data));log("ПОЛУЧЕНО (расшифровано): "+dec.decode(plain),"good")}
-async function handleEvent(event){const n=JSON.parse(event.data);if(!n.message||!n.id||S.seen.has(n.id))return;S.seen.add(n.id);if(S.seen.size>400)S.seen.delete(S.seen.values().next().value);let m;try{m=JSON.parse(n.message)}catch{return}if(m.v!==1||m.room!==S.room||m.session!==S.session||m.from===S.role)return;if(m.type==="data"){await receiveData(m);return}if(m.type==="hello"&&S.role==="B"){const signed=["hello",m.room,m.session,m.from,m.pub,m.nonce].join("|");if(!await verifyMac(signed,m.mac))throw Error("HMAC hello не совпал — возможна подмена");if(S.ready||S.ecdh)return;S.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);const own=b64u(await pubKeyRaw(S.ecdh.publicKey)),nonce=b64u(crypto.getRandomValues(new Uint8Array(16)));const body=["answer",S.room,S.session,"B",own,nonce,m.pub,m.nonce].join("|");await publish({v:1,type:"answer",room:S.room,session:S.session,from:"B",pub:own,nonce,forPub:m.pub,forNonce:m.nonce,mac:await hmac(body)});await deriveSession(m.pub);log("Ответ handshake отправлен; ключи согласованы.","good")}else if(m.type==="answer"&&S.role==="A"){if(!S.ecdh||!S.helloNonce||m.forNonce!==S.helloNonce)return;const body=["answer",S.room,S.session,"B",m.pub,m.nonce,m.forPub,m.forNonce].join("|");if(!await verifyMac(body,m.mac))throw Error("HMAC answer не совпал — возможна подмена");await deriveSession(m.pub);log("Ответ собеседника аутентифицирован.","good")}}
-$("create").onclick=create;
-$("copy-invite").onclick=async()=>{try{await navigator.clipboard.writeText($("invite").value);log("Приглашение скопировано.","good")}catch{log("Не удалось скопировать автоматически; скопируйте ссылку из поля.","bad")}};
-$("start").onclick=start;$("send").onclick=()=>send().catch(e=>log("Ошибка отправки: "+e.message,"bad"));
-if(parseInvite()){$("invite").value=location.href;$("start").disabled=false;$("invite-state").textContent="Приглашение распознано: роль B. Нажмите «Начать handshake» и дождитесь устройства A.";$("copy-invite").disabled=true;status("Приглашение принято. Ожидаем второго участника.");log("Открыта ссылка приглашения как устройство B.","good")}
+const bytes=b=>b instanceof Uint8Array?b:new Uint8Array(b);
+const b64u=b=>{let s="";for(const x of bytes(b))s+=String.fromCharCode(x);return btoa(s).replaceAll("+","-").replaceAll("/","_").replace(/=+$/g,"")};
+const un64=s=>{const x=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4));return Uint8Array.from(x,c=>c.charCodeAt(0))};
+const hex=b=>Array.from(bytes(b),x=>x.toString(16).padStart(2,"0")).join("");
+const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
+const stable=o=>JSON.stringify(o);
+function validName(s){return /^[a-z0-9_-]{3,24}$/.test(s)}
+async function topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
+async function getIdentity(){
+ const raw=localStorage.getItem("vl.identity.v1");
+ if(raw){const j=JSON.parse(raw);const privateKey=await crypto.subtle.importKey("jwk",j.privateKey,{name:"ECDSA",namedCurve:"P-256"},true,["sign"]);const publicKey=await crypto.subtle.importKey("jwk",j.publicKey,{name:"ECDSA",namedCurve:"P-256"},true,["verify"]);return {privateKey,publicKey,jwk:j.publicKey}}
+ const pair=await crypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);const privateKey=await crypto.subtle.exportKey("jwk",pair.privateKey),publicKey=await crypto.subtle.exportKey("jwk",pair.publicKey);localStorage.setItem("vl.identity.v1",JSON.stringify({privateKey,publicKey}));return {privateKey:pair.privateKey,publicKey:pair.publicKey,jwk:publicKey}
+}
+async function sign(payload){const sig=await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},S.identity.privateKey,enc.encode(stable(payload)));return b64u(sig)}
+async function verify(payload,sig,jwk){const key=await crypto.subtle.importKey("jwk",jwk,{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);return crypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},key,un64(sig),enc.encode(stable(payload)))}
+async function publish(to,envelope){const t=await topic(to);const r=await fetch(BASE+t,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(envelope),cache:"no-store"});if(!r.ok)throw Error("ntfy HTTP "+r.status)}
+async function subscribe(){
+ const t=await topic(S.me);
+ return new Promise((resolve,reject)=>{const es=new EventSource(BASE+t+"/sse");S.source=es;let done=false;es.onopen=()=>{if(!done){done=true;resolve()}status("Подписка активна. Ваш адрес обнаружения: "+S.me)};es.onerror=()=>{log("Ошибка SSE / переподключение","bad");if(!done){done=true;reject(Error("Не удалось подключиться к ntfy"))}};es.onmessage=e=>handle(e).catch(err=>log("Пакет отклонён: "+err.message,"bad"));setTimeout(()=>{if(!done){done=true;reject(Error("Тайм-аут ntfy"))}},15000)})
+}
+async function signed(type,payload){return {v:1,type,payload,sig:await sign(payload)}}
+async function verifyPinned(jwk){
+ const raw=localStorage.getItem("vl.peer."+S.peer);
+ if(!raw)return false;
+ const pinned=JSON.parse(raw);
+ if(stable(pinned)!==stable(jwk))throw Error("КЛЮЧ СОБЕСЕДНИКА ИЗМЕНИЛСЯ! Соединение остановлено. Не подтверждайте автоматически.");
+ return true
+}
+async function begin(){
+ S.me=$("myname").value.trim().toLowerCase();S.peer=$("peername").value.trim().toLowerCase();
+ if(!validName(S.me)||!validName(S.peer)||S.me===S.peer)throw Error("Имена: 3–24 символа, a-z, 0-9, _ или -. Имена должны различаться.");
+ $("connect").disabled=true;status("Создаём/загружаем постоянную криптографическую идентичность…");
+ S.identity=await getIdentity();S.identityJwk=S.identity.jwk;
+ await subscribe();
+ S.role=S.me.localeCompare(S.peer)<0?"A":"B";
+ if(S.role==="A"){
+   S.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
+   S.hello={sid:b64u(crypto.getRandomValues(new Uint8Array(16))),from:S.me,to:S.peer,eph:b64u(await crypto.subtle.exportKey("raw",S.ecdh.publicKey)),identity:S.identityJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),time:Date.now()};
+   await publish(S.peer,await signed("hello",S.hello));status("Запрос отправлен. Ожидаем "+S.peer+"…");log("Hello отправлен через ntfy.")
+ }else{status("Ожидаем запрос от "+S.peer+"…");log("Ожидание входящего handshake.")}
+}
+async function establish(hello,answer){
+ const transcript={v:1,sid:hello.sid,a:hello.from,b:hello.to,aIdentity:hello.identity,bIdentity:answer.identity,aEph:hello.eph,bEph:answer.eph,aNonce:hello.nonce,bNonce:answer.nonce};
+ const transcriptBytes=enc.encode(stable(transcript)),hash=await digest(transcriptBytes);
+ S.sas=hex(hash.slice(0,6)).toUpperCase().match(/.{1,4}/g).join("-");
+ const remote=S.role==="A"?answer.identity:hello.identity;
+ S.peerJwk=remote;const already=await verifyPinned(remote);
+ const remoteEph=S.role==="A"?answer.eph:hello.eph;
+ const pub=await crypto.subtle.importKey("raw",un64(remoteEph),{name:"ECDH",namedCurve:"P-256"},false,[]);
+ const shared=await crypto.subtle.deriveBits({name:"ECDH",public:pub},S.ecdh.privateKey,256);
+ const material=await crypto.subtle.importKey("raw",shared,"HKDF",false,["deriveKey"]);
+ const mk=dir=>crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt:hash,info:enc.encode("voice-link-v1|"+dir)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+ const [ab,ba]=await Promise.all([mk("A-to-B"),mk("B-to-A")]);
+ S.sendKey=S.role==="A"?ab:ba;S.recvKey=S.role==="A"?ba:ab;S.session=hello.sid;S.ready=true;
+ if(already){S.confirmed=true;activate();status("Ключ собеседника совпадает с сохранённым. Соединение подтверждено автоматически.");log("Сохранённая идентичность собеседника проверена.","good")}
+ else{$("sas").textContent=S.sas;$("verifybox").hidden=false;$("verifyhint").textContent="Сравните код с "+S.peer+" по телефону или другому независимому каналу. Подтверждайте только при полном совпадении.";status("Ключи согласованы. Требуется первая проверка личности.");log("Ожидается подтверждение короткого кода.","good")}
+}
+function activate(){S.confirmed=true;$("send").disabled=false;$("verifybox").hidden=true;status("Защищённое соединение готово.");}
+async function handle(e){
+ const n=JSON.parse(e.data);if(!n.message||!n.id||S.seen.has(n.id))return;S.seen.add(n.id);if(S.seen.size>500)S.seen.delete(S.seen.values().next().value);
+ let m;try{m=JSON.parse(n.message)}catch{return}if(m.v!==1||!m.payload||m.payload.from!==S.peer||m.payload.to!==S.me)return;
+ const p=m.payload;if(m.type==="hello"&&S.role==="B"){
+   if(S.hello)return;
+   if(!await verify(p,m.sig,p.identity))throw Error("Подпись hello неверна");
+   await verifyPinned(p.identity);
+   S.hello=p;S.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
+   const answer={sid:p.sid,from:S.me,to:S.peer,eph:b64u(await crypto.subtle.exportKey("raw",S.ecdh.publicKey)),identity:S.identityJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce,time:Date.now()};
+   await publish(S.peer,await signed("answer",answer));await establish(p,answer);log("Ответ отправлен.");
+ }else if(m.type==="answer"&&S.role==="A"){
+   if(!S.hello||p.sid!==S.hello.sid||p.helloEph!==S.hello.eph||p.helloNonce!==S.hello.nonce)return;
+   if(!await verify(p,m.sig,p.identity))throw Error("Подпись answer неверна");
+   await verifyPinned(p.identity);
+   await establish(S.hello,p);log("Ответ аутентифицирован.","good");
+ }else if(m.type==="data"&&S.ready&&S.confirmed&&p.sid===S.session){
+   const iv=un64(p.iv),cipher=un64(p.data),dir=p.from==="A"?"A-to-B":"B-to-A";
+   const aad=enc.encode(S.session+"|"+dir);const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv,additionalData:aad},S.recvKey,cipher);
+   log("СОБЕСЕДНИК: "+dec.decode(plain),"good");
+ }
+}
+async function send(){
+ const value=$("message").value;if(!value.trim()||!S.confirmed)return;
+ const iv=crypto.getRandomValues(new Uint8Array(12)),dir=S.role==="A"?"A-to-B":"B-to-A";
+ const cipher=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:enc.encode(S.session+"|"+dir)},S.sendKey,enc.encode(value));
+ const payload={sid:S.session,from:S.me,to:S.peer,iv:b64u(iv),data:b64u(cipher)};
+ await publish(S.peer,{v:1,type:"data",payload});$("message").value="";log("Зашифрованное сообщение отправлено.","good");
+}
+$("connect").onclick=()=>begin().catch(e=>{status(e.message);log(e.message,"bad");$("connect").disabled=false});
+$("confirm").onclick=()=>{if(!S.peerJwk)return;localStorage.setItem("vl.peer."+S.peer,JSON.stringify(S.peerJwk));activate();log("Публичный ключ "+S.peer+" сохранён на этом устройстве.","good")};
+$("send").onclick=()=>send().catch(e=>log("Ошибка отправки: "+e.message,"bad"));
 window.addEventListener("pagehide",()=>S.source?.close());
 </script></body></html>
