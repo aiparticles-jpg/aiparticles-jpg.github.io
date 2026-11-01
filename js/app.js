@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=8";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=4";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=5";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -71,7 +71,8 @@ async function connect(){
    onStatus:m=>{els.statusText.textContent=m;debug(m)},
    onVerify:({sas,peer:name})=>{els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+name+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
    onReady:info=>onSecureReady(info).catch(showError),
-   onError:e=>showError(e.message||String(e))
+   onError:e=>showError(e.message||String(e)),
+   onDebug:debug
   });
   els.debugUrl.textContent="https://ntfy.sh/ · "+me;
 
