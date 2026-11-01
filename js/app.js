@@ -20,8 +20,26 @@ const els = {
   tcp: $("tcp-fallback"),
   hangup: $("hangup"),
   audio: $("remote-audio"),
-  error: $("error-message")
+  error: $("error-message"),
+  debugLog: $("debug-log"),
+  debugUrl: $("debug-url"),
+  debugState: $("debug-state")
 };
+
+function debug(message) {
+  if (!els.debugLog) return;
+  const time = new Date().toLocaleTimeString("ru-RU", { hour12: false });
+  const line = "[" + time + "] " + message;
+  els.debugLog.textContent = (els.debugLog.textContent + "\\n" + line).trim();
+  els.debugLog.scrollTop = els.debugLog.scrollHeight;
+}
+
+function updateDebugState(ws) {
+  if (els.debugState) {
+    const names = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
+    els.debugState.textContent = names[ws.readyState] || String(ws.readyState);
+  }
+}
 
 const state = {
   roomId: null,
@@ -116,12 +134,20 @@ async function joinRoom(roomId, secret) {
   try { url = signalingUrl(roomId); }
   catch (error) { setBusy(false); showError(error.message); setStatus("Не настроен сервер", error.message, "error"); return; }
 
+  if (els.debugUrl) els.debugUrl.textContent = url;
+  debug("Начинаем WebSocket-подключение");
+  debug("URL: " + url);
+
   try {
     const ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
     state.ws = ws;
+    updateDebugState(ws);
+    debug("WebSocket создан; readyState=" + ws.readyState);
 
     ws.onopen = () => {
+      updateDebugState(ws);
+      debug("СОЕДИНЕНИЕ ОТКРЫТО (onopen); readyState=" + ws.readyState);
       els.hangup.disabled = false;
       setBusy(false);
       setStatus("Подключено к комнате", "Ожидаем второго участника. Не закрывайте эту страницу.", "wait");
@@ -137,8 +163,17 @@ async function joinRoom(roomId, secret) {
       handleServerMessage(message).catch(error => showError(error.message));
     };
 
-    ws.onerror = () => showError("Ошибка WebSocket. Проверьте адрес Worker и доступность Cloudflare из этой сети.");
-    ws.onclose = () => {
+    ws.onerror = () => {
+      updateDebugState(ws);
+      debug("ОШИБКА WebSocket (onerror); readyState=" + ws.readyState + ". Браузер не раскрывает HTTP-статус handshake.");
+      showError("Ошибка WebSocket. Проверьте адрес Worker и доступность Cloudflare из этой сети.");
+    };
+    ws.onclose = event => {
+      updateDebugState(ws);
+      debug("СОЕДИНЕНИЕ ЗАКРЫТО (onclose): code=" + event.code +
+        ", reason=" + (event.reason || "(пусто)") +
+        ", wasClean=" + event.wasClean +
+        ", readyState=" + ws.readyState);
       if (state.ws === ws) {
         setBusy(false);
         els.hangup.disabled = true;
@@ -146,6 +181,7 @@ async function joinRoom(roomId, secret) {
       }
     };
   } catch (error) {
+    debug("ИСКЛЮЧЕНИЕ при создании WebSocket: " + error.name + ": " + error.message);
     setBusy(false);
     showError(error.message);
   }
