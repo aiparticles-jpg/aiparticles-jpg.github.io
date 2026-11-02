@@ -78,7 +78,7 @@ function stopOutgoingCall(){
  state.outgoingCall=false;stopRinging();
 }
 function startOutgoingCall({peer,expiresAt}){
- if(state.outgoingCall||state.incomingCall)return;
+ if(state.outgoingCall||state.incomingCall||state.secure?.ready||state.peerPresent)return;
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
  state.outgoingCall=true;setStatus("Вызываем "+peer,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
