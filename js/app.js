@@ -1,5 +1,5 @@
-import { WebRtcAudio } from "./webrtc.js?v=13";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=14";
+import { WebRtcAudio } from "./webrtc.js?v=14";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=15";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -10,7 +10,7 @@ const els={
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state")
 };
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -94,7 +94,12 @@ function clearIncomingUi(){
  state.incomingCall=false;els.dismissIncoming.classList.add("hidden");updateCallButtons();
 }
 function showIncomingCall({peer,expiresAt,trusted=true}){
- if(state.connecting||state.callStarted||state.outgoingCall||state.incomingCall)return;
+ if(state.connecting||state.callStarted||state.incomingCall)return;
+ if(state.outgoingCall){
+  if(state.secure?.role!=="A"||state.secure?.hello)return;
+  stopOutgoingCall();
+  debug("Одновременный вызов: роль A принимает входящий запрос; исходящий запрос отменён локально.");
+ }
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
  state.incomingCall=true;els.dismissIncoming.classList.remove("hidden");updateCallButtons();
@@ -182,7 +187,7 @@ function createSecureSignaling(me,peer=""){
   onSignal:handleSignal,
   onStatus:m=>{els.statusText.textContent=m;debug(m)},
   onIncoming:showIncomingCall,
-  onDialing:startOutgoingCall,
+  onDialing:info=>{if(!state.answeringCall)startOutgoingCall(info)},
   onVerify:({sas,peer:name})=>{stopOutgoingCall();clearIncomingUi();stopRinging();els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+name+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
   onReady:info=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady(info).catch(showError)},
   onError:e=>showError(e.message||String(e)),
@@ -270,6 +275,7 @@ function scheduleIcePrewarm(reason="input",force=false){
  },700);
 }
 async function onSecureReady(info){
+ state.answeringCall=false;
  state.peerPresent=true;state.role=state.secure.role==="A"?"initiator":"receiver";
  els.verify.classList.add("hidden");updateCallButtons();
  setStatus("Ключ собеседника подтверждён",info.trusted?"Сохранённый ключ совпадает. Запускаем голосовой канал.":"Первичная проверка пройдена. Запускаем голосовой канал.","wait");
@@ -291,6 +297,7 @@ async function startWebRtcOffer(){
 }
 async function connect(){
  const answering=state.incomingCall;
+ state.answeringCall=answering;
  if(answering){clearIncomingUi();stopRinging()}
  clearError();els.verify.classList.add("hidden");setBusy(true);
  try{
@@ -312,7 +319,8 @@ async function connect(){
   await ensureWebRtc();
   // The answerer opens its microphone after the user's Answer click.
   // The caller remains muted until ACCEPTED arrives over the P2P DataChannel.
-  state.webrtc.setMicEnabled(me>peer);
+  state.webrtc.setMicEnabled(answering);
+  state.webrtc.setCallAccepted(answering);
   try {
    await state.webrtc.ensureMedia();
   } catch(e) {
@@ -327,7 +335,7 @@ async function connect(){
   setStatus("Не удалось подключиться","Проверьте разрешения и попробуйте снова.","error");
   if(state.secure){if(answering)state.secure.dismissIncoming();state.secure.resetSession()}
   if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
-  state.peerPresent=false;updateCallButtons();
+  state.peerPresent=false;state.answeringCall=false;updateCallButtons();
   if(answering){clearIncomingUi();stopRinging()}
  }
  finally{setBusy(false);els.pilot.disabled=!!state.webrtc}
@@ -347,7 +355,7 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  els.audio.srcObject=null;els.pilot.disabled=false;els.transport.textContent="Не выбран";
- els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;state.hangingUp=false;updateCallButtons();
+ els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;state.answeringCall=false;state.hangingUp=false;updateCallButtons();
  if(remote)setStatus("Собеседник завершил звонок","Удалённая сторона отправила P2P-сообщение HANGUP; звонок завершён.","idle");
  else if(failure)setStatus("Соединение потеряно","WebRTC не восстановил связь за отведённое время. Звонок завершён.","error");
  else setStatus("Звонок завершён","Подписка на ваше имя остаётся активной. Чтобы позвонить снова, нажмите «Подключиться».","idle");
