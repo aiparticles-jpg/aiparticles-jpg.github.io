@@ -1,11 +1,17 @@
 import { STUN_URL } from "./config.js";
 
 export class WebRtcAudio {
-  constructor({ sendSignal, onRemoteStream, onState, onError, diagnosticPilot = false }) {
+  constructor({ sendSignal, onRemoteStream, onState, onError, onRemoteHangup, initiator = false, diagnosticPilot = false }) {
     this.sendSignal = sendSignal;
     this.onRemoteStream = onRemoteStream;
     this.onState = onState || (() => {});
     this.onError = onError || (() => {});
+    this.onRemoteHangup = onRemoteHangup || (() => {});
+    this.initiator = initiator;
+    this.micEnabled = false;
+    this.controlChannel = null;
+    this.pendingHangup = null;
+    this.remoteHangupHandled = false;
     this.diagnosticPilot = diagnosticPilot;
     this.audioContext = null;
     this.audioContextResumePromise = null;
@@ -55,6 +61,8 @@ export class WebRtcAudio {
       });
       const track = this.localStream.getAudioTracks()[0];
       if (track) {
+        // Caller stays muted until the answerer confirms acceptance over DataChannel.
+        track.enabled = this.micEnabled;
         const settings = track.getSettings ? track.getSettings() : {};
         this.onState("Микрофон: readyState=" + track.readyState +
           "; enabled=" + track.enabled +
@@ -63,6 +71,14 @@ export class WebRtcAudio {
       }
     }
     return this.localStream;
+  }
+
+  setMicEnabled(enabled) {
+    this.micEnabled = !!enabled;
+    if (this.localStream) {
+      for (const track of this.localStream.getAudioTracks()) track.enabled = this.micEnabled;
+    }
+    this.onState("Микрофон " + (this.micEnabled ? "включён" : "ожидает подтверждения ответа"));
   }
 
   async prepareOutgoingStream() {
@@ -160,11 +176,13 @@ export class WebRtcAudio {
     });
     if (prewarm) {
       this.audioSender = pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
+      this.ensureControlChannel(pc);
       this.prewarmed = true;
       this.prewarmStartedAt = Date.now();
       this.signalEnabled = false;
     } else {
       for (const track of stream.getAudioTracks()) this.audioSender = pc.addTrack(track, stream);
+      this.ensureControlChannel(pc);
       this.signalEnabled = true;
     }
     pc.onicecandidate = async event => {
@@ -398,6 +416,100 @@ export class WebRtcAudio {
     }
   }
 
+  ensureControlChannel(pc) {
+    if (this.initiator) {
+      if (!this.controlChannel) {
+        this.bindControlChannel(pc.createDataChannel("voice-control", { ordered: true }));
+      }
+    } else {
+      pc.ondatachannel = event => {
+        if (event.channel.label === "voice-control") this.bindControlChannel(event.channel);
+        else event.channel.close();
+      };
+    }
+  }
+
+  bindControlChannel(channel) {
+    this.controlChannel = channel;
+    channel.onopen = () => {
+      this.onState("control-open");
+      if (!this.initiator) this.sendControl({ type: "ACCEPTED" });
+    };
+    channel.onmessage = event => this.handleControlMessage(event.data);
+    channel.onerror = () => this.onState("control-error");
+    channel.onclose = () => {
+      if (this.controlChannel === channel) this.controlChannel = null;
+      this.onState("control-closed");
+    };
+  }
+
+  sendControl(message) {
+    const channel = this.controlChannel;
+    if (!channel || channel.readyState !== "open") return false;
+    try {
+      channel.send(JSON.stringify(message));
+      return true;
+    } catch (error) {
+      this.onState("control-send-error: " + error.message);
+      return false;
+    }
+  }
+
+  isControlOpen() {
+    return !!this.controlChannel && this.controlChannel.readyState === "open";
+  }
+
+  handleControlMessage(raw) {
+    let message;
+    try { message = JSON.parse(raw); } catch { return; }
+    if (!message || typeof message.type !== "string") return;
+
+    if (message.type === "ACCEPTED") {
+      this.setMicEnabled(true);
+      this.onState("Собеседник ответил; микрофон включён.");
+      return;
+    }
+
+    if (message.type === "HANGUP" && typeof message.id === "string") {
+      this.sendControl({ type: "HANGUP_ACK", id: message.id });
+      this.onState("Получено уведомление о завершении звонка.");
+      if (!this.remoteHangupHandled) {
+        this.remoteHangupHandled = true;
+        setTimeout(() => this.onRemoteHangup(), 250);
+      }
+      return;
+    }
+
+    if (message.type === "HANGUP_ACK" && this.pendingHangup &&
+        message.id === this.pendingHangup.id) {
+      const pending = this.pendingHangup;
+      this.pendingHangup = null;
+      clearTimeout(pending.timer);
+      pending.resolve(true);
+    }
+  }
+
+  async sendHangup(timeoutMs = 1200) {
+    if (!this.isControlOpen()) return false;
+    if (this.pendingHangup) return this.pendingHangup.promise;
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(12)),
+      value => value.toString(16).padStart(2, "0")).join("");
+    let resolveResult;
+    const promise = new Promise(resolve => { resolveResult = resolve; });
+    const timer = setTimeout(() => {
+      if (!this.pendingHangup || this.pendingHangup.id !== id) return;
+      this.pendingHangup = null;
+      resolveResult(false);
+    }, timeoutMs);
+    this.pendingHangup = { id, timer, resolve: resolveResult, promise };
+    if (!this.sendControl({ type: "HANGUP", id })) {
+      clearTimeout(timer);
+      this.pendingHangup = null;
+      resolveResult(false);
+    }
+    return promise;
+  }
+
   async prepareIce() {
     const pc = await this.createPeerConnection({ prewarm: true });
     if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
@@ -474,8 +586,21 @@ export class WebRtcAudio {
     }
     this.previousRtpStats.clear();
     this.previousIcePairStats.clear();
+    if (this.pendingHangup) {
+      clearTimeout(this.pendingHangup.timer);
+      this.pendingHangup.resolve(false);
+      this.pendingHangup = null;
+    }
+    if (this.controlChannel) {
+      this.controlChannel.onopen = null;
+      this.controlChannel.onmessage = null;
+      this.controlChannel.onclose = null;
+      try { this.controlChannel.close(); } catch {}
+      this.controlChannel = null;
+    }
     if (this.pc) {
       this.pc.ontrack = null;
+      this.pc.ondatachannel = null;
       this.pc.close();
       this.pc = null;
     }
