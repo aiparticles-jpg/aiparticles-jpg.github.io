@@ -12,7 +12,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -138,7 +138,7 @@ export class NtfySecureSignaling {
   this.pendingEvents=this.pendingEvents.filter(n=>{
    try{const m=JSON.parse(n.message);return !((m.type==="hello"||m.type==="request")&&m.payload?.from===peer&&m.payload?.to===this.me)}catch{return true}
   });
-  this.incomingSid=null;this.incomingEventId=null;
+  this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
  }
  async inspectIncoming(n){
   if(!this.peer||!n?.message||!n?.id)return;
@@ -154,6 +154,8 @@ export class NtfySecureSignaling {
   const pinned=await this.checkPinned(p.identity);
   if(this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
   this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=p.identity;
+  const pendingCancel=this.pendingCancels.get(p.sid);
+  if(pendingCancel){this.pendingCancels.delete(p.sid);await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
   if(!pinned)this.onDebug("[incoming] ключ ещё не сопряжён: показываем запрос без звукового сигнала до проверки кода.");
   this.onIncoming({peer:this.peer,sid:p.sid,expiresAt,trusted:pinned});
  }
@@ -163,7 +165,12 @@ export class NtfySecureSignaling {
   if(!await this.verify({type:"cancel",payload:p},m.sig,p.identity))throw Error("Подпись отмены вызова недействительна.");
   const pinned=await this.checkPinned(p.identity);
   if(this.incomingIdentity&&stable(this.incomingIdentity)!==stable(p.identity))return;
-  if(!this.incomingIdentity&&!pinned)return;
+  if(!this.incomingIdentity&&!pinned){
+   this.pendingCancels.set(p.sid,m);
+   if(this.pendingCancels.size>50)this.pendingCancels.delete(this.pendingCancels.keys().next().value);
+   return;
+  }
+  if(!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
   this.cancelledSids.add(p.sid);
   if(this.cancelledSids.size>100)this.cancelledSids.delete(this.cancelledSids.values().next().value);
   if(this.incomingSid===p.sid&&!this.hello&&!this.ready){
@@ -272,6 +279,8 @@ export class NtfySecureSignaling {
    const pinned=await this.checkPinned(p.identity);
    if(this.incomingSid!==p.sid){
     this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=p.identity;
+    const pendingCancel=this.pendingCancels.get(p.sid);
+    if(pendingCancel){this.pendingCancels.delete(p.sid);await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
     this.onIncoming({peer:this.peer,sid:p.sid,expiresAt:Number(p.expiresAt),trusted:pinned});
    }
    return;
