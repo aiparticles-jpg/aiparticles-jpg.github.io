@@ -12,7 +12,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -35,13 +35,23 @@ export class NtfySecureSignaling {
    const wait=Math.max(0,this.lastPublishAt+1100-Date.now());
    if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
    this.onDebug(`[ntfy] POST → ${msg.type} (одна попытка)`);
-   const r=await fetch(BASE+await this.topic(to),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});
+   let r;
+   try{
+    r=await fetch(BASE+await this.topic(to),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});
+   }catch(error){
+    this.lastPublishAt=Date.now();
+    const failure=Error("Сетевая ошибка при POST в ntfy ("+msg.type+"): "+(error.message||String(error)));
+    failure.retryable=true;
+    throw failure;
+   }
    this.onDebug(`[ntfy] POST ← ${r.status} (${msg.type})`);
    this.lastPublishAt=Date.now();
    if(r.ok)return;
    const retryAfter=r.headers.get("Retry-After");
-   if(r.status===429){this.rateLimited=true;this.clearHelloRetry();}
-   throw Error("ntfy HTTP "+r.status+(r.status===429?"; сервер ограничил частоту запросов"+(retryAfter?"; Retry-After: "+retryAfter:""):""));
+   if(r.status===429){this.rateLimited=true;this.clearHelloRetry();this.clearAnswerRetry();}
+   const failure=Error("ntfy HTTP "+r.status+(r.status===429?"; сервер ограничил частоту запросов"+(retryAfter?"; Retry-After: "+retryAfter:""):""));
+   failure.retryable=r.status===408||r.status>=500;
+   throw failure;
   };
   const result=this.publishQueue.then(task,task);
   this.publishQueue=result.catch(()=>{});
@@ -68,7 +78,7 @@ export class NtfySecureSignaling {
   }
   this.identity=await this.loadIdentity();
   if(this.closed)throw Error("Открытие подписки отменено.");
-  const url=BASE+await this.topic(this.me)+"/sse";
+  const url=BASE+await this.topic(this.me)+"/sse?since=120s";
   if(this.closed)throw Error("Открытие подписки отменено.");
   const es=new EventSource(url);this.es=es;
   let settled=false;
@@ -105,20 +115,24 @@ export class NtfySecureSignaling {
   if(!validName(this.me)||!validName(this.peer)||this.me===this.peer)throw Error("Имена: 3–24 символа, латинские буквы, цифры, _ или -. Имена должны различаться.");
   await this.subscribe();
   this.active=true;
+  const pending=this.pendingEvents.splice(0);
+  for(const n of pending){
+   const age=Date.now()/1000-Number(n.time||0);
+   if(age>=-5&&age<=120)await this.handle({data:JSON.stringify(n)});
+  }
   if(this.role==="A"){
-   try{await this.sendHello()}catch(err){this.onError(err)}
-   this.scheduleHelloRetry(5000);
-  } else this.onStatus("Ожидаем запрос от "+this.peer+"…");
+   try{await this.sendHello()}catch(err){this.onError(err);if(err.retryable)this.scheduleHelloRetry(5000)}
+  } else if(!this.ready)this.onStatus("Ожидаем запрос от "+this.peer+"…");
  }
  setPeer(peer){
   if(!validName(peer)||peer===this.me)throw Error("Имя собеседника должно содержать 3–24 символа и отличаться от вашего имени.");
-  this.resetSession();this.peer=peer;this.role=this.me<peer?"A":"B";
+  this.resetSession({preservePending:true});this.peer=peer;this.role=this.me<peer?"A":"B";
  }
- resetSession(){
-  this.active=false;this.clearHelloRetry();
+ resetSession({preservePending=false}={}){
+  this.active=false;this.clearHelloRetry();this.clearAnswerRetry();
   this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;
   this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.peerJwk=null;
-  this.pendingSignals=[];this.rateLimited=false;this.helloAttempts=0;
+  this.pendingSignals=[];if(!preservePending)this.pendingEvents=[];this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
  }
  async sendHello(){
   if(this.closed||this.ready||this.rateLimited||this.role!=="A")return;
@@ -137,13 +151,45 @@ export class NtfySecureSignaling {
   this.helloRetryTimer=setTimeout(async()=>{
    this.helloRetryTimer=null;
    if(this.closed||this.ready||this.rateLimited)return;
-   try{await this.sendHello()}catch(err){this.onError(err)}
-   this.scheduleHelloRetry(this.helloAttempts===2?10000:5000);
+   try{await this.sendHello()}catch(err){
+    this.onError(err);
+    if(err.retryable)this.scheduleHelloRetry(this.helloAttempts===2?10000:5000);
+   }
   },delay);
  }
  clearHelloRetry(){if(this.helloRetryTimer!==null){clearTimeout(this.helloRetryTimer);this.helloRetryTimer=null}}
+ clearAnswerRetry(){if(this.answerRetryTimer!==null){clearTimeout(this.answerRetryTimer);this.answerRetryTimer=null}}
+ async sendAnswer(){
+  if(this.closed||this.rateLimited||this.role!=="B"||!this.answer)return;
+  this.answerAttempts++;
+  this.onDebug(`[signaling] answer POST attempt ${this.answerAttempts}/3`);
+  await this.publish(this.peer,await this.signed("answer",this.answer));
+  this.lastAnswerAt=Date.now();
+  this.clearAnswerRetry();
+ }
+ scheduleAnswerRetry(delay){
+  this.clearAnswerRetry();
+  if(this.closed||this.rateLimited||this.role!=="B"||!this.answer||this.answerAttempts>=3)return;
+  this.answerRetryTimer=setTimeout(async()=>{
+   this.answerRetryTimer=null;
+   try{await this.sendAnswer()}catch(err){
+    this.onError(err);
+    if(err.retryable)this.scheduleAnswerRetry(10000);
+   }
+  },delay);
+ }
  async handle(event){
-  if(!this.active)return;
+  if(!this.active){
+   let queued;try{queued=JSON.parse(event.data)}catch{return}
+   if(!queued.message||!queued.id||this.seen.has(queued.id))return;
+   const age=Date.now()/1000-Number(queued.time||0);
+   if(age>=-5&&age<=120&&!this.pendingEvents.some(item=>item.id===queued.id)){
+    this.pendingEvents.push(queued);
+    if(this.pendingEvents.length>100)this.pendingEvents.shift();
+    this.onDebug("[signaling] входящее сообщение сохранено до нажатия «Подключиться»");
+   }
+   return;
+  }
   const n=JSON.parse(event.data);if(!n.message||!n.id||this.seen.has(n.id))return;
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
   let m;try{m=JSON.parse(n.message)}catch{return}
@@ -153,8 +199,7 @@ export class NtfySecureSignaling {
    if(this.hello){
     if(p.sid===this.hello.sid&&this.answer&&Date.now()-this.lastAnswerAt>=10000){
      this.onDebug("[signaling] answer resend after repeated hello");
-     await this.publish(this.peer,await this.signed("answer",this.answer));
-     this.lastAnswerAt=Date.now();
+     try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000)}
     }
     return;
    }
@@ -165,12 +210,11 @@ export class NtfySecureSignaling {
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
    const answer={sid:p.sid,from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
    this.answer=answer;
-   // Derive before publishing: if the POST fails transiently, a repeated hello
-   // can resend this same cached answer without leaving the receiver uninitialized.
+   // Derive first so the same answer/session remains available for bounded POST retries.
    await this.derive(p,answer);
-   this.onDebug("[signaling] answer attempt 1 (initial)");
-   await this.publish(this.peer,await this.signed("answer",answer));
-   this.lastAnswerAt=Date.now();return;
+   this.onDebug("[signaling] answer prepared; sending initial response");
+   try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000)}
+   return;
   }
   if(m.type==="answer"&&this.role==="A"&&!this.ready){
    if(!this.hello||p.sid!==this.hello.sid||p.helloEph!==this.hello.eph||p.helloNonce!==this.hello.nonce)return;
@@ -218,5 +262,5 @@ export class NtfySecureSignaling {
   const data=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:enc.encode(this.session+"|"+dir)},this.sendKey,plain);
   await this.publish(this.peer,{v:1,type:"data",payload:{sid:this.session,from:this.me,to:this.peer,iv:b64u(iv),data:b64u(data)}});
  }
- close(){this.closed=true;this.active=false;this.clearHelloRetry();if(this.es){const before=this.es.readyState;this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван; readyState(before)=${before}`);this.es.close();this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() завершён; readyState(after)=${this.es.readyState}`)}else this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван без EventSource`);}
+ close(){this.closed=true;this.active=false;this.clearHelloRetry();this.clearAnswerRetry();if(this.es){const before=this.es.readyState;this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван; readyState(before)=${before}`);this.es.close();this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() завершён; readyState(after)=${this.es.readyState}`)}else this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван без EventSource`);}
 }
