@@ -10,9 +10,8 @@
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
 #my-name,#peer-name{text-transform:lowercase}
-.username-label-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.username-label-row .field-label{margin:13px 0 8px}
-.username-change{font-size:11px;padding:7px 10px;white-space:nowrap}
+.join-row .button{width:190px;flex:0 0 190px}
+@media (max-width:520px){.join-row .button{width:100%;flex:0 0 auto}}
 </style></head>
 <body>
   <main class="shell">
@@ -24,22 +23,16 @@
       <span class="privacy-label"><span class="dot"></span> Без регистрации</span>
     </header>
 
-    <section class="hero">
-      <div class="eyebrow">ПРЯМОЙ ГОЛОСОВОЙ ЗВОНОК</div>
-      <h1>Говорите напрямую.<br><span>Без лишнего.</span></h1>
-      <p class="intro">Введите своё имя и имя собеседника. После первой проверки ключа соединение будет устанавливаться автоматически.</p>
-    </section>
-
     <section class="panel" aria-labelledby="room-title">
       <div class="panel-heading">
-        <div><div class="step">01 / СОБЕСЕДНИК</div><h2 id="room-title">Защищённое соединение</h2></div>
+        <div><h2 id="room-title">Защищённое соединение</h2></div>
         <span class="lock-icon" aria-hidden="true">⌑</span>
       </div>
-      <div class="username-label-row">
-        <label class="field-label" for="my-name">Моё имя пользователя</label>
-        <button id="change-name" class="button button-secondary username-change" type="button">Сменить имя пользователя</button>
+      <label class="field-label" for="my-name">Моё имя пользователя</label>
+      <div class="join-row">
+        <input id="my-name" type="text" maxlength="24" autocomplete="username" spellcheck="false" placeholder="например damir">
+        <button id="change-name" class="button button-secondary" type="button">Сменить имя пользователя</button>
       </div>
-      <input id="my-name" type="text" maxlength="24" autocomplete="username" spellcheck="false" placeholder="например damir">
       <label class="field-label" for="peer-name">Имя собеседника</label>
       <div class="join-row">
         <input id="peer-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="например ivan">
@@ -59,7 +52,6 @@
     <section class="panel call-panel" aria-labelledby="call-title">
       <div class="panel-heading">
         <div>
-          <div class="step">02 / СОЕДИНЕНИЕ</div>
           <h2 id="call-title">Голосовой канал</h2>
         </div>
         <span id="connection-indicator" class="status-pill status-idle">Не подключено</span>
@@ -97,7 +89,7 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.03-18</span>
+      <span id="app-version">Версия 2026.11.03-19</span>
     </footer>
   </main>
 
