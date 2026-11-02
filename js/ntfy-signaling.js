@@ -12,7 +12,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -132,6 +132,15 @@ export class NtfySecureSignaling {
   this.resetSession({preservePending:true});this.peer=peer;this.role=peer?(this.me<peer?"A":"B"):null;
   this.inspectPendingIncoming().catch(error=>this.onError(error));
  }
+ acceptIncoming(){
+  const sid=this.incomingSid;
+  if(sid){this.acceptedSids.add(sid);if(this.acceptedSids.size>100)this.acceptedSids.delete(this.acceptedSids.values().next().value)}
+  if(this.role==="A"&&this.incomingEventId){
+   this.seen.add(this.incomingEventId);
+   this.pendingEvents=this.pendingEvents.filter(n=>n.id!==this.incomingEventId);
+  }
+  this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
+ }
  dismissIncoming(){
   if(this.incomingEventId){this.seen.add(this.incomingEventId);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value)}
   const peer=this.peer;
@@ -152,7 +161,7 @@ export class NtfySecureSignaling {
   if(!Number.isFinite(expiresAt)||Date.now()>expiresAt)return;
   if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись входящего вызова недействительна.");
   const pinned=await this.checkPinned(p.identity);
-  if(this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
+  if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
   this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=p.identity;
   const pendingCancel=this.pendingCancels.get(p.sid);
   if(pendingCancel){this.pendingCancels.delete(p.sid);await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
@@ -162,6 +171,7 @@ export class NtfySecureSignaling {
  async processCancel(m){
   const p=m?.payload;
   if(m?.v!==1||!p||p.from!==this.peer||p.to!==this.me||!p.sid||!p.identity)return;
+  if(this.acceptedSids.has(p.sid))return;
   if(!await this.verify({type:"cancel",payload:p},m.sig,p.identity))throw Error("Подпись отмены вызова недействительна.");
   const pinned=await this.checkPinned(p.identity);
   if(!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
@@ -186,7 +196,7 @@ export class NtfySecureSignaling {
   this.active=false;this.clearHelloRetry();this.clearAnswerRetry();
   this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;
   this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.peerJwk=null;
-  this.pendingSignals=[];if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
+  this.pendingSignals=[];if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.acceptedSids.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
  }
  async sendCallRequest(){
   if(this.closed||this.ready||this.rateLimited||this.role!=="B")return;
@@ -274,7 +284,7 @@ export class NtfySecureSignaling {
   }
   if(m.type==="cancel"){await this.processCancel(m);return;}
   if(m.type==="request"&&this.role==="A"){
-   if(!p.identity||!p.sid||this.cancelledSids.has(p.sid)||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
+   if(!p.identity||!p.sid||this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
    if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись входящего запроса недействительна.");
    const pinned=await this.checkPinned(p.identity);
    if(this.incomingSid!==p.sid){
@@ -296,6 +306,13 @@ export class NtfySecureSignaling {
    if(this.ready)return;
    if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись собеседника недействительна.");
    await this.checkPinned(p.identity);
+   if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid))return;
+   const pendingCancel=this.pendingCancels.get(p.sid);
+   if(pendingCancel){
+    this.pendingCancels.delete(p.sid);this.incomingSid=p.sid;this.incomingIdentity=p.identity;
+    await this.processCancel(pendingCancel);
+    if(this.cancelledSids.has(p.sid))return;
+   }
    this.hello=p;
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
    const answer={sid:p.sid,from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
