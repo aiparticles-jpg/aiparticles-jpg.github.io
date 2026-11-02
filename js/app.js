@@ -24,7 +24,16 @@ function setStatus(title,text,kind="idle"){
 }
 function showError(message){els.error.textContent=message;els.error.classList.remove("hidden");debug("ОШИБКА: "+message)}
 function clearError(){els.error.textContent="";els.error.classList.add("hidden")}
-function setBusy(value){state.connecting=value;els.connect.disabled=value;els.connect.textContent=value?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";els.dismissIncoming.disabled=value;els.my.disabled=value||!state.editingName;els.changeName.disabled=value;els.peer.disabled=value}
+function updateCallButtons(){
+ const active=!!(state.peerPresent||state.outgoingCall||state.secure?.active);
+ els.connect.classList.toggle("hidden",active);
+ els.connect.disabled=active||state.connecting;
+ els.connect.textContent=state.connecting?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";
+ els.hangup.classList.toggle("hidden",!active);
+ els.hangup.disabled=!active;
+ els.dismissIncoming.disabled=state.connecting;
+}
+function setBusy(value){state.connecting=value;updateCallButtons();els.my.disabled=value||!state.editingName;els.changeName.disabled=value;els.peer.disabled=value}
 function stopRinging(){
  state.ringingKind=null;
  if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
@@ -68,14 +77,13 @@ async function startRinging(kind){
 }
 function clearIncomingUi(){
  if(state.incomingTimer){clearTimeout(state.incomingTimer);state.incomingTimer=null}
- state.incomingCall=false;els.dismissIncoming.classList.add("hidden");els.connect.textContent=state.connecting?"Подключаемся…":"Подключиться";
+ state.incomingCall=false;els.dismissIncoming.classList.add("hidden");updateCallButtons();
 }
 function showIncomingCall({peer,expiresAt,trusted=true}){
  if(state.connecting||state.callStarted||state.outgoingCall||state.incomingCall)return;
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
- state.incomingCall=true;els.connect.disabled=false;els.connect.textContent="Ответить";
- els.dismissIncoming.classList.remove("hidden");els.dismissIncoming.disabled=false;
+ state.incomingCall=true;els.dismissIncoming.classList.remove("hidden");updateCallButtons();
  const description=trusted
   ?"Вам звонит "+peer+". Нажмите «Ответить» или «Скрыть вызов».":"Запрос от "+peer+". Устройство ещё не сопряжено: после ответа обязательно сверьте проверочный код.";
  setStatus(trusted?"Входящий вызов":"Новый запрос на сопряжение",description,"wait");
@@ -91,7 +99,7 @@ function startOutgoingCall({peer,expiresAt}){
  if(state.outgoingCall||state.incomingCall||state.secure?.ready||state.peerPresent)return;
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
- state.outgoingCall=true;setStatus("Вызываем "+peer,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
+ state.outgoingCall=true;updateCallButtons();setStatus("Вызываем "+peer,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
  startRinging("outgoing");
  state.callTimer=setTimeout(()=>finishNoAnswer(),remaining);
 }
@@ -111,7 +119,7 @@ async function finishNoAnswer(){
  stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";els.verify.classList.add("hidden");
- state.callStarted=false;state.peerPresent=false;
+ state.callStarted=false;state.peerPresent=false;updateCallButtons();
  setStatus("Нет ответа","Время ожидания истекло. Вызов завершён только на этом устройстве; уведомление об отмене не отправлялось.","idle");
  debug("Исходящий вызов истёк через 45 секунд; отменяющий POST не отправлялся.");
 }
@@ -123,7 +131,7 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
   onError:error=>showError(error.message||String(error)),
   onState:value=>{
    debug("WebRTC: "+value);
-   if(value==="connection-connected"){els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")}
+   if(value==="connection-connected"){updateCallButtons();els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")}
    else if(value==="connection-failed"||value==="ice-failed"){els.transport.textContent="WebRTC: соединение не установлено";setStatus("P2P не получилось","Сигнализация работает, но прямой аудиоканал не установился. TURN-сервер пока не настроен.","error")}
    else if(value==="connection-connecting"||value==="ice-checking"||value==="ice-connected"||value==="ice-completed"){setStatus("Устанавливаем аудиосоединение","Проверяем сетевые маршруты между устройствами.","wait")}
    else if(value==="connection-disconnected"||value==="ice-disconnected"){setStatus("Связь прервалась","WebRTC потерял сетевое соединение; ожидаем восстановления.","wait")}
@@ -228,7 +236,7 @@ function scheduleIcePrewarm(reason="input",force=false){
 }
 async function onSecureReady(info){
  state.peerPresent=true;state.role=state.secure.role==="A"?"initiator":"receiver";
- els.verify.classList.add("hidden");els.hangup.disabled=false;
+ els.verify.classList.add("hidden");updateCallButtons();
  setStatus("Ключ собеседника подтверждён",info.trusted?"Сохранённый ключ совпадает. Запускаем голосовой канал.":"Первичная проверка пройдена. Запускаем голосовой канал.","wait");
  debug(info.trusted?"Сохраненная идентичность подтверждена.":"Новая идентичность собеседника сохранена.");
  if(state.role==="initiator")await startWebRtcOffer();
@@ -281,6 +289,7 @@ async function connect(){
   setStatus("Не удалось подключиться","Проверьте разрешения и попробуйте снова.","error");
   if(state.secure){if(answering)state.secure.dismissIncoming();state.secure.resetSession()}
   if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
+  state.peerPresent=false;updateCallButtons();
   if(answering){clearIncomingUi();stopRinging()}
  }
  finally{setBusy(false);els.pilot.disabled=!!state.webrtc}
@@ -289,8 +298,8 @@ async function hangup(){
  stopOutgoingCall();if(state.incomingCall)state.secure?.dismissIncoming();clearIncomingUi();stopRinging();
  state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
- els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
- els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;
+ els.audio.srcObject=null;els.pilot.disabled=false;els.transport.textContent="Не выбран";
+ els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;updateCallButtons();
  setStatus("Звонок завершён","Подписка на ваше имя остаётся активной. Чтобы позвонить снова, нажмите «Подключиться».","idle");
  scheduleIcePrewarm("hangup",true);
 }
