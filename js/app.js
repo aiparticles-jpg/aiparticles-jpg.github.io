@@ -157,7 +157,10 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
     els.transport.textContent="WebRTC: соединение не установлено";setStatus("P2P не получилось","Сигнализация работает, но прямой аудиоканал не установился. TURN-сервер пока не настроен.","error");
     if(state.peerPresent&&!state.hangingUp)hangup({notifyPeer:false,failure:true})
    }
-   else if(value==="connection-connecting"||value==="ice-checking"||value==="ice-connected"||value==="ice-completed"){setStatus("Устанавливаем аудиосоединение","Проверяем сетевые маршруты между устройствами.","wait")}
+   else if(value==="connection-connecting"||value==="ice-checking"||value==="ice-connected"||value==="ice-completed"){
+    if((value==="ice-connected"||value==="ice-completed")&&state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
+    setStatus("Устанавливаем аудиосоединение","Проверяем сетевые маршруты между устройствами.","wait")
+   }
    else if(value==="connection-disconnected"||value==="ice-disconnected"){
     setStatus("Связь прервалась","Даём WebRTC время восстановить соединение (15 секунд).","wait");
     if(!state.disconnectTimer)state.disconnectTimer=setTimeout(()=>{
