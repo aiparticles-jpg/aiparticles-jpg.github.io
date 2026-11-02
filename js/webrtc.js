@@ -9,6 +9,7 @@ export class WebRtcAudio {
     this.onRemoteHangup = onRemoteHangup || (() => {});
     this.initiator = initiator;
     this.micEnabled = false;
+    this.callAccepted = false;
     this.controlChannel = null;
     this.pendingHangup = null;
     this.remoteHangupHandled = false;
@@ -71,6 +72,13 @@ export class WebRtcAudio {
       }
     }
     return this.localStream;
+  }
+
+  setCallAccepted(accepted) {
+    this.callAccepted = !!accepted;
+    if (this.callAccepted && this.controlChannel?.readyState === "open") {
+      this.sendControl({ type: "ACCEPTED" });
+    }
   }
 
   setMicEnabled(enabled) {
@@ -433,7 +441,7 @@ export class WebRtcAudio {
     this.controlChannel = channel;
     channel.onopen = () => {
       this.onState("control-open");
-      if (!this.initiator) this.sendControl({ type: "ACCEPTED" });
+      if (this.callAccepted) this.sendControl({ type: "ACCEPTED" });
     };
     channel.onmessage = event => this.handleControlMessage(event.data);
     channel.onerror = () => this.onState("control-error");
@@ -629,6 +637,8 @@ export class WebRtcAudio {
     this.prewarmed = false;
     this.prewarmStartedAt = 0;
     this.signalEnabled = false;
+    this.callAccepted = false;
+    this.micEnabled = false;
     if (stopTracks && this.localStream) {
       this.localStream.getTracks().forEach(track => track.stop());
       this.localStream = null;
