@@ -148,10 +148,10 @@ export class NtfySecureSignaling {
   if(!Number.isFinite(expiresAt)||Date.now()>expiresAt)return;
   if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись входящего вызова недействительна.");
   const pinned=await this.checkPinned(p.identity);
-  if(!pinned){this.onDebug("[incoming] новый/непривязанный ключ: звонок не озвучивается до первичного сопряжения.");return}
   if(this.incomingSid===p.sid)return;
   this.incomingSid=p.sid;this.incomingEventId=n.id;
-  this.onIncoming({peer:this.peer,sid:p.sid,expiresAt});
+  if(!pinned)this.onDebug("[incoming] ключ ещё не сопряжён: показываем запрос без звукового сигнала до проверки кода.");
+  this.onIncoming({peer:this.peer,sid:p.sid,expiresAt,trusted:pinned});
  }
  async inspectPendingIncoming(){
   for(const n of this.pendingEvents)await this.inspectIncoming(n);
