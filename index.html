@@ -10,6 +10,9 @@
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
 #my-name,#peer-name{text-transform:lowercase}
+.username-label-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.username-label-row .field-label{margin:13px 0 8px}
+.username-change{font-size:11px;padding:7px 10px;white-space:nowrap}
 </style></head>
 <body>
   <main class="shell">
@@ -32,7 +35,10 @@
         <div><div class="step">01 / СОБЕСЕДНИК</div><h2 id="room-title">Защищённое соединение</h2></div>
         <span class="lock-icon" aria-hidden="true">⌑</span>
       </div>
-      <label class="field-label" for="my-name">Моё имя пользователя</label>
+      <div class="username-label-row">
+        <label class="field-label" for="my-name">Моё имя пользователя</label>
+        <button id="change-name" class="button button-secondary username-change" type="button">Сменить имя пользователя</button>
+      </div>
       <input id="my-name" type="text" maxlength="24" autocomplete="username" spellcheck="false" placeholder="например damir">
       <label class="field-label" for="peer-name">Имя собеседника</label>
       <div class="join-row">
@@ -91,10 +97,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.03-14</span>
+      <span id="app-version">Версия 2026.11.03-15</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=21"></script>
+  <script type="module" src="./js/app.js?v=22"></script>
 </body>
 </html>
