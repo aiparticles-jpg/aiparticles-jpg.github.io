@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=10";
+import { WebRtcAudio } from "./webrtc.js?v=11";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=9";
 
 const $=id=>document.getElementById(id);
@@ -10,7 +10,7 @@ const els={
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state")
 };
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false,prewarmNames:null,prewarmTimer:null,prewarmPromise:null};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -41,6 +41,32 @@ async function ensureWebRtc(){
   }
  });
 }
+async function scheduleIcePrewarm(){
+ if(state.prewarmTimer)clearTimeout(state.prewarmTimer);
+ state.prewarmTimer=setTimeout(async()=>{
+  state.prewarmTimer=null;
+  const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
+  if(state.connecting||state.secure||state.callStarted||!NtfySecureSignaling.validName(me)||
+     !NtfySecureSignaling.validName(peer)||me===peer||me>=peer||els.pilot.checked)return;
+  const names=me+"|"+peer;
+  if(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===names)return;
+  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
+  state.prewarmNames=names;
+  try{
+   state.prewarmPromise=(async()=>{
+    await ensureWebRtc();
+    debug("Предварительная подготовка ICE начата (без микрофона и без ntfy).");
+    return await state.webrtc.prepareIce();
+   })();
+   const count=await state.prewarmPromise;
+   debug("Предварительная подготовка ICE завершена; локально сохранено кандидатов: "+count);
+  }catch(error){
+   debug("Предварительная подготовка ICE не удалась: "+(error.message||String(error)));
+   if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
+   state.prewarmNames=null;
+  }finally{state.prewarmPromise=null}
+ },700);
+}
 async function onSecureReady(info){
  state.peerPresent=true;state.role=state.secure.role==="A"?"initiator":"receiver";
  els.verify.classList.add("hidden");els.hangup.disabled=false;
@@ -53,16 +79,23 @@ async function handleSignal(payload){
 }
 async function startWebRtcOffer(){
  if(state.callStarted)return;state.callStarted=true;
- try{await ensureWebRtc();await state.webrtc.createOffer();debug("WebRTC offer передан в ntfy. Ожидаем answer от второго устройства и установления P2P.")}
+ try{
+  await ensureWebRtc();
+  const prepared=await state.webrtc.activatePreparedOffer();
+  if(!prepared)await state.webrtc.createOffer();
+  debug((prepared?"Предварительно подготовленный ":"")+"WebRTC offer передан в ntfy. Ожидаем answer от второго устройства и установления P2P.");
+ }
  catch(e){state.callStarted=false;showError("Не удалось запустить WebRTC: "+e.message);setStatus("Не удалось начать звонок","Проверьте разрешение микрофона и повторите попытку.","error")}
 }
 async function connect(){
  clearError();els.verify.classList.add("hidden");setBusy(true);
  try{
   if(state.secure)state.secure.close();
-  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
-  state.callStarted=false;state.peerPresent=false;
   const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
+  if(state.prewarmPromise&&state.prewarmNames===me+"|"+peer){try{await state.prewarmPromise}catch{}}
+  const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer&&!els.pilot.checked);
+  if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
+  state.callStarted=false;state.peerPresent=false;
   if(!NtfySecureSignaling.validName(me)||!NtfySecureSignaling.validName(peer)||me===peer)throw Error("Имена должны содержать 3–24 символа: a-z, 0-9, _ или -. Имена должны различаться.");
   localStorage.setItem("vl.last-name",me);localStorage.setItem("vl.last-peer",peer);
   setStatus("Подключаемся к ntfy","Открываем канал обнаружения собеседника.","wait");
@@ -104,7 +137,12 @@ async function hangup(){
  setStatus("Звонок завершён","Чтобы позвонить снова, нажмите «Подключиться».","idle");
 }
 els.connect.addEventListener("click",connect);
-els.pilot.addEventListener("change",()=>debug("Диагностический pilot-сигнал "+(els.pilot.checked?"включён":"выключен")+". Настройка применяется при следующем подключении."));
+els.pilot.addEventListener("change",async()=>{
+ debug("Диагностический pilot-сигнал "+(els.pilot.checked?"включён":"выключен")+". Настройка применяется при следующем подключении.");
+ if(!state.secure&&!state.callStarted){if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm()}
+});
+els.my.addEventListener("input",scheduleIcePrewarm);
+els.peer.addEventListener("input",scheduleIcePrewarm);
 els.confirm.addEventListener("click",async()=>{
  els.confirm.disabled=true;
  try{await state.secure.confirmPeer();els.verify.classList.add("hidden");debug("Первичная проверка подтверждена пользователем.")}
@@ -129,3 +167,4 @@ els.pilot.checked=false;
 els.my.value=localStorage.getItem("vl.last-name")||"";
 els.peer.value=localStorage.getItem("vl.last-peer")||"";
 setStatus("Ожидаем подключения","Введите своё имя и имя собеседника.","idle");
+scheduleIcePrewarm();
