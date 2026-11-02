@@ -197,8 +197,8 @@ export class NtfySecureSignaling {
   this.onDialing({peer:this.peer,expiresAt:request.expiresAt});
  }
  async cancelCall(){
-  const request=this.outgoingRequest;
-  if(this.closed||this.role!=="B"||!request)return false;
+  const request=this.outgoingRequest||this.hello;
+  if(this.closed||!request||!["A","B"].includes(this.role))return false;
   const payload={sid:request.sid,from:this.me,to:this.peer,identity:this.identity.publicJwk,expiresAt:Date.now()+15000};
   await this.publish(this.peer,await this.signed("cancel",payload));
   this.outgoingRequest=null;
