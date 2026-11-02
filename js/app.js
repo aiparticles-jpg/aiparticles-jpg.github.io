@@ -7,7 +7,7 @@ const els={
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
- audio:$("remote-audio"),error:$("error-message"),debugLog:$("debug-log"),
+ audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state")
 };
 const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false};
@@ -28,6 +28,7 @@ function setBusy(value){state.connecting=value;els.connect.disabled=value;els.co
 async function ensureWebRtc(){
  if(state.webrtc)return;
  state.webrtc=new WebRtcAudio({
+  diagnosticPilot:els.pilot.checked,
   sendSignal:payload=>state.secure.sendSignal(payload),
   onRemoteStream:stream=>{els.audio.srcObject=stream;els.audio.play().catch(e=>debug("Не удалось включить удалённый звук: "+e.message))},
   onError:error=>showError(error.message||String(error)),
@@ -93,16 +94,17 @@ async function connect(){
   if(state.secure){state.secure.close();state.secure=null}
   if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  }
- finally{setBusy(false)}
+ finally{setBusy(false);els.pilot.disabled=!!state.webrtc}
 }
 async function hangup(){
  state.secure?.close();state.secure=null;
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
- els.audio.srcObject=null;els.hangup.disabled=true;els.transport.textContent="Не выбран";
+ els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;
  setStatus("Звонок завершён","Чтобы позвонить снова, нажмите «Подключиться».","idle");
 }
 els.connect.addEventListener("click",connect);
+els.pilot.addEventListener("change",()=>debug("Диагностический pilot-сигнал "+(els.pilot.checked?"включён":"выключен")+". Настройка применяется при следующем подключении."));
 els.confirm.addEventListener("click",async()=>{
  els.confirm.disabled=true;
  try{await state.secure.confirmPeer();els.verify.classList.add("hidden");debug("Первичная проверка подтверждена пользователем.")}
@@ -123,6 +125,7 @@ els.resetPeer.addEventListener("click",async()=>{
  setStatus("Сопряжение сброшено","Подключитесь заново и сравните проверочные коды на обоих устройствах.","idle");
 });
 els.tcp.classList.add("hidden");
+els.pilot.checked=false;
 els.my.value=localStorage.getItem("vl.last-name")||"";
 els.peer.value=localStorage.getItem("vl.last-peer")||"";
 setStatus("Ожидаем подключения","Введите своё имя и имя собеседника.","idle");
