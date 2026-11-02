@@ -191,7 +191,7 @@ async function hangup(){
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;
- setStatus("Звонок завершён","Чтобы позвонить снова, нажмите «Подключиться».","idle");
+ setStatus("Звонок завершён","Подписка на ваше имя остаётся активной. Чтобы позвонить снова, нажмите «Подключиться».","idle");
  scheduleIcePrewarm("hangup",true);
 }
 els.connect.addEventListener("click",connect);
