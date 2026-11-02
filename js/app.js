@@ -57,20 +57,34 @@ async function startRinging(kind){
   if(state.ringContext.state==="suspended")await state.ringContext.resume();
   if(state.ringingKind!==kind)return;
   if(state.ringContext.state!=="running"){debug("Звук звонка заблокирован браузером; используйте экранные кнопки.");return}
-  const duration=kind==="incoming"?1:2,cycle=kind==="incoming"?4:6;
+  const duration=2,cycle=6;
   const pulse=()=>{
    if(state.ringingKind!==kind)return;
    const now=state.ringContext.currentTime,nodes=[];
-   for(const frequency of [440,480]){
-    const oscillator=state.ringContext.createOscillator(),gain=state.ringContext.createGain();
-    oscillator.type="sine";oscillator.frequency.value=frequency;
-    gain.gain.setValueAtTime(0.0001,now);gain.gain.linearRampToValueAtTime(0.035,now+0.025);
-    gain.gain.setValueAtTime(0.035,now+duration-0.04);gain.gain.linearRampToValueAtTime(0.0001,now+duration);
-    oscillator.connect(gain);gain.connect(state.ringContext.destination);
-    oscillator.start(now);oscillator.stop(now+duration);nodes.push(oscillator);
+   if(kind==="incoming"){
+    // Короткая мелодия вместо телефонного гудка: четыре мягкие восходящие/нисходящие ноты.
+    const notes=[880,1175,988,784],step=0.28,noteDuration=0.22;
+    notes.forEach((frequency,index)=>{
+     const start=now+index*step,oscillator=state.ringContext.createOscillator(),gain=state.ringContext.createGain();
+     oscillator.type="triangle";oscillator.frequency.value=frequency;
+     gain.gain.setValueAtTime(0.0001,start);gain.gain.linearRampToValueAtTime(0.045,start+0.025);
+     gain.gain.setValueAtTime(0.045,start+noteDuration-0.04);gain.gain.linearRampToValueAtTime(0.0001,start+noteDuration);
+     oscillator.connect(gain);gain.connect(state.ringContext.destination);
+     oscillator.start(start);oscillator.stop(start+noteDuration);nodes.push(oscillator);
+    });
+    state.ringPulseTimer=setTimeout(pulse,3.2*1000);
+   }else{
+    for(const frequency of [440,480]){
+     const oscillator=state.ringContext.createOscillator(),gain=state.ringContext.createGain();
+     oscillator.type="sine";oscillator.frequency.value=frequency;
+     gain.gain.setValueAtTime(0.0001,now);gain.gain.linearRampToValueAtTime(0.035,now+0.025);
+     gain.gain.setValueAtTime(0.035,now+duration-0.04);gain.gain.linearRampToValueAtTime(0.0001,now+duration);
+     oscillator.connect(gain);gain.connect(state.ringContext.destination);
+     oscillator.start(now);oscillator.stop(now+duration);nodes.push(oscillator);
+    }
+    state.ringPulseTimer=setTimeout(pulse,cycle*1000);
    }
    state.ringOscillators=nodes;
-   state.ringPulseTimer=setTimeout(pulse,cycle*1000);
   };
   pulse();
  }catch(error){debug("Не удалось включить звук звонка: "+(error.message||String(error)));}
