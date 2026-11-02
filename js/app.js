@@ -161,6 +161,7 @@ async function connect(){
   state.callStarted=false;state.peerPresent=false;
   if(!NtfySecureSignaling.validName(me)||!NtfySecureSignaling.validName(peer)||me===peer)throw Error("Имена должны содержать 3–24 символа: a-z, 0-9, _ или -. Имена должны различаться.");
   localStorage.setItem("vl.last-name",me);localStorage.setItem("vl.last-peer",peer);
+  state.editingName=false;els.my.disabled=true;els.changeName.textContent="Сменить имя пользователя";
   if(state.secure&&state.secure.me!==me){state.secure.close();state.secure=null}
   if(!state.secure)state.secure=createSecureSignaling(me,peer);
   else state.secure.setPeer(peer);
@@ -208,7 +209,7 @@ els.changeName.addEventListener("click",async()=>{
  }
  const previous=localStorage.getItem("vl.last-name")||"";
  if(previous!==next&&state.secure){
-  if(state.peerPresent||state.callStarted)await hangup();
+  if(state.secure.active)await hangup();
   state.secure.close();state.secure=null;
  }
  localStorage.setItem("vl.last-name",next);
@@ -219,7 +220,7 @@ els.changeName.addEventListener("click",async()=>{
 });
 els.pilot.addEventListener("change",async()=>{
  debug("Диагностический pilot-сигнал "+(els.pilot.checked?"включён":"выключен")+". Настройка применяется при следующем подключении.");
- if(!state.secure&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
+ if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
 els.my.addEventListener("input",()=>scheduleIcePrewarm("input"));
 els.peer.addEventListener("input",()=>scheduleIcePrewarm("input"));
