@@ -10,7 +10,7 @@ const els={
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state")
 };
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -30,7 +30,7 @@ function updateCallButtons(){
  els.connect.disabled=active||state.connecting;
  els.connect.textContent=state.connecting?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";
  els.hangup.classList.toggle("hidden",!active);
- els.hangup.disabled=!active;
+ els.hangup.disabled=!active||state.hangingUp;
  els.dismissIncoming.disabled=state.connecting;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.my.disabled=value||!state.editingName;els.changeName.disabled=value;els.peer.disabled=value}
@@ -138,17 +138,35 @@ async function finishNoAnswer(){
  debug("Исходящий вызов истёк через 45 секунд; отменяющий POST не отправлялся.");
 }
 function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
+ const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
  return new WebRtcAudio({
   diagnosticPilot,
+  initiator:NtfySecureSignaling.validName(me)&&NtfySecureSignaling.validName(peer)&&me<peer,
+  onRemoteHangup:()=>handleRemoteHangup(),
   sendSignal:payload=>state.secure.sendSignal(payload),
   onRemoteStream:stream=>{els.audio.srcObject=stream;els.audio.play().catch(e=>debug("Не удалось включить удалённый звук: "+e.message))},
   onError:error=>showError(error.message||String(error)),
   onState:value=>{
    debug("WebRTC: "+value);
-   if(value==="connection-connected"){updateCallButtons();els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")}
-   else if(value==="connection-failed"||value==="ice-failed"){els.transport.textContent="WebRTC: соединение не установлено";setStatus("P2P не получилось","Сигнализация работает, но прямой аудиоканал не установился. TURN-сервер пока не настроен.","error")}
+   if(value==="connection-connected"){
+    if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
+    updateCallButtons();els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")
+   }
+   else if(value==="connection-failed"||value==="ice-failed"){
+    if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
+    els.transport.textContent="WebRTC: соединение не установлено";setStatus("P2P не получилось","Сигнализация работает, но прямой аудиоканал не установился. TURN-сервер пока не настроен.","error");
+    if(state.peerPresent&&!state.hangingUp)hangup({notifyPeer:false,failure:true})
+   }
    else if(value==="connection-connecting"||value==="ice-checking"||value==="ice-connected"||value==="ice-completed"){setStatus("Устанавливаем аудиосоединение","Проверяем сетевые маршруты между устройствами.","wait")}
-   else if(value==="connection-disconnected"||value==="ice-disconnected"){setStatus("Связь прервалась","WebRTC потерял сетевое соединение; ожидаем восстановления.","wait")}
+   else if(value==="connection-disconnected"||value==="ice-disconnected"){
+    setStatus("Связь прервалась","Даём WebRTC время восстановить соединение (15 секунд).","wait");
+    if(!state.disconnectTimer)state.disconnectTimer=setTimeout(()=>{
+     state.disconnectTimer=null;
+     if(state.webrtc?.pc?.connectionState==="disconnected"&&!state.hangingUp)hangup({notifyPeer:false,failure:true});
+    },15000)
+   }
+   else if(value==="control-open"){debug("P2P управляющий канал готов (RTCDataChannel).")}
+   else if(value==="control-closed"){debug("P2P управляющий канал закрыт.")}
   }
  });
 }
@@ -288,7 +306,10 @@ async function connect(){
 
   // Request microphone while the user-initiated Connect click is still active.
   // Do not wait for the asynchronous secure handshake before asking permission.
-  ensureWebRtc();
+  await ensureWebRtc();
+  // The answerer opens its microphone after the user's Answer click.
+  // The caller remains muted until ACCEPTED arrives over the P2P DataChannel.
+  state.webrtc.setMicEnabled(me>peer);
   try {
    await state.webrtc.ensureMedia();
   } catch(e) {
@@ -308,14 +329,31 @@ async function connect(){
  }
  finally{setBusy(false);els.pilot.disabled=!!state.webrtc}
 }
-async function hangup(){
+async function hangup({notifyPeer=true,remote=false,failure=false}={}){
+ if(state.hangingUp)return;
+ state.hangingUp=true;updateCallButtons();
+ if(notifyPeer&&state.peerPresent&&state.webrtc?.isControlOpen()){
+  setStatus("Завершаем звонок","Отправляем собеседнику P2P-уведомление и ждём подтверждение.","wait");
+  const acknowledged=await state.webrtc.sendHangup(1200);
+  debug(acknowledged?"P2P HANGUP подтверждён собеседником.":"Подтверждение HANGUP не получено за 1,2 секунды; закрываем локально.");
+ }else if(notifyPeer&&state.peerPresent){
+  debug("P2P DataChannel ещё не открыт; завершение выполняется локально без отдельного POST.");
+ }
  stopOutgoingCall();if(state.incomingCall)state.secure?.dismissIncoming();clearIncomingUi();stopRinging();
+ if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
  state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  els.audio.srcObject=null;els.pilot.disabled=false;els.transport.textContent="Не выбран";
- els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;updateCallButtons();
- setStatus("Звонок завершён","Подписка на ваше имя остаётся активной. Чтобы позвонить снова, нажмите «Подключиться».","idle");
+ els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;state.hangingUp=false;updateCallButtons();
+ if(remote)setStatus("Собеседник завершил звонок","Удалённая сторона отправила P2P-сообщение HANGUP; звонок завершён.","idle");
+ else if(failure)setStatus("Соединение потеряно","WebRTC не восстановил связь за отведённое время. Звонок завершён.","error");
+ else setStatus("Звонок завершён","Подписка на ваше имя остаётся активной. Чтобы позвонить снова, нажмите «Подключиться».","idle");
  scheduleIcePrewarm("hangup",true);
+}
+function handleRemoteHangup(){
+ if(state.hangingUp)return;
+ debug("Собеседник завершил звонок: получено HANGUP по RTCDataChannel.");
+ hangup({notifyPeer:false,remote:true});
 }
 els.connect.addEventListener("click",connect);
 els.dismissIncoming.addEventListener("click",()=>dismissIncoming(false));
