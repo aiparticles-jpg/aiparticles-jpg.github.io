@@ -27,7 +27,6 @@ export class WebRtcAudio {
     this.pc = null;
     this.localStream = null;
     this.outgoingStream = null;
-    this.audioContext = null;
     this.pilotOscillator = null;
     this.remoteAnalyser = null;
     this.remoteAnalyserBuffer = null;
