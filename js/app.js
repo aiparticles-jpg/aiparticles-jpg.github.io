@@ -66,8 +66,10 @@ async function subscribeForUser(me){
   await subscription.subscribe();
   debug("Фоновая подписка активна для имени "+me+". POST hello пока не отправлялся.");
  }catch(error){
-  showError(error.message||String(error));
-  setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");
+  if(state.secure===subscription){
+   showError(error.message||String(error));
+   setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");
+  }
  }
 }
 function scheduleIcePrewarm(reason="input",force=false){
