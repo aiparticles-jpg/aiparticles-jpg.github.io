@@ -172,7 +172,7 @@ export class NtfySecureSignaling {
   this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
   await this.publish(this.peer,await this.signed("hello",this.hello));
   this.onStatus("Запрос отправлен. Ожидаем "+this.peer+"…");
-  this.onDialing({peer:this.peer,expiresAt:this.hello.expiresAt});
+  if(!this.ready)this.onDialing({peer:this.peer,expiresAt:this.hello.expiresAt});
  }
  scheduleHelloRetry(delay){
   this.clearHelloRetry();
