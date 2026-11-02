@@ -12,7 +12,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});
-  this.es=null;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;
+  this.es=null;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -31,6 +31,7 @@ export class NtfySecureSignaling {
  }
  async publish(to,msg){
   const task=async()=>{
+   if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
    const wait=Math.max(0,this.lastPublishAt+1100-Date.now());
    if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
    this.onDebug(`[ntfy] POST → ${msg.type} (одна попытка)`);
@@ -39,6 +40,7 @@ export class NtfySecureSignaling {
    this.lastPublishAt=Date.now();
    if(r.ok)return;
    const retryAfter=r.headers.get("Retry-After");
+   if(r.status===429){this.rateLimited=true;this.clearHelloRetry();}
    throw Error("ntfy HTTP "+r.status+(r.status===429?"; сервер ограничил частоту запросов"+(retryAfter?"; Retry-After: "+retryAfter:""):""));
   };
   const result=this.publishQueue.then(task,task);
@@ -80,17 +82,31 @@ export class NtfySecureSignaling {
   if(this.role==="A"){
    try{await this.sendHello()}
    catch(err){this.onError(err)}
+   this.scheduleHelloRetry(5000);
   } else this.onStatus("Ожидаем запрос от "+this.peer+"…");
  }
  async sendHello(){
-  if(this.closed||this.ready||this.role!=="A")return;
+  if(this.closed||this.ready||this.rateLimited||this.role!=="A")return;
   if(!this.hello){
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
    this.hello={sid:b64u(crypto.getRandomValues(new Uint8Array(16))),from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16)))};
   }
+  this.helloAttempts++;
+  this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
   await this.publish(this.peer,await this.signed("hello",this.hello));
   this.onStatus("Запрос отправлен. Ожидаем "+this.peer+"…");
  }
+ scheduleHelloRetry(delay){
+  this.clearHelloRetry();
+  if(this.closed||this.ready||this.rateLimited||this.role!=="A"||this.helloAttempts>=3)return;
+  this.helloRetryTimer=setTimeout(async()=>{
+   this.helloRetryTimer=null;
+   if(this.closed||this.ready||this.rateLimited)return;
+   try{await this.sendHello()}catch(err){this.onError(err)}
+   this.scheduleHelloRetry(this.helloAttempts===2?10000:5000);
+  },delay);
+ }
+ clearHelloRetry(){if(this.helloRetryTimer!==null){clearTimeout(this.helloRetryTimer);this.helloRetryTimer=null}}
  async handle(event){
   const n=JSON.parse(event.data);if(!n.message||!n.id||this.seen.has(n.id))return;
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
@@ -144,7 +160,7 @@ export class NtfySecureSignaling {
   const material=await crypto.subtle.importKey("raw",shared,"HKDF",false,["deriveKey"]);
   const mk=dir=>crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt:hash,info:enc.encode("voice-link-v1|"+dir)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
   const [ab,ba]=await Promise.all([mk("A-to-B"),mk("B-to-A")]);
-  this.sendKey=this.role==="A"?ab:ba;this.recvKey=this.role==="A"?ba:ab;this.session=hello.sid;this.ready=true;
+  this.sendKey=this.role==="A"?ab:ba;this.recvKey=this.role==="A"?ba:ab;this.session=hello.sid;this.ready=true;this.clearHelloRetry();
   const pinned=await this.checkPinned(remote);
   if(pinned){this.confirmed=true;this.onReady({trusted:true,sas:this.sas});}
   else this.onVerify({sas:this.sas,peer:this.peer});
@@ -162,5 +178,5 @@ export class NtfySecureSignaling {
   const data=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:enc.encode(this.session+"|"+dir)},this.sendKey,plain);
   await this.publish(this.peer,{v:1,type:"data",payload:{sid:this.session,from:this.me,to:this.peer,iv:b64u(iv),data:b64u(data)}});
  }
- close(){this.closed=true;if(this.es){const before=this.es.readyState;this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван; readyState(before)=${before}`);this.es.close();this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() завершён; readyState(after)=${this.es.readyState}`)}else this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван без EventSource`);}
+ close(){this.closed=true;this.clearHelloRetry();if(this.es){const before=this.es.readyState;this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван; readyState(before)=${before}`);this.es.close();this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() завершён; readyState(after)=${this.es.readyState}`)}else this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван без EventSource`);}
 }
