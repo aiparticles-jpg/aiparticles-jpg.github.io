@@ -12,7 +12,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -49,6 +49,15 @@ export class NtfySecureSignaling {
  }
  async signed(type,payload){return {v:1,type,payload,sig:await this.sign({type,payload})}}
  async subscribe(){
+  if(this.es&&this.es.readyState===EventSource.OPEN)return;
+  if(this.subscribePromise)return this.subscribePromise;
+  if(this.es&&this.sseReadyPromise)return this.sseReadyPromise;
+  const task=this.openSubscription();
+  this.subscribePromise=task;
+  try{await task}
+  finally{if(this.subscribePromise===task)this.subscribePromise=null}
+ }
+ async openSubscription(){
   this.onDebug(`[SSE ${this.debugId}] subscribe() вызван`);
   if(!validName(this.me))throw Error("Имя пользователя: 3–24 символа, латинские буквы, цифры, _ или -.");
   if(!crypto.subtle||!window.isSecureContext)throw Error("Для защищённого соединения нужен браузер с Web Crypto и HTTPS.");
@@ -57,7 +66,9 @@ export class NtfySecureSignaling {
    if(this.sseReadyPromise)return this.sseReadyPromise;
   }
   this.identity=await this.loadIdentity();
+  if(this.closed)throw Error("Открытие подписки отменено.");
   const url=BASE+await this.topic(this.me)+"/sse";
+  if(this.closed)throw Error("Открытие подписки отменено.");
   const es=new EventSource(url);this.es=es;
   let settled=false;
   const createdAt=performance.now();let lastOpenAt=null;
