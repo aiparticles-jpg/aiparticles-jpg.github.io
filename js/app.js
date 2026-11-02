@@ -3,14 +3,14 @@ import { NtfySecureSignaling } from "./ntfy-signaling.js?v=9";
 
 const $=id=>document.getElementById(id);
 const els={
- my:$("my-name"),peer:$("peer-name"),connect:$("connect"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
+ my:$("my-name"),changeName:$("change-name"),peer:$("peer-name"),connect:$("connect"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state")
 };
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -24,7 +24,7 @@ function setStatus(title,text,kind="idle"){
 }
 function showError(message){els.error.textContent=message;els.error.classList.remove("hidden");debug("ОШИБКА: "+message)}
 function clearError(){els.error.textContent="";els.error.classList.add("hidden")}
-function setBusy(value){state.connecting=value;els.connect.disabled=value;els.connect.textContent=value?"Подключаемся…":"Подключиться";els.my.disabled=value;els.peer.disabled=value}
+function setBusy(value){state.connecting=value;els.connect.disabled=value;els.connect.textContent=value?"Подключаемся…":"Подключиться";els.my.disabled=value||!state.editingName;els.changeName.disabled=value;els.peer.disabled=value}
 function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
  return new WebRtcAudio({
   diagnosticPilot,
@@ -43,6 +43,33 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
 async function ensureWebRtc(){
  if(!state.webrtc)state.webrtc=createWebRtcInstance();
 }
+function createSecureSignaling(me,peer=""){
+ return new NtfySecureSignaling({
+  me,peer,
+  onSignal:handleSignal,
+  onStatus:m=>{els.statusText.textContent=m;debug(m)},
+  onVerify:({sas,peer:name})=>{els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+name+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
+  onReady:info=>onSecureReady(info).catch(showError),
+  onError:e=>showError(e.message||String(e)),
+  onDebug:debug
+ });
+}
+async function subscribeForUser(me){
+ if(!NtfySecureSignaling.validName(me))return;
+ if(state.secure&&state.secure.me===me&&state.secure.es)return;
+ if(state.secure){state.secure.close();state.secure=null}
+ const subscription=createSecureSignaling(me);
+ state.secure=subscription;
+ els.debugUrl.textContent="https://ntfy.sh/ · "+me;
+ setStatus("Подписываемся на ntfy","Открываем постоянный канал входящих сообщений для "+me+".","wait");
+ try{
+  await subscription.subscribe();
+  debug("Фоновая подписка активна для имени "+me+". POST hello пока не отправлялся.");
+ }catch(error){
+  showError(error.message||String(error));
+  setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");
+ }
+}
 function scheduleIcePrewarm(reason="input",force=false){
  if(state.prewarmTimer)clearTimeout(state.prewarmTimer);
  state.prewarmTimer=setTimeout(async()=>{
@@ -51,7 +78,7 @@ function scheduleIcePrewarm(reason="input",force=false){
   const names=me+"|"+peer;
   const eligible=NtfySecureSignaling.validName(me)&&NtfySecureSignaling.validName(peer)&&
    me!==peer&&me<peer&&!els.pilot.checked&&navigator.onLine;
-  if(state.connecting||state.secure||state.callStarted)return;
+  if(state.connecting||state.secure?.active||state.callStarted)return;
   if(!eligible){
    if(state.webrtc?.prewarmed){
     const old=state.webrtc;state.webrtc=null;state.prewarmNames=null;
@@ -73,7 +100,7 @@ function scheduleIcePrewarm(reason="input",force=false){
     debug("Предварительная подготовка ICE начата (причина: "+reason+"; без микрофона и без ntfy).");
     const count=await candidate.prepareIce();
     const latestMe=els.my.value.trim().toLowerCase(),latestPeer=els.peer.value.trim().toLowerCase();
-    const stillEligible=!state.secure&&!state.callStarted&&!els.pilot.checked&&navigator.onLine&&
+    const stillEligible=!state.secure?.active&&!state.callStarted&&!els.pilot.checked&&navigator.onLine&&
      latestMe+"|"+latestPeer===names&&latestMe<latestPeer;
     if(!stillEligible){
      await candidate.close({stopTracks:true});
@@ -127,7 +154,6 @@ async function startWebRtcOffer(){
 async function connect(){
  clearError();els.verify.classList.add("hidden");setBusy(true);
  try{
-  if(state.secure)state.secure.close();
   const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
   if(state.prewarmPromise&&(state.prewarmTargetNames===me+"|"+peer||state.prewarmNames===me+"|"+peer)){try{await state.prewarmPromise}catch{}}
   const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer&&!els.pilot.checked);
@@ -135,16 +161,9 @@ async function connect(){
   state.callStarted=false;state.peerPresent=false;
   if(!NtfySecureSignaling.validName(me)||!NtfySecureSignaling.validName(peer)||me===peer)throw Error("Имена должны содержать 3–24 символа: a-z, 0-9, _ или -. Имена должны различаться.");
   localStorage.setItem("vl.last-name",me);localStorage.setItem("vl.last-peer",peer);
-  setStatus("Подключаемся к ntfy","Открываем канал обнаружения собеседника.","wait");
-  state.secure=new NtfySecureSignaling({
-   me,peer,
-   onSignal:handleSignal,
-   onStatus:m=>{els.statusText.textContent=m;debug(m)},
-   onVerify:({sas,peer:name})=>{els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+name+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
-   onReady:info=>onSecureReady(info).catch(showError),
-   onError:e=>showError(e.message||String(e)),
-   onDebug:debug
-  });
+  if(state.secure&&state.secure.me!==me){state.secure.close();state.secure=null}
+  if(!state.secure)state.secure=createSecureSignaling(me,peer);
+  else state.secure.setPeer(peer);
   els.debugUrl.textContent="https://ntfy.sh/ · "+me;
 
   // Request microphone while the user-initiated Connect click is still active.
@@ -161,13 +180,13 @@ async function connect(){
  }catch(e){
   showError(e.message||String(e));
   setStatus("Не удалось подключиться","Проверьте разрешения и попробуйте снова.","error");
-  if(state.secure){state.secure.close();state.secure=null}
+  if(state.secure)state.secure.resetSession();
   if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  }
  finally{setBusy(false);els.pilot.disabled=!!state.webrtc}
 }
 async function hangup(){
- state.secure?.close();state.secure=null;
+ state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;
@@ -175,6 +194,29 @@ async function hangup(){
  scheduleIcePrewarm("hangup",true);
 }
 els.connect.addEventListener("click",connect);
+els.changeName.addEventListener("click",async()=>{
+ if(!state.editingName){
+  state.editingName=true;els.my.disabled=false;els.my.focus();
+  els.changeName.textContent="Сохранить имя";
+  debug("Режим смены имени пользователя.");
+  return;
+ }
+ const next=els.my.value.trim().toLowerCase();
+ if(!NtfySecureSignaling.validName(next)){
+  showError("Имя пользователя должно содержать 3–24 символа: a-z, 0-9, _ или -.");
+  return;
+ }
+ const previous=localStorage.getItem("vl.last-name")||"";
+ if(previous!==next&&state.secure){
+  if(state.peerPresent||state.callStarted)await hangup();
+  state.secure.close();state.secure=null;
+ }
+ localStorage.setItem("vl.last-name",next);
+ state.editingName=false;els.my.disabled=true;els.changeName.textContent="Сменить имя пользователя";
+ clearError();
+ if(previous!==next||!state.secure)await subscribeForUser(next);
+ else setStatus("Подписка активна","Вы подписаны на входящие сообщения для "+next+".","idle");
+});
 els.pilot.addEventListener("change",async()=>{
  debug("Диагностический pilot-сигнал "+(els.pilot.checked?"включён":"выключен")+". Настройка применяется при следующем подключении.");
  if(!state.secure&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
@@ -209,5 +251,9 @@ els.tcp.classList.add("hidden");
 els.pilot.checked=false;
 els.my.value=localStorage.getItem("vl.last-name")||"";
 els.peer.value=localStorage.getItem("vl.last-peer")||"";
-setStatus("Ожидаем подключения","Введите своё имя и имя собеседника.","idle");
+state.editingName=!NtfySecureSignaling.validName(els.my.value.trim().toLowerCase());
+els.my.disabled=!state.editingName;
+els.changeName.textContent=state.editingName?"Сохранить имя":"Сменить имя пользователя";
+setStatus("Ожидаем подключения","Введите имя собеседника.","idle");
+if(!state.editingName)subscribeForUser(els.my.value.trim().toLowerCase());
 scheduleIcePrewarm();
