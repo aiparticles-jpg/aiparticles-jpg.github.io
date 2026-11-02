@@ -306,7 +306,7 @@ export class NtfySecureSignaling {
    if(this.ready)return;
    if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись собеседника недействительна.");
    await this.checkPinned(p.identity);
-   if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid))return;
+   if(this.cancelledSids.has(p.sid))return;
    const pendingCancel=this.pendingCancels.get(p.sid);
    if(pendingCancel){
     this.pendingCancels.delete(p.sid);this.incomingSid=p.sid;this.incomingIdentity=p.identity;
