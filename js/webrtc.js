@@ -7,6 +7,23 @@ export class WebRtcAudio {
     this.onState = onState || (() => {});
     this.onError = onError || (() => {});
     this.diagnosticPilot = diagnosticPilot;
+    this.audioContext = null;
+    this.audioContextResumePromise = null;
+    // Create/resume the context while Connect is still running in the user's click
+    // activation. The remote peer may answer much later, after autoplay activation expires.
+    if (this.diagnosticPilot) {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          this.audioContext = new AudioContextClass({ latencyHint: "interactive" });
+          if (this.audioContext.state === "suspended") {
+            this.audioContextResumePromise = this.audioContext.resume().catch(() => {});
+          }
+        }
+      } catch (error) {
+        this.onState("AUDIO PILOT: AudioContext init error: " + error.message);
+      }
+    }
     this.pc = null;
     this.localStream = null;
     this.outgoingStream = null;
@@ -51,10 +68,9 @@ export class WebRtcAudio {
 
     try {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass || !window.MediaStreamAudioDestinationNode) {
-        throw new Error("Web Audio API / MediaStream destination недоступны");
-      }
-      this.audioContext = new AudioContextClass({ latencyHint: "interactive" });
+      if (!AudioContextClass) throw new Error("Web Audio API недоступен");
+      if (!this.audioContext) this.audioContext = new AudioContextClass({ latencyHint: "interactive" });
+      if (this.audioContextResumePromise) await this.audioContextResumePromise;
       if (this.audioContext.state === "suspended") await this.audioContext.resume();
 
       const destination = this.audioContext.createMediaStreamDestination();
