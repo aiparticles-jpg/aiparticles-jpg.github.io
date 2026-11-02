@@ -11,8 +11,8 @@
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
 #my-name,#peer-name{text-transform:lowercase}
 .join-row .button{width:190px;flex:0 0 190px}
-#connect,#dismiss-incoming{width:145px;flex:0 0 145px}
-@media (max-width:520px){.join-row .button{width:100%;flex:0 0 auto}#connect,#dismiss-incoming{width:100%;flex:0 0 auto}}
+#connect,#hangup,#dismiss-incoming{width:145px;flex:0 0 145px}
+@media (max-width:520px){.join-row .button{width:100%;flex:0 0 auto}#connect,#hangup,#dismiss-incoming{width:100%;flex:0 0 auto}}
 </style></head>
 <body>
   <main class="shell">
@@ -39,6 +39,7 @@
         <input id="peer-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="например ivan">
         <button id="connect" class="button button-secondary" type="button">Подключиться</button>
         <button id="dismiss-incoming" class="button button-danger hidden" type="button">Скрыть вызов</button>
+        <button id="hangup" class="button button-danger hidden" type="button" disabled>Завершить звонок</button>
       </div>
       <p class="hint">Оба участника вводят свои имена и имена друг друга. Имя — это адрес для поиска, а криптографическая идентичность создаётся отдельно в каждом браузере.</p>
       <button id="reset-peer" class="button button-secondary reset-peer" type="button">Сбросить сопряжение с этим собеседником</button>
@@ -74,7 +75,6 @@
 
       <div class="actions">
         <button id="tcp-fallback" class="button button-secondary hidden" type="button" disabled>TCP-аудио недоступно</button>
-        <button id="hangup" class="button button-danger" type="button" disabled>Завершить звонок</button>
       </div>
       <label class="diagnostic-toggle"><input id="diagnostic-pilot" type="checkbox"> <span><strong>Контрольный аудиосигнал</strong><small>Диагностический режим: тихий тон 997 Гц добавляется к микрофону и проверяется на другом устройстве. Оба участника должны включить режим; тон будет слышен во время звонка.</small></span></label>
       <audio id="remote-audio" autoplay playsinline></audio>
@@ -91,10 +91,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.03-21</span>
+      <span id="app-version">Версия 2026.11.03-22</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=27"></script>
+  <script type="module" src="./js/app.js?v=28"></script>
 </body>
 </html>
