@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=14";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=15";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=16";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -187,6 +187,9 @@ function createSecureSignaling(me,peer=""){
   onSignal:handleSignal,
   onStatus:m=>{els.statusText.textContent=m;debug(m)},
   onIncoming:showIncomingCall,
+  onCancelIncoming:info=>{
+   if(state.incomingCall){clearIncomingUi();stopRinging();state.secure?.dismissIncoming();setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");}
+  },
   onDialing:info=>{if(!state.answeringCall)startOutgoingCall(info)},
   onVerify:({sas,peer:name})=>{stopOutgoingCall();clearIncomingUi();stopRinging();els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+name+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
   onReady:info=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady(info).catch(showError)},
@@ -343,6 +346,11 @@ async function connect(){
 async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  if(state.hangingUp)return;
  state.hangingUp=true;updateCallButtons();
+ if(notifyPeer&&state.outgoingCall&&state.secure?.role==="B"){
+  setStatus("Отменяем вызов","Уведомляем собеседника через ntfy.","wait");
+  try{const sent=await state.secure.cancelCall();debug(sent?"Отмена исходящего вызова отправлена через ntfy.":"У исходящего вызова не найден активный запрос для отмены.");}
+  catch(error){debug("Не удалось отправить отмену через ntfy: "+(error.message||String(error)));}
+ }
  if(notifyPeer&&state.peerPresent&&state.webrtc?.isControlOpen()){
   setStatus("Завершаем звонок","Отправляем собеседнику P2P-уведомление и ждём подтверждение.","wait");
   const acknowledged=await state.webrtc.sendHangup(1200);
