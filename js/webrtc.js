@@ -238,20 +238,46 @@ export class WebRtcAudio {
       const describe = candidate => {
         if (!candidate) return "unknown";
         const parts = [(candidate.candidateType || "?") + "/" + (candidate.protocol || "?")];
-        if (candidate.address) parts.push(candidate.address + (candidate.port ? ":" + candidate.port : ""));
-        if (candidate.relatedAddress) parts.push("related=" + candidate.relatedAddress +
-          (candidate.relatedPort ? ":" + candidate.relatedPort : ""));
+        const address = candidate.address || candidate.ip;
+        if (address) {
+          parts.push(address + (Number.isFinite(candidate.port) ? ":" + candidate.port : ""));
+        } else {
+          parts.push("address=n/a" + (Number.isFinite(candidate.port) ? " port=" + candidate.port : ""));
+        }
+        if (candidate.relatedAddress || Number.isFinite(candidate.relatedPort)) {
+          parts.push("related=" + (candidate.relatedAddress || "n/a") +
+            (Number.isFinite(candidate.relatedPort) ? ":" + candidate.relatedPort : ""));
+        }
         if (candidate.relayProtocol) parts.push("relay=" + candidate.relayProtocol);
         if (candidate.tcpType) parts.push("tcpType=" + candidate.tcpType);
+        if (candidate.networkType) parts.push("network=" + candidate.networkType);
+        if (candidate.url) parts.push("server=" + candidate.url);
         return parts.join(" ");
       };
       const rtt = Number.isFinite(pair.currentRoundTripTime)
         ? Math.round(pair.currentRoundTripTime * 1000) + " ms" : "n/a";
       const sent = Number.isFinite(pair.bytesSent) ? pair.bytesSent : "?";
       const received = Number.isFinite(pair.bytesReceived) ? pair.bytesReceived : "?";
+      const route = local && remote
+        ? (local.candidateType === "relay" || remote.candidateType === "relay" ? "TURN relay" : "direct (no TURN)")
+        : "route unknown";
+      const pairFields = ["state=" + (pair.state || "?"), "route=" + route];
+      for (const [field, label] of [
+        ["requestsSent", "requests"],
+        ["responsesReceived", "responses"],
+        ["consentRequestsSent", "consent"]
+      ]) {
+        if (Number.isFinite(pair[field])) pairFields.push(label + "=" + pair[field]);
+      }
+      if (Number.isFinite(pair.availableOutgoingBitrate)) {
+        pairFields.push("available-out=" + Math.round(pair.availableOutgoingBitrate / 1000) + "kbps");
+      }
+      if (Number.isFinite(pair.availableIncomingBitrate)) {
+        pairFields.push("available-in=" + Math.round(pair.availableIncomingBitrate / 1000) + "kbps");
+      }
       this.onState("ICE pair [" + trigger + "]: local " + describe(local) +
-        " ↔ remote " + describe(remote) + "; RTT=" + rtt +
-        "; bytes sent/received=" + sent + "/" + received);
+        " ↔ remote " + describe(remote) + "; " + pairFields.join("; ") +
+        "; RTT=" + rtt + "; bytes sent/received=" + sent + "/" + received);
     } catch (error) {
       this.onState("ICE pair [" + trigger + "]: getStats error: " + error.message);
     }
