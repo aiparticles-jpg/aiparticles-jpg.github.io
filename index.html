@@ -76,6 +76,7 @@
         <button id="tcp-fallback" class="button button-secondary hidden" type="button" disabled>TCP-аудио недоступно</button>
         <button id="hangup" class="button button-danger" type="button" disabled>Завершить звонок</button>
       </div>
+      <label class="diagnostic-toggle"><input id="diagnostic-pilot" type="checkbox"> <span><strong>Контрольный аудиосигнал</strong><small>Диагностический режим: тихий тон 997 Гц добавляется к микрофону и проверяется на другом устройстве. Оба участника должны включить режим; тон будет слышен во время звонка.</small></span></label>
       <audio id="remote-audio" autoplay playsinline></audio>
       <p id="error-message" class="error-message hidden" role="alert"></p>
 
@@ -90,10 +91,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.02-9</span>
+      <span id="app-version">Версия 2026.11.02-10</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=16"></script>
+  <script type="module" src="./js/app.js?v=17"></script>
 </body>
 </html>
