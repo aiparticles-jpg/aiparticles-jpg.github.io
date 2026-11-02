@@ -116,6 +116,7 @@ export class NtfySecureSignaling {
   if(m.type==="hello"&&this.role==="B"){
    if(this.hello){
     if(p.sid===this.hello.sid&&this.answer&&Date.now()-this.lastAnswerAt>=10000){
+     this.onDebug("[signaling] answer resend after repeated hello");
      await this.publish(this.peer,await this.signed("answer",this.answer));
      this.lastAnswerAt=Date.now();
     }
@@ -128,9 +129,12 @@ export class NtfySecureSignaling {
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
    const answer={sid:p.sid,from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
    this.answer=answer;
+   // Derive before publishing: if the POST fails transiently, a repeated hello
+   // can resend this same cached answer without leaving the receiver uninitialized.
+   await this.derive(p,answer);
+   this.onDebug("[signaling] answer attempt 1 (initial)");
    await this.publish(this.peer,await this.signed("answer",answer));
-   this.lastAnswerAt=Date.now();
-   await this.derive(p,answer);return;
+   this.lastAnswerAt=Date.now();return;
   }
   if(m.type==="answer"&&this.role==="A"&&!this.ready){
    if(!this.hello||p.sid!==this.hello.sid||p.helloEph!==this.hello.eph||p.helloNonce!==this.hello.nonce)return;
