@@ -12,7 +12,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});
-  this.es=null;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;
+  this.es=null;this.sseReadyPromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -48,42 +48,65 @@ export class NtfySecureSignaling {
   return result;
  }
  async signed(type,payload){return {v:1,type,payload,sig:await this.sign({type,payload})}}
- async start(){
-  this.onDebug(`[SSE ${this.debugId}] start() вызван`);
-  if(!validName(this.me)||!validName(this.peer)||this.me===this.peer)throw Error("Имена: 3–24 символа, латинские буквы, цифры, _ или -. Имена должны различаться.");
+ async subscribe(){
+  this.onDebug(`[SSE ${this.debugId}] subscribe() вызван`);
+  if(!validName(this.me))throw Error("Имя пользователя: 3–24 символа, латинские буквы, цифры, _ или -.");
   if(!crypto.subtle||!window.isSecureContext)throw Error("Для защищённого соединения нужен браузер с Web Crypto и HTTPS.");
+  if(this.es){
+   if(this.es.readyState===EventSource.OPEN)return;
+   if(this.sseReadyPromise)return this.sseReadyPromise;
+  }
   this.identity=await this.loadIdentity();
   const url=BASE+await this.topic(this.me)+"/sse";
-  await new Promise((resolve,reject)=>{
-   const es=new EventSource(url);this.es=es;let settled=false;
-   const createdAt=performance.now();let lastOpenAt=null;
-   const elapsed=()=>Math.round(performance.now()-createdAt);
-   const stateName=()=>es.readyState===EventSource.CONNECTING?"CONNECTING":es.readyState===EventSource.OPEN?"OPEN":es.readyState===EventSource.CLOSED?"CLOSED":String(es.readyState);
-   this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} CREATED; t=+0ms; readyState=${es.readyState} (${stateName()})`);
+  const es=new EventSource(url);this.es=es;
+  let settled=false;
+  const createdAt=performance.now();let lastOpenAt=null;
+  const elapsed=()=>Math.round(performance.now()-createdAt);
+  const stateName=()=>es.readyState===EventSource.CONNECTING?"CONNECTING":es.readyState===EventSource.OPEN?"OPEN":es.readyState===EventSource.CLOSED?"CLOSED":String(es.readyState);
+  this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} CREATED; t=+0ms; readyState=${es.readyState} (${stateName()})`);
+  const ready=new Promise((resolve,reject)=>{
+   const timeout=setTimeout(()=>{if(!settled){settled=true;reject(Error("Тайм-аут подключения к ntfy"))}},15000);
    es.onopen=()=>{
     const now=performance.now(),sincePrevious=lastOpenAt===null?"—":Math.round(now-lastOpenAt)+"ms";
     this.sseOpenCount++;
     this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} OPEN #${this.sseOpenCount}; since-create=+${elapsed()}ms; since-prev-open=${sincePrevious}; readyState(before)=${es.readyState} (${stateName()})`);
     lastOpenAt=now;
-    if(!settled){settled=true;resolve()}
-    this.onStatus("Канал ntfy подключён. Ищем собеседника…");
+    if(!settled){settled=true;clearTimeout(timeout);resolve()}
+    this.onStatus(this.active?"Канал ntfy подключён. Ищем собеседника…":"Подписка ntfy активна. Можно подключаться.");
     this.onDebug(`[SSE ${this.debugId}] OPEN #${this.sseOpenCount} handler завершён; readyState(after)=${es.readyState} (${stateName()})`);
    };
    es.onerror=event=>{
     this.sseErrorCount++;
     this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} ERROR #${this.sseErrorCount}; since-create=+${elapsed()}ms; readyState(before)=${es.readyState} (${stateName()}); event=${event.type}; trusted=${event.isTrusted}`);
     this.onStatus("Канал ntfy переподключается…");
-    if(!settled){settled=true;reject(Error("Не удалось подключиться к ntfy"))}
+    if(!settled){settled=true;clearTimeout(timeout);reject(Error("Не удалось подключиться к ntfy"))}
     this.onDebug(`[SSE ${this.debugId}] ERROR #${this.sseErrorCount} handler завершён; readyState(after)=${es.readyState} (${stateName()})`);
    };
    es.onmessage=e=>this.handle(e).catch(err=>this.onError(err));
-   setTimeout(()=>{if(!settled){settled=true;reject(Error("Тайм-аут подключения к ntfy"))}},15000);
   });
+  this.sseReadyPromise=ready;
+  try{await ready}
+  catch(error){if(this.es===es){es.close();this.es=null;this.sseReadyPromise=null}throw error}
+ }
+ async start(){
+  this.onDebug(`[SSE ${this.debugId}] start() вызван`);
+  if(!validName(this.me)||!validName(this.peer)||this.me===this.peer)throw Error("Имена: 3–24 символа, латинские буквы, цифры, _ или -. Имена должны различаться.");
+  await this.subscribe();
+  this.active=true;
   if(this.role==="A"){
-   try{await this.sendHello()}
-   catch(err){this.onError(err)}
+   try{await this.sendHello()}catch(err){this.onError(err)}
    this.scheduleHelloRetry(5000);
   } else this.onStatus("Ожидаем запрос от "+this.peer+"…");
+ }
+ setPeer(peer){
+  if(!validName(peer)||peer===this.me)throw Error("Имя собеседника должно содержать 3–24 символа и отличаться от вашего имени.");
+  this.resetSession();this.peer=peer;this.role=this.me<peer?"A":"B";
+ }
+ resetSession(){
+  this.active=false;this.clearHelloRetry();
+  this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;
+  this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.peerJwk=null;
+  this.pendingSignals=[];this.rateLimited=false;this.helloAttempts=0;
  }
  async sendHello(){
   if(this.closed||this.ready||this.rateLimited||this.role!=="A")return;
@@ -108,6 +131,7 @@ export class NtfySecureSignaling {
  }
  clearHelloRetry(){if(this.helloRetryTimer!==null){clearTimeout(this.helloRetryTimer);this.helloRetryTimer=null}}
  async handle(event){
+  if(!this.active)return;
   const n=JSON.parse(event.data);if(!n.message||!n.id||this.seen.has(n.id))return;
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
   let m;try{m=JSON.parse(n.message)}catch{return}
@@ -182,5 +206,5 @@ export class NtfySecureSignaling {
   const data=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:enc.encode(this.session+"|"+dir)},this.sendKey,plain);
   await this.publish(this.peer,{v:1,type:"data",payload:{sid:this.session,from:this.me,to:this.peer,iv:b64u(iv),data:b64u(data)}});
  }
- close(){this.closed=true;this.clearHelloRetry();if(this.es){const before=this.es.readyState;this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван; readyState(before)=${before}`);this.es.close();this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() завершён; readyState(after)=${this.es.readyState}`)}else this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван без EventSource`);}
+ close(){this.closed=true;this.active=false;this.clearHelloRetry();if(this.es){const before=this.es.readyState;this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван; readyState(before)=${before}`);this.es.close();this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() завершён; readyState(after)=${this.es.readyState}`)}else this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван без EventSource`);}
 }
