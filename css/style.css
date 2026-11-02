@@ -120,3 +120,26 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
   color: #c8d6e8;
   font: 11px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
+
+.diagnostic-toggle {
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin-top:16px;
+  padding:13px;
+  border:1px solid rgba(139,224,194,.22);
+  border-radius:11px;
+  background:rgba(139,224,194,.045);
+  cursor:pointer;
+}
+.diagnostic-toggle input {
+  width:18px;
+  min-width:18px;
+  height:18px;
+  margin:2px 0 0;
+  accent-color:var(--accent);
+}
+.diagnostic-toggle span { display:flex; flex-direction:column; gap:5px; }
+.diagnostic-toggle strong { color:var(--text); font-size:12px; }
+.diagnostic-toggle small { color:var(--muted); font-size:10px; line-height:1.5; }
+.diagnostic-toggle input:disabled { opacity:.5; }
