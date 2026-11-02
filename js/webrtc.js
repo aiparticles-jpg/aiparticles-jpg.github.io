@@ -25,6 +25,11 @@ export class WebRtcAudio {
       }
     }
     this.pc = null;
+    this.audioSender = null;
+    this.prewarmed = false;
+    this.prewarmStartedAt = 0;
+    this.signalEnabled = false;
+    this.pendingLocalCandidates = [];
     this.localStream = null;
     this.outgoingStream = null;
     this.pilotOscillator = null;
@@ -139,20 +144,39 @@ export class WebRtcAudio {
     return Number.isFinite(peak) ? peak : null;
   }
 
-  async createPeerConnection() {
-    if (this.pc) return this.pc;
-    const stream = await this.prepareOutgoingStream();
+  async createPeerConnection({ prewarm = false } = {}) {
+    if (this.pc) {
+      if (!prewarm && this.audioSender && !this.audioSender.track && this.localStream) {
+        const stream = await this.prepareOutgoingStream();
+        const track = stream.getAudioTracks()[0];
+        if (track) await this.audioSender.replaceTrack(track);
+      }
+      return this.pc;
+    }
+    const stream = prewarm ? null : await this.prepareOutgoingStream();
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: STUN_URL }],
       iceTransportPolicy: "all"
     });
-
-    for (const track of stream.getAudioTracks()) pc.addTrack(track, stream);
-
+    if (prewarm) {
+      this.audioSender = pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
+      this.prewarmed = true;
+      this.prewarmStartedAt = Date.now();
+      this.signalEnabled = false;
+    } else {
+      for (const track of stream.getAudioTracks()) this.audioSender = pc.addTrack(track, stream);
+      this.signalEnabled = true;
+    }
     pc.onicecandidate = async event => {
       if (event.candidate) {
+        const candidate = event.candidate.toJSON();
+        if (!this.signalEnabled) {
+          this.pendingLocalCandidates.push(candidate);
+          this.onState("ICE candidate собран заранее и сохранён локально.");
+          return;
+        }
         try {
-          await this.sendSignal({ candidate: event.candidate.toJSON() });
+          await this.sendSignal({ candidate });
         } catch (error) {
           this.onError(new Error("Не удалось передать ICE-кандидат: " + error.message));
         }
@@ -348,8 +372,50 @@ export class WebRtcAudio {
     }
   }
 
+  async prepareIce() {
+    const pc = await this.createPeerConnection({ prewarm: true });
+    if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
+    if (pc.iceGatheringState !== "complete") {
+      await new Promise(resolve => {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          pc.removeEventListener("icegatheringstatechange", check);
+          resolve();
+        };
+        const check = () => { if (pc.iceGatheringState === "complete") finish(); };
+        const timer = setTimeout(finish, 10000);
+        pc.addEventListener("icegatheringstatechange", check);
+        check();
+      });
+    }
+    this.onState("ICE предварительно подготовлен; кандидатов: " + this.pendingLocalCandidates.length);
+    return this.pendingLocalCandidates.length;
+  }
+
+  isPrewarmed() {
+    return this.prewarmed && !!this.pc && !!this.pc.localDescription &&
+      Date.now() - this.prewarmStartedAt < 60000;
+  }
+
+  async activatePreparedOffer() {
+    if (!this.isPrewarmed()) return false;
+    const stream = await this.prepareOutgoingStream();
+    const track = stream.getAudioTracks()[0];
+    if (track && this.audioSender) await this.audioSender.replaceTrack(track);
+    this.signalEnabled = true;
+    await this.sendSignal({ description: this.pc.localDescription });
+    const candidates = this.pendingLocalCandidates.splice(0);
+    for (const candidate of candidates) await this.sendSignal({ candidate });
+    this.onState("Предварительно собранный ICE offer отправлен; кандидатов: " + candidates.length);
+    return true;
+  }
+
   async createOffer() {
     const pc = await this.createPeerConnection();
+    if (this.prewarmed && await this.activatePreparedOffer()) return;
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await this.sendSignal({ description: pc.localDescription });
@@ -406,7 +472,12 @@ export class WebRtcAudio {
       this.audioContext = null;
     }
     this.pendingCandidates = [];
+    this.pendingLocalCandidates = [];
     this.remoteDescriptionSet = false;
+    this.audioSender = null;
+    this.prewarmed = false;
+    this.prewarmStartedAt = 0;
+    this.signalEnabled = false;
     if (stopTracks && this.localStream) {
       this.localStream.getTracks().forEach(track => track.stop());
       this.localStream = null;
