@@ -31,6 +31,14 @@ function stopRinging(){
  for(const oscillator of state.ringOscillators){try{oscillator.stop()}catch{}}
  state.ringOscillators=[];
 }
+function unlockRingingAudio(){
+ try{
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)return;
+  if(!state.ringContext)state.ringContext=new AudioContextClass();
+  if(state.ringContext.state==="suspended")state.ringContext.resume().catch(error=>debug("Браузер не разрешил звук: "+error.message));
+ }catch(error){debug("Не удалось подготовить звук звонка: "+error.message)}
+}
 async function startRinging(kind){
  stopRinging();state.ringingKind=kind;
  try{
@@ -62,15 +70,17 @@ function clearIncomingUi(){
  if(state.incomingTimer){clearTimeout(state.incomingTimer);state.incomingTimer=null}
  state.incomingCall=false;els.dismissIncoming.classList.add("hidden");els.connect.textContent=state.connecting?"Подключаемся…":"Подключиться";
 }
-function showIncomingCall({peer,expiresAt}){
+function showIncomingCall({peer,expiresAt,trusted=true}){
  if(state.connecting||state.callStarted||state.outgoingCall||state.incomingCall)return;
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
  state.incomingCall=true;els.connect.disabled=false;els.connect.textContent="Ответить";
  els.dismissIncoming.classList.remove("hidden");els.dismissIncoming.disabled=false;
- setStatus("Входящий вызов","Вам звонит "+peer+". Нажмите «Ответить» или «Скрыть вызов».","wait");
- debug("Входящий вызов от подтверждённого устройства "+peer+".");
- startRinging("incoming");
+ const description=trusted
+  ?"Вам звонит "+peer+". Нажмите «Ответить» или «Скрыть вызов».":"Запрос от "+peer+". Устройство ещё не сопряжено: после ответа обязательно сверьте проверочный код.";
+ setStatus(trusted?"Входящий вызов":"Новый запрос на сопряжение",description,"wait");
+ debug((trusted?"Входящий вызов от подтверждённого устройства ":"Новый запрос от непроверенного устройства ")+peer+".");
+ if(trusted)startRinging("incoming");
  state.incomingTimer=setTimeout(()=>dismissIncoming(true),remaining);
 }
 function stopOutgoingCall(){
@@ -266,6 +276,7 @@ async function connect(){
   await state.secure.start();
   els.hangup.disabled=false;
  }catch(e){
+  stopOutgoingCall();
   showError(e.message||String(e));
   setStatus("Не удалось подключиться","Проверьте разрешения и попробуйте снова.","error");
   if(state.secure){if(answering)state.secure.dismissIncoming();state.secure.resetSession()}
@@ -285,6 +296,8 @@ async function hangup(){
 }
 els.connect.addEventListener("click",connect);
 els.dismissIncoming.addEventListener("click",()=>dismissIncoming(false));
+document.addEventListener("pointerdown",unlockRingingAudio,{passive:true});
+document.addEventListener("keydown",unlockRingingAudio);
 els.changeName.addEventListener("click",async()=>{
  if(!state.editingName){
   state.editingName=true;els.my.disabled=false;els.my.focus();
