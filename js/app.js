@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=14";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=17";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=18";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -301,7 +301,7 @@ async function startWebRtcOffer(){
 async function connect(){
  const answering=state.incomingCall;
  state.answeringCall=answering;
- if(answering){state.secure?.dismissIncoming();clearIncomingUi();stopRinging()}
+ if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging()}
  clearError();els.verify.classList.add("hidden");setBusy(true);
  try{
   const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
