@@ -1,16 +1,16 @@
 import { WebRtcAudio } from "./webrtc.js?v=12";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=13";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=14";
 
 const $=id=>document.getElementById(id);
 const els={
- my:$("my-name"),changeName:$("change-name"),peer:$("peer-name"),connect:$("connect"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
+ my:$("my-name"),changeName:$("change-name"),peer:$("peer-name"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state")
 };
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -24,7 +24,87 @@ function setStatus(title,text,kind="idle"){
 }
 function showError(message){els.error.textContent=message;els.error.classList.remove("hidden");debug("ОШИБКА: "+message)}
 function clearError(){els.error.textContent="";els.error.classList.add("hidden")}
-function setBusy(value){state.connecting=value;els.connect.disabled=value;els.connect.textContent=value?"Подключаемся…":"Подключиться";els.my.disabled=value||!state.editingName;els.changeName.disabled=value;els.peer.disabled=value}
+function setBusy(value){state.connecting=value;els.connect.disabled=value;els.connect.textContent=value?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";els.dismissIncoming.disabled=value;els.my.disabled=value||!state.editingName;els.changeName.disabled=value;els.peer.disabled=value}
+function stopRinging(){
+ state.ringingKind=null;
+ if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
+ for(const oscillator of state.ringOscillators){try{oscillator.stop()}catch{}}
+ state.ringOscillators=[];
+}
+async function startRinging(kind){
+ stopRinging();state.ringingKind=kind;
+ try{
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)throw Error("Web Audio API недоступен");
+  if(!state.ringContext)state.ringContext=new AudioContextClass();
+  if(state.ringContext.state==="suspended")await state.ringContext.resume();
+  if(state.ringingKind!==kind)return;
+  if(state.ringContext.state!=="running"){debug("Звук звонка заблокирован браузером; используйте экранные кнопки.");return}
+  const duration=kind==="incoming"?1:2,cycle=kind==="incoming"?4:6;
+  const pulse=()=>{
+   if(state.ringingKind!==kind)return;
+   const now=state.ringContext.currentTime,nodes=[];
+   for(const frequency of [440,480]){
+    const oscillator=state.ringContext.createOscillator(),gain=state.ringContext.createGain();
+    oscillator.type="sine";oscillator.frequency.value=frequency;
+    gain.gain.setValueAtTime(0.0001,now);gain.gain.linearRampToValueAtTime(0.035,now+0.025);
+    gain.gain.setValueAtTime(0.035,now+duration-0.04);gain.gain.linearRampToValueAtTime(0.0001,now+duration);
+    oscillator.connect(gain);gain.connect(state.ringContext.destination);
+    oscillator.start(now);oscillator.stop(now+duration);nodes.push(oscillator);
+   }
+   state.ringOscillators=nodes;
+   state.ringPulseTimer=setTimeout(pulse,cycle*1000);
+  };
+  pulse();
+ }catch(error){debug("Не удалось включить звук звонка: "+(error.message||String(error)));}
+}
+function clearIncomingUi(){
+ if(state.incomingTimer){clearTimeout(state.incomingTimer);state.incomingTimer=null}
+ state.incomingCall=false;els.dismissIncoming.classList.add("hidden");els.connect.textContent=state.connecting?"Подключаемся…":"Подключиться";
+}
+function showIncomingCall({peer,expiresAt}){
+ if(state.connecting||state.callStarted||state.outgoingCall||state.incomingCall)return;
+ const remaining=Math.max(0,expiresAt-Date.now());
+ if(!remaining)return;
+ state.incomingCall=true;els.connect.disabled=false;els.connect.textContent="Ответить";
+ els.dismissIncoming.classList.remove("hidden");els.dismissIncoming.disabled=false;
+ setStatus("Входящий вызов","Вам звонит "+peer+". Нажмите «Ответить» или «Скрыть вызов».","wait");
+ debug("Входящий вызов от подтверждённого устройства "+peer+".");
+ startRinging("incoming");
+ state.incomingTimer=setTimeout(()=>dismissIncoming(true),remaining);
+}
+function stopOutgoingCall(){
+ if(state.callTimer){clearTimeout(state.callTimer);state.callTimer=null}
+ state.outgoingCall=false;stopRinging();
+}
+function startOutgoingCall({peer,expiresAt}){
+ if(state.outgoingCall||state.incomingCall)return;
+ const remaining=Math.max(0,expiresAt-Date.now());
+ if(!remaining)return;
+ state.outgoingCall=true;setStatus("Вызываем "+peer,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
+ startRinging("outgoing");
+ state.callTimer=setTimeout(()=>finishNoAnswer(),remaining);
+}
+async function dismissIncoming(timedOut=false){
+ if(!state.incomingCall)return;
+ clearIncomingUi();stopRinging();state.secure?.dismissIncoming();
+ if(timedOut){
+  setStatus("Вызов скрыт","Время ожидания истекло. Вызывающий не получил уведомление об отклонении.","idle");
+  debug("Входящий вызов локально завершён по тайм-ауту; POST не отправлялся.");
+ }else{
+  setStatus("Вызов скрыт","Вызывающий не уведомлён и продолжит ожидать до своего тайм-аута.","idle");
+  debug("Пользователь скрыл входящий вызов локально; POST не отправлялся.");
+ }
+}
+async function finishNoAnswer(){
+ if(!state.outgoingCall)return;
+ stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
+ if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
+ els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";els.verify.classList.add("hidden");
+ state.callStarted=false;state.peerPresent=false;
+ setStatus("Нет ответа","Время ожидания истекло. Вызов завершён только на этом устройстве; уведомление об отмене не отправлялось.","idle");
+ debug("Исходящий вызов истёк через 45 секунд; отменяющий POST не отправлялся.");
+}
 function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
  return new WebRtcAudio({
   diagnosticPilot,
@@ -48,8 +128,10 @@ function createSecureSignaling(me,peer=""){
   me,peer,
   onSignal:handleSignal,
   onStatus:m=>{els.statusText.textContent=m;debug(m)},
-  onVerify:({sas,peer:name})=>{els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+name+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
-  onReady:info=>onSecureReady(info).catch(showError),
+  onIncoming:showIncomingCall,
+  onDialing:startOutgoingCall,
+  onVerify:({sas,peer:name})=>{stopOutgoingCall();clearIncomingUi();stopRinging();els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+name+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
+  onReady:info=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady(info).catch(showError)},
   onError:e=>showError(e.message||String(e)),
   onDebug:debug
  });
@@ -58,7 +140,8 @@ async function subscribeForUser(me){
  if(!NtfySecureSignaling.validName(me))return;
  if(state.secure&&state.secure.me===me&&state.secure.es)return;
  if(state.secure){state.secure.close();state.secure=null}
- const subscription=createSecureSignaling(me);
+ const peer=els.peer.value.trim().toLowerCase();
+ const subscription=createSecureSignaling(me,NtfySecureSignaling.validName(peer)&&peer!==me?peer:"");
  state.secure=subscription;
  els.debugUrl.textContent="https://ntfy.sh/ · "+me;
  setStatus("Подписываемся на ntfy","Открываем постоянный канал входящих сообщений для "+me+".","wait");
@@ -154,6 +237,8 @@ async function startWebRtcOffer(){
  catch(e){state.callStarted=false;showError("Не удалось запустить WebRTC: "+e.message);setStatus("Не удалось начать звонок","Проверьте разрешение микрофона и повторите попытку.","error")}
 }
 async function connect(){
+ const answering=state.incomingCall;
+ if(answering){clearIncomingUi();stopRinging()}
  clearError();els.verify.classList.add("hidden");setBusy(true);
  try{
   const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
@@ -183,12 +268,14 @@ async function connect(){
  }catch(e){
   showError(e.message||String(e));
   setStatus("Не удалось подключиться","Проверьте разрешения и попробуйте снова.","error");
-  if(state.secure)state.secure.resetSession();
+  if(state.secure){if(answering)state.secure.dismissIncoming();state.secure.resetSession()}
   if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
+  if(answering){clearIncomingUi();stopRinging()}
  }
  finally{setBusy(false);els.pilot.disabled=!!state.webrtc}
 }
 async function hangup(){
+ stopOutgoingCall();if(state.incomingCall)state.secure?.dismissIncoming();clearIncomingUi();stopRinging();
  state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
@@ -197,6 +284,7 @@ async function hangup(){
  scheduleIcePrewarm("hangup",true);
 }
 els.connect.addEventListener("click",connect);
+els.dismissIncoming.addEventListener("click",()=>dismissIncoming(false));
 els.changeName.addEventListener("click",async()=>{
  if(!state.editingName){
   state.editingName=true;els.my.disabled=false;els.my.focus();
@@ -225,7 +313,15 @@ els.pilot.addEventListener("change",async()=>{
  if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
 els.my.addEventListener("input",()=>scheduleIcePrewarm("input"));
-els.peer.addEventListener("input",()=>scheduleIcePrewarm("input"));
+els.peer.addEventListener("input",()=>{
+ const peer=els.peer.value.trim().toLowerCase();
+ if(state.incomingCall&&peer!==state.secure?.peer)dismissIncoming(false);
+ if(state.secure&&!state.secure.active&&!state.connecting){
+  const me=els.my.value.trim().toLowerCase();
+  state.secure.setPeer(NtfySecureSignaling.validName(peer)&&peer!==me?peer:"");
+ }
+ scheduleIcePrewarm("input");
+});
 setInterval(()=>scheduleIcePrewarm("periodic",true),30000);
 document.addEventListener("visibilitychange",()=>{
  if(!document.hidden)scheduleIcePrewarm("visibility",true);
@@ -252,6 +348,7 @@ els.resetPeer.addEventListener("click",async()=>{
 });
 els.tcp.classList.add("hidden");
 els.pilot.checked=false;
+els.dismissIncoming.classList.add("hidden");
 els.my.value=localStorage.getItem("vl.last-name")||"";
 els.peer.value=localStorage.getItem("vl.last-peer")||"";
 state.editingName=!NtfySecureSignaling.validName(els.my.value.trim().toLowerCase());
