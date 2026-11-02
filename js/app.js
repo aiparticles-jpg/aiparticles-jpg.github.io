@@ -10,7 +10,7 @@ const els={
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state")
 };
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false,prewarmNames:null,prewarmTimer:null,prewarmPromise:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,callStarted:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -25,10 +25,9 @@ function setStatus(title,text,kind="idle"){
 function showError(message){els.error.textContent=message;els.error.classList.remove("hidden");debug("ОШИБКА: "+message)}
 function clearError(){els.error.textContent="";els.error.classList.add("hidden")}
 function setBusy(value){state.connecting=value;els.connect.disabled=value;els.connect.textContent=value?"Подключаемся…":"Подключиться";els.my.disabled=value;els.peer.disabled=value}
-async function ensureWebRtc(){
- if(state.webrtc)return;
- state.webrtc=new WebRtcAudio({
-  diagnosticPilot:els.pilot.checked,
+function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
+ return new WebRtcAudio({
+  diagnosticPilot,
   sendSignal:payload=>state.secure.sendSignal(payload),
   onRemoteStream:stream=>{els.audio.srcObject=stream;els.audio.play().catch(e=>debug("Не удалось включить удалённый звук: "+e.message))},
   onError:error=>showError(error.message||String(error)),
@@ -41,30 +40,68 @@ async function ensureWebRtc(){
   }
  });
 }
-async function scheduleIcePrewarm(){
+async function ensureWebRtc(){
+ if(!state.webrtc)state.webrtc=createWebRtcInstance();
+}
+function scheduleIcePrewarm(reason="input",force=false){
  if(state.prewarmTimer)clearTimeout(state.prewarmTimer);
  state.prewarmTimer=setTimeout(async()=>{
   state.prewarmTimer=null;
   const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
-  if(state.connecting||state.secure||state.callStarted||!NtfySecureSignaling.validName(me)||
-     !NtfySecureSignaling.validName(peer)||me===peer||me>=peer||els.pilot.checked)return;
   const names=me+"|"+peer;
-  if(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===names)return;
-  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
-  state.prewarmNames=names;
-  try{
-   state.prewarmPromise=(async()=>{
-    await ensureWebRtc();
-    debug("Предварительная подготовка ICE начата (без микрофона и без ntfy).");
-    return await state.webrtc.prepareIce();
-   })();
-   const count=await state.prewarmPromise;
-   debug("Предварительная подготовка ICE завершена; локально сохранено кандидатов: "+count);
-  }catch(error){
-   debug("Предварительная подготовка ICE не удалась: "+(error.message||String(error)));
-   if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
-   state.prewarmNames=null;
-  }finally{state.prewarmPromise=null}
+  const eligible=NtfySecureSignaling.validName(me)&&NtfySecureSignaling.validName(peer)&&
+   me!==peer&&me<peer&&!els.pilot.checked&&navigator.onLine;
+  if(state.connecting||state.secure||state.callStarted)return;
+  if(!eligible){
+   if(state.webrtc?.prewarmed){
+    const old=state.webrtc;state.webrtc=null;state.prewarmNames=null;
+    await old.close({stopTracks:true});
+   }
+   return;
+  }
+  if(state.prewarmPromise){
+   state.prewarmPending={reason,force};
+   return;
+  }
+  const currentFresh=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===names);
+  const currentAge=currentFresh?Date.now()-state.webrtc.prewarmStartedAt:Infinity;
+  if(currentFresh&&(!force||currentAge<30000))return;
+
+  const candidate=createWebRtcInstance(false);
+  const task=(async()=>{
+   try{
+    debug("Предварительная подготовка ICE начата (причина: "+reason+"; без микрофона и без ntfy).");
+    const count=await candidate.prepareIce();
+    const latestMe=els.my.value.trim().toLowerCase(),latestPeer=els.peer.value.trim().toLowerCase();
+    const stillEligible=!state.secure&&!state.callStarted&&!els.pilot.checked&&navigator.onLine&&
+     latestMe+"|"+latestPeer===names&&latestMe<latestPeer;
+    if(!stillEligible){
+     await candidate.close({stopTracks:true});
+     debug("Новая ICE-подготовка отброшена: параметры или состояние страницы изменились.");
+     return null;
+    }
+    const previous=state.webrtc;
+    state.webrtc=candidate;
+    state.prewarmNames=names;
+    if(previous&&previous!==candidate)await previous.close({stopTracks:true});
+    debug("Предварительная подготовка ICE завершена; локально сохранено кандидатов: "+count+". Старый экземпляр заменён.");
+    return candidate;
+   }catch(error){
+    await candidate.close({stopTracks:true});
+    debug("Предварительная подготовка ICE не удалась: "+(error.message||String(error)));
+    return null;
+   }
+  })();
+  state.prewarmTargetNames=names;
+  state.prewarmPromise=task;
+  try{await task}
+  finally{
+   if(state.prewarmPromise===task){
+    state.prewarmPromise=null;state.prewarmTargetNames=null;
+    const pending=state.prewarmPending;state.prewarmPending=null;
+    if(pending)scheduleIcePrewarm(pending.reason,pending.force);
+   }
+  }
  },700);
 }
 async function onSecureReady(info){
@@ -92,7 +129,7 @@ async function connect(){
  try{
   if(state.secure)state.secure.close();
   const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
-  if(state.prewarmPromise&&state.prewarmNames===me+"|"+peer){try{await state.prewarmPromise}catch{}}
+  if(state.prewarmPromise&&(state.prewarmTargetNames===me+"|"+peer||state.prewarmNames===me+"|"+peer)){try{await state.prewarmPromise}catch{}}
   const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer&&!els.pilot.checked);
   if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
   state.callStarted=false;state.peerPresent=false;
@@ -135,14 +172,20 @@ async function hangup(){
  els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;
  setStatus("Звонок завершён","Чтобы позвонить снова, нажмите «Подключиться».","idle");
+ scheduleIcePrewarm("hangup",true);
 }
 els.connect.addEventListener("click",connect);
 els.pilot.addEventListener("change",async()=>{
  debug("Диагностический pilot-сигнал "+(els.pilot.checked?"включён":"выключен")+". Настройка применяется при следующем подключении.");
- if(!state.secure&&!state.callStarted){if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm()}
+ if(!state.secure&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
-els.my.addEventListener("input",scheduleIcePrewarm);
-els.peer.addEventListener("input",scheduleIcePrewarm);
+els.my.addEventListener("input",()=>scheduleIcePrewarm("input"));
+els.peer.addEventListener("input",()=>scheduleIcePrewarm("input"));
+setInterval(()=>scheduleIcePrewarm("periodic",true),30000);
+document.addEventListener("visibilitychange",()=>{
+ if(!document.hidden)scheduleIcePrewarm("visibility",true);
+});
+window.addEventListener("online",()=>scheduleIcePrewarm("online",true));
 els.confirm.addEventListener("click",async()=>{
  els.confirm.disabled=true;
  try{await state.secure.confirmPeer();els.verify.classList.add("hidden");debug("Первичная проверка подтверждена пользователем.")}
