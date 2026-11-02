@@ -51,7 +51,8 @@ export class NtfySecureSignaling {
  async subscribe(){
   if(this.es&&this.es.readyState===EventSource.OPEN)return;
   if(this.subscribePromise)return this.subscribePromise;
-  if(this.es&&this.sseReadyPromise)return this.sseReadyPromise;
+  if(this.es&&this.es.readyState===EventSource.CONNECTING&&this.sseReadyPromise)return this.sseReadyPromise;
+  if(this.es&&this.es.readyState===EventSource.CLOSED){this.es=null;this.sseReadyPromise=null}
   const task=this.openSubscription();
   this.subscribePromise=task;
   try{await task}
