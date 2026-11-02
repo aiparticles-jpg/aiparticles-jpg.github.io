@@ -8,11 +8,11 @@ const hex=b=>Array.from(bytes(b),x=>x.toString(16).padStart(2,"0")).join("");
 const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
 const validName=s=>/^[a-z0-9_-]{3,24}$/.test(s);
 export class NtfySecureSignaling {
- constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError,onDebug}) {
+ constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError,onDebug,onIncoming,onDialing}) {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
-  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;
+  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onDialing=onDialing||(()=>{});
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;
  }
  static validName(s){return validName(s)}
  async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
@@ -125,25 +125,54 @@ export class NtfySecureSignaling {
   } else if(!this.ready)this.onStatus("Ожидаем запрос от "+this.peer+"…");
  }
  setPeer(peer){
-  if(!validName(peer)||peer===this.me)throw Error("Имя собеседника должно содержать 3–24 символа и отличаться от вашего имени.");
-  this.resetSession({preservePending:true});this.peer=peer;this.role=this.me<peer?"A":"B";
+  if(peer!==""&&(!validName(peer)||peer===this.me))throw Error("Имя собеседника должно содержать 3–24 символа и отличаться от вашего имени.");
+  if(peer===this.peer)return;
+  this.resetSession({preservePending:true});this.peer=peer;this.role=peer?(this.me<peer?"A":"B"):null;
+  this.inspectPendingIncoming().catch(error=>this.onError(error));
+ }
+ dismissIncoming(){
+  if(this.incomingEventId){this.seen.add(this.incomingEventId);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value)}
+  const peer=this.peer;
+  this.pendingEvents=this.pendingEvents.filter(n=>{
+   try{const m=JSON.parse(n.message);return !(m.type==="hello"&&m.payload?.from===peer&&m.payload?.to===this.me)}catch{return true}
+  });
+  this.incomingSid=null;this.incomingEventId=null;
+ }
+ async inspectIncoming(n){
+  if(!this.peer||this.role!=="B"||!n?.message||!n?.id)return;
+  let m;try{m=JSON.parse(n.message)}catch{return}
+  if(m.v!==1||m.type!=="hello"||!m.payload)return;
+  const p=m.payload;
+  if(p.from!==this.peer||p.to!==this.me||!p.identity)return;
+  const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
+  if(!Number.isFinite(expiresAt)||Date.now()>expiresAt)return;
+  if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись входящего вызова недействительна.");
+  const pinned=await this.checkPinned(p.identity);
+  if(!pinned){this.onDebug("[incoming] новый/непривязанный ключ: звонок не озвучивается до первичного сопряжения.");return}
+  if(this.incomingSid===p.sid)return;
+  this.incomingSid=p.sid;this.incomingEventId=n.id;
+  this.onIncoming({peer:this.peer,sid:p.sid,expiresAt});
+ }
+ async inspectPendingIncoming(){
+  for(const n of this.pendingEvents)await this.inspectIncoming(n);
  }
  resetSession({preservePending=false}={}){
   this.active=false;this.clearHelloRetry();this.clearAnswerRetry();
   this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;
   this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.peerJwk=null;
-  this.pendingSignals=[];if(!preservePending)this.pendingEvents=[];this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
+  this.pendingSignals=[];if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
  }
  async sendHello(){
   if(this.closed||this.ready||this.rateLimited||this.role!=="A")return;
   if(!this.hello){
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-   this.hello={sid:b64u(crypto.getRandomValues(new Uint8Array(16))),from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16)))};
+   this.hello={sid:b64u(crypto.getRandomValues(new Uint8Array(16))),from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),expiresAt:Date.now()+45000};
   }
   this.helloAttempts++;
   this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
   await this.publish(this.peer,await this.signed("hello",this.hello));
   this.onStatus("Запрос отправлен. Ожидаем "+this.peer+"…");
+  this.onDialing({peer:this.peer,expiresAt:this.hello.expiresAt});
  }
  scheduleHelloRetry(delay){
   this.clearHelloRetry();
@@ -186,7 +215,8 @@ export class NtfySecureSignaling {
    if(age>=-5&&age<=120&&!this.pendingEvents.some(item=>item.id===queued.id)){
     this.pendingEvents.push(queued);
     if(this.pendingEvents.length>100)this.pendingEvents.shift();
-    this.onDebug("[signaling] входящее сообщение сохранено до нажатия «Подключиться»");
+    this.onDebug("[signaling] входящее сообщение сохранено до ответа пользователя");
+    await this.inspectIncoming(queued);
    }
    return;
   }
@@ -195,6 +225,10 @@ export class NtfySecureSignaling {
   let m;try{m=JSON.parse(n.message)}catch{return}
   if(m.v!==1||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me)return;
   const p=m.payload;
+  if(m.type==="hello"){
+   const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
+   if(!Number.isFinite(expiresAt)||Date.now()>expiresAt){this.onDebug("[signaling] просроченный hello пропущен");return}
+  }
   if(m.type==="hello"&&this.role==="B"){
    if(this.hello){
     if(p.sid===this.hello.sid&&this.answer&&Date.now()-this.lastAnswerAt>=10000){
