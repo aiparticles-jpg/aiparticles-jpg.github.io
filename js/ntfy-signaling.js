@@ -164,13 +164,13 @@ export class NtfySecureSignaling {
   if(m?.v!==1||!p||p.from!==this.peer||p.to!==this.me||!p.sid||!p.identity)return;
   if(!await this.verify({type:"cancel",payload:p},m.sig,p.identity))throw Error("Подпись отмены вызова недействительна.");
   const pinned=await this.checkPinned(p.identity);
+  if(!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
   if(this.incomingIdentity&&stable(this.incomingIdentity)!==stable(p.identity))return;
   if(!this.incomingIdentity&&!pinned){
    this.pendingCancels.set(p.sid,m);
    if(this.pendingCancels.size>50)this.pendingCancels.delete(this.pendingCancels.keys().next().value);
    return;
   }
-  if(!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
   this.cancelledSids.add(p.sid);
   if(this.cancelledSids.size>100)this.cancelledSids.delete(this.cancelledSids.values().next().value);
   if(this.incomingSid===p.sid&&!this.hello&&!this.ready){
@@ -186,7 +186,7 @@ export class NtfySecureSignaling {
   this.active=false;this.clearHelloRetry();this.clearAnswerRetry();
   this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;
   this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.peerJwk=null;
-  this.pendingSignals=[];if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
+  this.pendingSignals=[];if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
  }
  async sendCallRequest(){
   if(this.closed||this.ready||this.rateLimited||this.role!=="B")return;
