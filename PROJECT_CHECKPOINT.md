@@ -168,3 +168,17 @@ Render may put the backend to sleep after approximately 15 minutes of inactivity
 - Send a fresh request immediately when the user returns after an absence.
 
 Mobile browsers and operating systems can throttle or suspend background timers, so this is best-effort and does not guarantee continuous backend availability. Handle cold-start delays and temporary unavailability gracefully. The ping must not create persistent user records or store contact data.
+
+
+## Backend cold-start UI and retries
+
+If Render is waking from sleep and does not respond immediately:
+
+- Keep the rest of the app usable; do not block the whole interface.
+- Show a status such as `Connecting to server`.
+- Allow for cold-start delays of tens of seconds; do not treat the first timeout or temporary failure as permanent.
+- Retry transient failures automatically using bounded retries and backoff, not rapid repeated requests.
+- On success, update the status and continue the still-valid operation.
+- If retries are exhausted, show a temporary-unavailability message and allow another attempt.
+
+Do not display the backend as ready until a successful response is received.
