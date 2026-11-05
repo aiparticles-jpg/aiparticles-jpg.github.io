@@ -79,3 +79,15 @@ Three distinct incoming-call actions are agreed:
 - The non-extractable IndexedDB CryptoKey approach is agreed but not implemented or compatibility-tested.
 - Open question to discuss next: what should happen if browser data is cleared, the browser is reinstalled, or the user changes device and loses the non-extractable private key? Possible consequences include creating a new identity; recovery/backup would require a separate security design.
 - Before coding, inspect the current repository files and reconcile them with this document.
+
+## Identity recovery after private-key loss
+
+If the browser's IndexedDB data is cleared, the browser is reinstalled, or the user moves to another device without transferring the existing key, the non-extractable private key may be permanently lost. In that case:
+
+- The application generates a new ECDSA P-256 key pair and derives a new `user_id` from the new public key.
+- The previous identity cannot be recovered.
+- The user must share the new contact package (QR code or URL) with contacts again.
+- Contacts must verify and trust the new identity; the old identity must not be silently treated as the new one.
+- No private-key backup, export, password-encrypted recovery file, or device-to-device key transfer is provided in this design.
+
+This is an intentional trade-off: simpler recovery behavior and preservation of the non-extractable private-key design, at the cost of losing the old identity when its key is lost.
