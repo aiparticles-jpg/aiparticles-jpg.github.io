@@ -147,3 +147,8 @@ Keep contacts when their OneSignal Subscription ID becomes inactive, invalid, or
 ## OneSignal Subscription ID rotation
 
 When OneSignal assigns the user a new Subscription ID, update the user's own value in IndexedDB and generate a newly signed contact package with the current `push_subscription_id`. Make it available for sharing through the existing QR-code or URL flow. Contacts on other devices are not updated automatically; they must import the refreshed package. A Subscription ID change alone does not create a new cryptographic identity.
+
+
+## Browser notification permission denied
+
+When browser notification permission is denied or blocked, show an in-app warning that push notifications are unavailable and incoming-call alerts may not arrive while the app is inactive. Offer instructions for enabling notifications in browser site settings. Do not repeatedly prompt or bypass the user's choice. Keep other Voicelink functionality available where technically possible; lack of push permission alone must not block app use.
