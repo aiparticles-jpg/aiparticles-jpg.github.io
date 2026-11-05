@@ -360,3 +360,13 @@ If Render does not become available, do not wait for it before proceeding with n
 ## Call response timeout when Render is unavailable
 
 If Render does not become available for the call, use a separate 60-second response timeout measured from the caller pressing the call button. This timeout applies to the Render-unavailable path; it is independent of the normal 60-second response window that starts after a successful Render wake-up response.
+
+## Automatic call termination after response timeout
+
+When the applicable 60-second caller response timeout expires without an answer, automatically terminate the outgoing call:
+- send call_cancelled through ntfy;
+- if the Render backend is available, also submit call_cancelled for push notification through Render/OneSignal;
+- show the caller a "No answer" status;
+- release call-related resources.
+
+The call must be treated as ended locally even if the optional push submission fails. The ntfy cancellation is the primary signaling action; push remains best-effort.
