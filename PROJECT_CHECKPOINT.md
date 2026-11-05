@@ -142,3 +142,8 @@ Do not add application-level encryption for contact records stored in IndexedDB;
 ## Inactive OneSignal Subscription ID
 
 Keep contacts when their OneSignal Subscription ID becomes inactive, invalid, or stops receiving notifications. Do not automatically delete the contact or its local name/trust record. Allow the user to refresh the contact's push details by exchanging an updated QR code or URL when available. An inactive Subscription ID alone is not grounds for deleting the contact.
+
+
+## OneSignal Subscription ID rotation
+
+When OneSignal assigns the user a new Subscription ID, update the user's own value in IndexedDB and generate a newly signed contact package with the current `push_subscription_id`. Make it available for sharing through the existing QR-code or URL flow. Contacts on other devices are not updated automatically; they must import the refreshed package. A Subscription ID change alone does not create a new cryptographic identity.
