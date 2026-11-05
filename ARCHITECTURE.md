@@ -172,3 +172,15 @@ The user explicitly approved the following browser-side private-key storage desi
 This is an agreed architecture decision, not an implemented or compatibility-tested feature. Browser support and IndexedDB structured-clone behavior for non-extractable `CryptoKey` objects must be verified during implementation.
 
 Open consequence to resolve before implementation: clearing browser data, reinstalling the browser, or moving to another device may destroy access to the private key and therefore the existing identity. Recovery or backup would require a separately agreed security design; do not silently introduce private-key export or cloud backup.
+
+## Identity recovery after private-key loss
+
+If the browser's IndexedDB data is cleared, the browser is reinstalled, or the user moves to another device without transferring the existing key, the non-extractable private key may be permanently lost. In that case:
+
+- The application generates a new ECDSA P-256 key pair and derives a new `user_id` from the new public key.
+- The previous identity cannot be recovered.
+- The user must share the new contact package (QR code or URL) with contacts again.
+- Contacts must verify and trust the new identity; the old identity must not be silently treated as the new one.
+- No private-key backup, export, password-encrypted recovery file, or device-to-device key transfer is provided in this design.
+
+This is an intentional trade-off: simpler recovery behavior and preservation of the non-extractable private-key design, at the cost of losing the old identity when its key is lost.
