@@ -299,3 +299,16 @@ Render is used to send OneSignal push notifications; it is not the audio transpo
 - The caller can continue waiting for the normal ntfy call response or cancel the call.
 
 This preserves the distinction between the independent signaling/audio path and the optional push-notification path.
+
+## OneSignal unavailability and push retry behavior
+
+If the Render backend is available but the OneSignal service/API is temporarily unavailable or rejects the push request due to a transient service error:
+
+- Render should make a small, bounded number of retry attempts with short delays/backoff.
+- Do not retry indefinitely or create a rapid request loop.
+- If push submission still fails, report the push failure to the frontend so it can show a non-blocking warning.
+- Do not block, cancel, or otherwise interrupt the call because push delivery failed. Continue the independent ntfy signaling and WebRTC call flow where available.
+- Do not claim that the recipient was notified when OneSignal has not confirmed acceptance of the push request. A successful API response confirms submission/acceptance, not necessarily display on the recipient's device.
+- The caller may continue waiting for the normal ntfy response or cancel the call.
+
+The exact retry count and delay values are implementation parameters and are not fixed by this architectural decision.
