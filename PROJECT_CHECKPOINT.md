@@ -103,3 +103,7 @@ When a user loses their private key and creates a new cryptographic identity:
 - The recipient imports the new package and verifies the new identity before trusting it.
 - The application must not automatically link the old and new identities: without the old private key, cryptographic proof of continuity is unavailable.
 - After the recipient has independently verified the new identity, the UI may offer to replace the outdated identity in the existing local contact record while preserving that contact's locally assigned name. This replacement is an explicit user action, not an automatic merge.
+
+## SAS verification for a re-imported contact
+
+When a contact imports a user's new contact package after that user has lost their previous private key and created a new identity, the same Short Authentication String (SAS) verification mechanism agreed for first-time contact verification is used. Both users compare the SAS through an independent communication channel and confirm that it matches before marking the new identity as trusted. The new identity is not automatically linked to the old one; replacing an outdated local contact identity remains an explicit user action after successful verification.
