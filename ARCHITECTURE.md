@@ -213,3 +213,15 @@ On application startup:
 - If browser data has also been cleared and the local address book is absent, the user must add contacts again by importing their contact packages.
 
 Identity and the contact list are not synchronized to cloud storage or the backend. No cloud backup or cross-device synchronization is included in the agreed architecture.
+
+
+## Local storage for identity and contacts
+
+IndexedDB is the agreed local storage mechanism for the application's identity and address book. The application uses IndexedDB for:
+
+- The non-extractable private `CryptoKey` object.
+- The public key and derived `user_id`.
+- Contact records, including each contact's locally assigned name, `user_id`, public key, and OneSignal Subscription ID.
+- Contact trust and SAS-verification status.
+
+These data remain on the user's device. They are not synchronized to cloud storage or stored as a persistent address book on the backend. `localStorage` is not used for identity or contact data.
