@@ -338,3 +338,7 @@ Do not log push payloads, notification contents, API keys, authorization headers
 ## Retention of backend technical logs
 
 Use the standard log retention provided by Render for the deployed service and plan. Do not create a separate persistent log store, database table, or custom archive for these technical logs. The privacy limits defined above continue to apply for the entire period in which Render retains the logs.
+
+## Push request idempotency
+
+Use the combination of call_id and event type as the idempotency key for push submission. Reprocessing the same logical event for the same call must not create a duplicate push notification. Keep any deduplication state temporary and in memory, consistent with the stateless backend design; do not introduce a persistent database or user-data store for this purpose. The deduplication retention window and exact implementation details remain to be selected during implementation.
