@@ -230,3 +230,8 @@ These data remain on the user's device. They are not synchronized to cloud stora
 ## Local contact-data encryption
 
 Contact records in IndexedDB are stored without additional application-level encryption. This keeps local contact storage simple. The private key remains a non-extractable Web Crypto `CryptoKey` stored in IndexedDB, as specified in the private-key storage section. This decision does not claim that IndexedDB itself encrypts contact data.
+
+
+## Contacts with an inactive OneSignal Subscription ID
+
+Do not automatically delete a contact when its OneSignal Subscription ID becomes inactive, invalid, or stops receiving push notifications. Preserve the contact record and its locally assigned name. When the contact's current push details are available again, allow the user to update the contact package through QR code or URL exchange and verify the updated identity/contact data as required. An inactive Subscription ID must not by itself cause the contact or its trust record to be deleted.
