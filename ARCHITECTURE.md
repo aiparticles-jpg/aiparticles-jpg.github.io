@@ -235,3 +235,14 @@ Contact records in IndexedDB are stored without additional application-level enc
 ## Contacts with an inactive OneSignal Subscription ID
 
 Do not automatically delete a contact when its OneSignal Subscription ID becomes inactive, invalid, or stops receiving push notifications. Preserve the contact record and its locally assigned name. When the contact's current push details are available again, allow the user to update the contact package through QR code or URL exchange and verify the updated identity/contact data as required. An inactive Subscription ID must not by itself cause the contact or its trust record to be deleted.
+
+
+## Updating the user's OneSignal Subscription ID
+
+When OneSignal assigns the current user a new Subscription ID:
+
+- Update the user's own locally stored Subscription ID in IndexedDB.
+- Generate an updated contact package containing the current `user_id`, public key, new `push_subscription_id`, version, and signature.
+- Make the updated package available for the user to share with contacts through the existing QR-code or URL mechanism.
+- Do not automatically delete or rewrite existing contacts on other users' devices; they must receive and import the updated package to refresh the stored Subscription ID.
+- The cryptographic identity does not change solely because the OneSignal Subscription ID changes. The updated package must be signed with the existing private key.
