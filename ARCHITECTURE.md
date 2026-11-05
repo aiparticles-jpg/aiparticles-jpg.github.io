@@ -378,3 +378,7 @@ The call lifecycle uses a first-terminal-event-wins rule. The recipient's answer
 ## Recipient incoming-call UI timeout behavior
 
 When the incoming-call response window expires, the recipient's incoming-call UI is automatically closed. The recipient sees a local message such as "Call ended — no answer". This is a UI consequence of the already-processed call timeout/cancellation; it does not generate an additional call event.
+
+## Delayed incoming-call notification handling
+
+Before displaying an incoming-call UI triggered by a delayed push/notification, the client must validate the current call state for that call_id. If the call has already been cancelled or expired, the incoming-call UI must not be shown. The implementation must use the existing call/signaling architecture and must not assume that the stateless Render backend stores persistent call state; the concrete status-check mechanism remains to be specified.
