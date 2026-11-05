@@ -158,3 +158,17 @@ The user explicitly approved adding a separate **Reject** button. This is an arc
 - The exact rate-limit numbers remain to be finalized.
 - Private-key storage needs a deliberate security design before implementation.
 - Existing frontend/signaling code must be inspected before making code changes so the implementation matches the actual repository.
+
+## 11. Private-key storage in the browser
+
+The user explicitly approved the following browser-side private-key storage design:
+
+- Generate the ECDSA P-256 private key using the Web Crypto API with `extractable: false` (non-extractable).
+- Store the resulting `CryptoKey` object in IndexedDB.
+- Do not export private-key material to JWK and do not store it in `localStorage`.
+- Use the stored `CryptoKey` directly for signing contact packages and authenticated backend requests.
+- The public key remains exportable and may be shared with contacts.
+
+This is an agreed architecture decision, not an implemented or compatibility-tested feature. Browser support and IndexedDB structured-clone behavior for non-extractable `CryptoKey` objects must be verified during implementation.
+
+Open consequence to resolve before implementation: clearing browser data, reinstalling the browser, or moving to another device may destroy access to the private key and therefore the existing identity. Recovery or backup would require a separately agreed security design; do not silently introduce private-key export or cloud backup.
