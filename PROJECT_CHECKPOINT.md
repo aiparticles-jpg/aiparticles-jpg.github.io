@@ -198,3 +198,7 @@ Agreed behavior:
 - Do not say the recipient was notified unless OneSignal confirms acceptance. API acceptance does not guarantee that the notification was displayed on the device.
 - The caller can keep waiting for the normal ntfy response or cancel the call.
 - Exact retry count and delay values remain implementation details to be selected during implementation.
+
+## Push delivery acknowledgment — deferred
+
+Decision: Do not implement a separate end-device delivery acknowledgment/confirmation mechanism for push notifications for now. A successful OneSignal API response means the push submission was accepted; it does not prove the recipient's device received or displayed the notification. Keep the call flow independent: ntfy signaling and WebRTC continue to handle signaling and audio.
