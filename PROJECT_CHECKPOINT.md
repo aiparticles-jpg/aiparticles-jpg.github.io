@@ -202,3 +202,12 @@ Agreed behavior:
 ## Push delivery acknowledgment — deferred
 
 Decision: Do not implement a separate end-device delivery acknowledgment/confirmation mechanism for push notifications for now. A successful OneSignal API response means the push submission was accepted; it does not prove the recipient's device received or displayed the notification. Keep the call flow independent: ntfy signaling and WebRTC continue to handle signaling and audio.
+
+## OneSignal retry error classification
+
+Decision:
+- Retry transient OneSignal failures, including HTTP 429 and HTTP 5xx, subject to the already agreed bounded retry policy.
+- Do not retry permanent client/request errors such as HTTP 400, including an invalid or malformed Subscription ID/request.
+- Never retry indefinitely.
+- If push submission ultimately fails, show a non-blocking warning; the ntfy/WebRTC call continues independently.
+- Exact retry count and delay values remain implementation details for a later decision.
