@@ -334,3 +334,7 @@ For OneSignal push failures, backend logs may contain only minimal technical dia
 - a coarse internal error category.
 
 Do not log push payloads, notification contents, API keys, authorization headers, private keys, Subscription IDs, user_id values, or other contact/user identifiers. Do not expose secrets or raw sensitive provider responses to the frontend. Logging is for troubleshooting only and must not become a user-data store.
+
+## Retention of backend technical logs
+
+Use the standard log retention provided by Render for the deployed service and plan. Do not create a separate persistent log store, database table, or custom archive for these technical logs. The privacy limits defined above continue to apply for the entire period in which Render retains the logs.
