@@ -342,3 +342,7 @@ Use the standard log retention provided by Render for the deployed service and p
 ## Push request idempotency
 
 Use the combination of call_id and event type as the idempotency key for push submission. Reprocessing the same logical event for the same call must not create a duplicate push notification. Keep any deduplication state temporary and in memory, consistent with the stateless backend design; do not introduce a persistent database or user-data store for this purpose. The deduplication retention window and exact implementation details remain to be selected during implementation.
+
+## Idempotency across different call events
+
+The idempotency key includes both call_id and event type. Therefore, different allowed event types for the same call_id are distinct logical events and must not be deduplicated against one another. For example, incoming_call followed by call_cancelled must allow both push submissions, so the cancellation can reach the recipient. Only a repeat of the same event type for the same call_id is a duplicate. Event validity and call-state rules remain separately enforced by the backend.
