@@ -238,3 +238,7 @@ Decision: Use (call_id, event type) as the idempotency key. Reprocessing the sam
 ## Different events with the same call_id
 
 Decision: Because the idempotency key is (call_id, event type), different event types for one call are separate events and must not suppress one another. For example, allow incoming_call and then call_cancelled for the same call_id, so cancellation can be delivered. Deduplicate only repeated submissions of the same event type for the same call_id. Backend event validity/call-state validation remains a separate concern.
+
+## Call ID generation and lifetime
+
+Decision: Generate a new cryptographically random UUID for every newly initiated call. Reuse that call_id for all events belonging to that call (incoming_call, call_cancelled, call_ignored, etc.). A new call gets a new UUID, even if it is to the same contact. call_id identifies only a call instance, not a persistent user identity.
