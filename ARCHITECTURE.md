@@ -286,3 +286,16 @@ When a frontend request wakes a sleeping Render backend and the backend is not i
 - If retries are exhausted, show a clear temporary-unavailability message and allow a later retry.
 
 The frontend must not claim the backend is ready until it receives a successful response.
+
+
+## Calling while the Render backend is unavailable
+
+Render is used to send OneSignal push notifications; it is not the audio transport or the ntfy signaling channel. If Render is unavailable when a user starts a call:
+
+- Do not block or cancel the call solely because Render is unavailable.
+- Continue the call flow through ntfy and WebRTC where those services and the peer connection are available.
+- Show a non-blocking warning that the push notification could not be sent and the recipient may not receive an incoming-call alert while Voicelink is inactive.
+- Do not claim that the recipient was notified unless the relevant service confirms success.
+- The caller can continue waiting for the normal ntfy call response or cancel the call.
+
+This preserves the distinction between the independent signaling/audio path and the optional push-notification path.
