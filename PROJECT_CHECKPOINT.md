@@ -132,3 +132,8 @@ Use IndexedDB as the local storage mechanism for identity and contacts. Store:
 - Contact trust status and SAS-verification status.
 
 Do not store identity or contact data in `localStorage`. Keep this data local to the device; do not add cloud synchronization or a persistent backend address book.
+
+
+## Local contact-data encryption decision
+
+Do not add application-level encryption for contact records stored in IndexedDB; keep this storage simple. The private key remains a non-extractable Web Crypto `CryptoKey` stored in IndexedDB. IndexedDB itself must not be described as encrypting the contact records.
