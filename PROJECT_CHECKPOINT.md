@@ -137,3 +137,8 @@ Do not store identity or contact data in `localStorage`. Keep this data local to
 ## Local contact-data encryption decision
 
 Do not add application-level encryption for contact records stored in IndexedDB; keep this storage simple. The private key remains a non-extractable Web Crypto `CryptoKey` stored in IndexedDB. IndexedDB itself must not be described as encrypting the contact records.
+
+
+## Inactive OneSignal Subscription ID
+
+Keep contacts when their OneSignal Subscription ID becomes inactive, invalid, or stops receiving notifications. Do not automatically delete the contact or its local name/trust record. Allow the user to refresh the contact's push details by exchanging an updated QR code or URL when available. An inactive Subscription ID alone is not grounds for deleting the contact.
