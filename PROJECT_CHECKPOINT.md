@@ -294,3 +294,7 @@ If WebRTC connection establishment fails after the recipient has accepted the ca
 ## WebRTC connection setup timeout
 
 After the recipient accepts the call, WebRTC has up to 30 seconds to establish the connection. If the connection is not established within 30 seconds, the call is terminated, both users are shown a connection-failure message, and call resources are released.
+
+## WebRTC connection status
+
+While WebRTC is being established, both users see the status "Connecting…". Once the WebRTC connection is successfully established, the status changes to "Connected".
