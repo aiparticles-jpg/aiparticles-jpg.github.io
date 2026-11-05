@@ -382,3 +382,9 @@ When the incoming-call response window expires, the recipient's incoming-call UI
 ## Delayed incoming-call notification handling
 
 Before displaying an incoming-call UI triggered by a delayed push/notification, the client must validate the current call state for that call_id. If the call has already been cancelled or expired, the incoming-call UI must not be shown. The implementation must use the existing call/signaling architecture and must not assume that the stateless Render backend stores persistent call state; the concrete status-check mechanism remains to be specified.
+
+## Deferred edge-case policy
+
+To keep development focused on delivering a working application, complex edge cases and unresolved exceptional flows should be documented as deferred work rather than fully designed before the core flow is implemented. The primary happy path takes priority. Deferred items must remain visible in the architecture/checkpoint documentation and be revisited before release or when implementation makes them necessary.
+
+For delayed incoming-call notifications specifically, the detailed current-call-state verification mechanism is deferred. Do not expand the current implementation scope to solve this edge case now; retain the note for later review. Basic expiration handling using the existing expires_at value may be implemented where already supported, without introducing new persistent call-state storage or a new status service.
