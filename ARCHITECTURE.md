@@ -388,3 +388,7 @@ Before displaying an incoming-call UI triggered by a delayed push/notification, 
 To keep development focused on delivering a working application, complex edge cases and unresolved exceptional flows should be documented as deferred work rather than fully designed before the core flow is implemented. The primary happy path takes priority. Deferred items must remain visible in the architecture/checkpoint documentation and be revisited before release or when implementation makes them necessary.
 
 For delayed incoming-call notifications specifically, the detailed current-call-state verification mechanism is deferred. Do not expand the current implementation scope to solve this edge case now; retain the note for later review. Basic expiration handling using the existing expires_at value may be implemented where already supported, without introducing new persistent call-state storage or a new status service.
+
+## Accepted response stops incoming-call timer
+
+When the caller receives the recipient's `accepted` confirmation through ntfy, the 60-second incoming-call response timer stops immediately. WebRTC connection establishment is a separate subsequent stage with its own error handling; the response timer must not continue running during WebRTC setup.
