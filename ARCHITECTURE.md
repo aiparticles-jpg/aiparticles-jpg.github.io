@@ -256,3 +256,19 @@ If the user denies or blocks browser notification permission:
 - Offer guidance to enable notifications in the browser's site settings.
 - Do not repeatedly trigger the browser permission prompt or attempt to bypass the user's choice.
 - Keep the rest of the application usable where technically possible; denying push permission must not by itself block use of Voicelink.
+
+
+## Notification permission request timing
+
+Do not request browser notification permission automatically on the first page load. First explain why Voicelink needs notifications and show an explicit `Enable notifications` button. Request browser permission only after the user presses that button. If permission is denied or blocked, follow the behavior defined in the browser notification permission section.
+
+## Render backend wake-up and keep-alive requests
+
+The Render backend may enter sleep after a period of inactivity (approximately 15 minutes on the current hosting plan). The frontend therefore uses the following best-effort wake-up strategy:
+
+- Send a lightweight request to the backend when the web application starts, so a sleeping backend can wake up.
+- While the application remains active, send a lightweight ping approximately every 14 minutes.
+- Stop the periodic ping when the application is closed or no longer running.
+- When the user returns to the application after a period away, send a new request immediately rather than relying on a timer that may have been suspended.
+
+Browser and mobile operating systems may throttle or suspend timers in background tabs or sleeping devices. Therefore, the 14-minute interval is best-effort and cannot guarantee that the backend remains awake continuously. The frontend must handle delayed responses, cold starts, and temporary unavailability gracefully. These pings are for backend availability only; they do not create persistent user records or store contact data.
