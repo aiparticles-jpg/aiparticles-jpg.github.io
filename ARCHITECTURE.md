@@ -346,3 +346,7 @@ Use the combination of call_id and event type as the idempotency key for push su
 ## Idempotency across different call events
 
 The idempotency key includes both call_id and event type. Therefore, different allowed event types for the same call_id are distinct logical events and must not be deduplicated against one another. For example, incoming_call followed by call_cancelled must allow both push submissions, so the cancellation can reach the recipient. Only a repeat of the same event type for the same call_id is a duplicate. Event validity and call-state rules remain separately enforced by the backend.
+
+## Call ID generation and lifetime
+
+Generate a new cryptographically random UUID for every newly initiated call. All events belonging to that call (such as incoming_call, call_cancelled, and call_ignored) must use the same call_id. A later call, including a retry initiated as a new call, receives a new call_id. The call_id identifies a call instance; it is not a persistent user identity.
