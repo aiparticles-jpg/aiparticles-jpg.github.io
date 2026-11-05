@@ -250,3 +250,7 @@ Decision:
 - Start ntfy signaling and WebRTC in parallel with the Render wake-up request; neither waits for Render.
 - If Render remains unavailable, continue through ntfy/WebRTC without waiting for it and use a separate response timeout for this path.
 - The duration of the separate timeout when Render is unavailable remains undecided.
+
+## Render-unavailable call response timeout
+
+Decision: If Render does not become available, use a separate 60-second response timeout measured from the moment the caller presses the call button. This is distinct from the normal-path 60-second response window, which starts only after Render successfully responds to the wake-up request.
