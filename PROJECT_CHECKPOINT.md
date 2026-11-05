@@ -226,3 +226,7 @@ Decision:
 Decision: Keep only minimal technical diagnostics for OneSignal push failures: timestamp, HTTP status code (if available), event type (incoming_call, call_cancelled, call_ignored), and a coarse internal error category.
 
 Never log push payloads or notification contents, API keys, authorization headers, private keys, Subscription IDs, user_id values, or other user/contact identifiers. Do not expose secrets or raw sensitive provider responses to the frontend. Logs are for troubleshooting only and must not become a user-data store.
+
+## Backend log retention
+
+Decision: Use Render's standard log retention for the deployed service/plan. Do not build a separate persistent log store, database table, or custom log archive. The agreed restrictions on logged fields and sensitive data apply throughout Render's retention period.
