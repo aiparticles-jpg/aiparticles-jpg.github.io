@@ -182,3 +182,8 @@ If Render is waking from sleep and does not respond immediately:
 - If retries are exhausted, show a temporary-unavailability message and allow another attempt.
 
 Do not display the backend as ready until a successful response is received.
+
+
+## Calls when Render is unavailable
+
+Do not block or cancel a call solely because the Render backend is unavailable. Render is used for OneSignal push delivery; ntfy signaling and WebRTC audio are separate paths. Continue the call through ntfy/WebRTC where available, while showing a non-blocking warning that the push notification could not be sent and the recipient may not see an incoming-call alert while the app is inactive. Do not claim the recipient was notified without confirmation. The caller may continue waiting for the normal ntfy response or cancel the call.
