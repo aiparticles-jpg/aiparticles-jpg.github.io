@@ -392,3 +392,7 @@ For delayed incoming-call notifications specifically, the detailed current-call-
 ## Accepted response stops incoming-call timer
 
 When the caller receives the recipient's `accepted` confirmation through ntfy, the 60-second incoming-call response timer stops immediately. WebRTC connection establishment is a separate subsequent stage with its own error handling; the response timer must not continue running during WebRTC setup.
+
+## WebRTC connection setup failure
+
+If WebRTC connection establishment fails after the recipient has accepted the call, both users are shown a clear failure message such as "Could not establish connection". The call is terminated and its resources are released. The exact WebRTC setup timeout and the signaling detail for notifying the peer of setup failure remain to be decided during the core implementation; do not add a new push event solely for this case without a separate decision.
