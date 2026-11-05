@@ -152,3 +152,19 @@ When OneSignal assigns the user a new Subscription ID, update the user's own val
 ## Browser notification permission denied
 
 When browser notification permission is denied or blocked, show an in-app warning that push notifications are unavailable and incoming-call alerts may not arrive while the app is inactive. Offer instructions for enabling notifications in browser site settings. Do not repeatedly prompt or bypass the user's choice. Keep other Voicelink functionality available where technically possible; lack of push permission alone must not block app use.
+
+
+## Notification permission request timing
+
+Do not request notification permission automatically on first page load. Explain the purpose first and request permission only after the user explicitly presses an `Enable notifications` button. If permission is denied or blocked, show the warning and guidance already agreed.
+
+## Render backend wake-up / keep-alive
+
+Render may put the backend to sleep after approximately 15 minutes of inactivity. The frontend should:
+
+- Send a lightweight backend request on application startup to wake it if necessary.
+- Send a lightweight ping approximately every 14 minutes while the application is active.
+- Stop periodic pings when the application is closed or no longer running.
+- Send a fresh request immediately when the user returns after an absence.
+
+Mobile browsers and operating systems can throttle or suspend background timers, so this is best-effort and does not guarantee continuous backend availability. Handle cold-start delays and temporary unavailability gracefully. The ping must not create persistent user records or store contact data.
