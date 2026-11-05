@@ -211,3 +211,12 @@ Decision:
 - Never retry indefinitely.
 - If push submission ultimately fails, show a non-blocking warning; the ntfy/WebRTC call continues independently.
 - Exact retry count and delay values remain implementation details for a later decision.
+
+## OneSignal HTTP 401/403 handling
+
+Decision:
+- HTTP 401 and HTTP 403 from OneSignal are non-retryable configuration/authorization errors.
+- Do not automatically retry these responses.
+- Keep diagnostic details in backend logs only; never expose API keys or secrets to the frontend.
+- Return a generic push-configuration failure for a non-blocking frontend warning.
+- Do not interrupt the call; ntfy signaling and WebRTC continue independently where available.
