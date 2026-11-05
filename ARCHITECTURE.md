@@ -324,3 +324,13 @@ Retry push submission only for transient OneSignal failures, including HTTP 429 
 ## OneSignal authentication and authorization errors
 
 Treat OneSignal HTTP 401 and HTTP 403 responses as non-retryable configuration/authorization errors. Do not automatically retry these responses. Record a server-side diagnostic suitable for the operator, without exposing the OneSignal API key or other secrets to the frontend. Return a generic push-configuration failure to the frontend so it can show a non-blocking warning. The call must continue through ntfy and WebRTC where available.
+
+## OneSignal error logging and privacy
+
+For OneSignal push failures, backend logs may contain only minimal technical diagnostics:
+- timestamp;
+- HTTP status code, when available;
+- event type (incoming_call, call_cancelled, or call_ignored);
+- a coarse internal error category.
+
+Do not log push payloads, notification contents, API keys, authorization headers, private keys, Subscription IDs, user_id values, or other contact/user identifiers. Do not expose secrets or raw sensitive provider responses to the frontend. Logging is for troubleshooting only and must not become a user-data store.
