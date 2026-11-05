@@ -187,3 +187,14 @@ Do not display the backend as ready until a successful response is received.
 ## Calls when Render is unavailable
 
 Do not block or cancel a call solely because the Render backend is unavailable. Render is used for OneSignal push delivery; ntfy signaling and WebRTC audio are separate paths. Continue the call through ntfy/WebRTC where available, while showing a non-blocking warning that the push notification could not be sent and the recipient may not see an incoming-call alert while the app is inactive. Do not claim the recipient was notified without confirmation. The caller may continue waiting for the normal ntfy response or cancel the call.
+
+## OneSignal unavailable while Render is available
+
+Agreed behavior:
+
+- If OneSignal is temporarily unavailable or returns a transient error, Render makes a bounded number of retries with short delays/backoff; never retry indefinitely.
+- If retries fail, return a push-submission failure so the frontend can show a non-blocking warning.
+- The call itself continues through ntfy signaling and WebRTC where available. Push failure must not block or cancel it.
+- Do not say the recipient was notified unless OneSignal confirms acceptance. API acceptance does not guarantee that the notification was displayed on the device.
+- The caller can keep waiting for the normal ntfy response or cancel the call.
+- Exact retry count and delay values remain implementation details to be selected during implementation.
