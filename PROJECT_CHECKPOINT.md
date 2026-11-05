@@ -91,3 +91,15 @@ If the browser's IndexedDB data is cleared, the browser is reinstalled, or the u
 - No private-key backup, export, password-encrypted recovery file, or device-to-device key transfer is provided in this design.
 
 This is an intentional trade-off: simpler recovery behavior and preservation of the non-extractable private-key design, at the cost of losing the old identity when its key is lost.
+
+## Handling stale contacts after identity loss
+
+When a user loses their private key and creates a new cryptographic identity:
+
+- Existing contact records are not deleted automatically.
+- The old contact identity is marked as `Identity outdated`.
+- The old `user_id` and public key are retained as historical contact data, but must not be used to establish a new connection as though they represented the user's current identity.
+- The user shares the new contact package (QR code or URL) with their contacts.
+- The recipient imports the new package and verifies the new identity before trusting it.
+- The application must not automatically link the old and new identities: without the old private key, cryptographic proof of continuity is unavailable.
+- After the recipient has independently verified the new identity, the UI may offer to replace the outdated identity in the existing local contact record while preserving that contact's locally assigned name. This replacement is an explicit user action, not an automatic merge.
