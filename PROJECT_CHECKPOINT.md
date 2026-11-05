@@ -107,3 +107,16 @@ When a user loses their private key and creates a new cryptographic identity:
 ## SAS verification for a re-imported contact
 
 When a contact imports a user's new contact package after that user has lost their previous private key and created a new identity, the same Short Authentication String (SAS) verification mechanism agreed for first-time contact verification is used. Both users compare the SAS through an independent communication channel and confirm that it matches before marking the new identity as trusted. The new identity is not automatically linked to the old one; replacing an outdated local contact identity remains an explicit user action after successful verification.
+
+
+## Startup behavior and local-only data
+
+On application startup:
+
+- Check IndexedDB for the locally stored non-extractable private key.
+- If present, load and use the existing cryptographic identity.
+- If absent, generate a new ECDSA P-256 key pair and derive a new `user_id` from its public key.
+- Retain and use locally stored contacts if they are still available.
+- If browser data was cleared and the local address book is also absent, the user must import contacts again.
+
+There is no cloud synchronization or cloud backup for identity or contacts, and no cross-device synchronization is included in the agreed architecture.
