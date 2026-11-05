@@ -242,3 +242,11 @@ Decision: Because the idempotency key is (call_id, event type), different event 
 ## Call ID generation and lifetime
 
 Decision: Generate a new cryptographically random UUID for every newly initiated call. Reuse that call_id for all events belonging to that call (incoming_call, call_cancelled, call_ignored, etc.). A new call gets a new UUID, even if it is to the same contact. call_id identifies only a call instance, not a persistent user identity.
+
+## Incoming call timeout and Render wake-up
+
+Decision:
+- For the normal path, start the 60-second incoming-call response window only after Render successfully responds to the wake-up/request; do not count Render cold-start time against the recipient's response window.
+- Start ntfy signaling and WebRTC in parallel with the Render wake-up request; neither waits for Render.
+- If Render remains unavailable, continue through ntfy/WebRTC without waiting for it and use a separate response timeout for this path.
+- The duration of the separate timeout when Render is unavailable remains undecided.
