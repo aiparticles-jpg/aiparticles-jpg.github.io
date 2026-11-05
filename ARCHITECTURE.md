@@ -246,3 +246,13 @@ When OneSignal assigns the current user a new Subscription ID:
 - Make the updated package available for the user to share with contacts through the existing QR-code or URL mechanism.
 - Do not automatically delete or rewrite existing contacts on other users' devices; they must receive and import the updated package to refresh the stored Subscription ID.
 - The cryptographic identity does not change solely because the OneSignal Subscription ID changes. The updated package must be signed with the existing private key.
+
+
+## Browser notification permission denied
+
+If the user denies or blocks browser notification permission:
+
+- Show a clear in-app warning explaining that push notifications are unavailable and incoming-call alerts may not arrive while the application is not active.
+- Offer guidance to enable notifications in the browser's site settings.
+- Do not repeatedly trigger the browser permission prompt or attempt to bypass the user's choice.
+- Keep the rest of the application usable where technically possible; denying push permission must not by itself block use of Voicelink.
