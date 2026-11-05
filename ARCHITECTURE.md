@@ -320,3 +320,7 @@ Do not add a separate end-device delivery acknowledgment or delivery-confirmatio
 ## OneSignal retry classification
 
 Retry push submission only for transient OneSignal failures, including HTTP 429 (rate limiting) and HTTP 5xx responses, using the bounded retry policy defined for push submission. Do not retry permanent client/request errors such as HTTP 400 (for example, an invalid or malformed Subscription ID/request). Do not retry indefinitely. Surface a non-blocking push failure to the frontend if the bounded attempts fail; do not interrupt the independent ntfy/WebRTC call flow.
+
+## OneSignal authentication and authorization errors
+
+Treat OneSignal HTTP 401 and HTTP 403 responses as non-retryable configuration/authorization errors. Do not automatically retry these responses. Record a server-side diagnostic suitable for the operator, without exposing the OneSignal API key or other secrets to the frontend. Return a generic push-configuration failure to the frontend so it can show a non-blocking warning. The call must continue through ntfy and WebRTC where available.
