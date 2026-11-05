@@ -312,3 +312,7 @@ If the Render backend is available but the OneSignal service/API is temporarily 
 - The caller may continue waiting for the normal ntfy response or cancel the call.
 
 The exact retry count and delay values are implementation parameters and are not fixed by this architectural decision.
+
+## Push delivery confirmation
+
+Do not add a separate end-device delivery acknowledgment or delivery-confirmation mechanism for push notifications at this stage. Treat a successful OneSignal API response only as acceptance of the push submission, not proof that the recipient's device received or displayed it. The call flow must continue to rely on ntfy signaling and WebRTC independently of push delivery.
