@@ -220,3 +220,9 @@ Decision:
 - Keep diagnostic details in backend logs only; never expose API keys or secrets to the frontend.
 - Return a generic push-configuration failure for a non-blocking frontend warning.
 - Do not interrupt the call; ntfy signaling and WebRTC continue independently where available.
+
+## OneSignal error logging — privacy limits
+
+Decision: Keep only minimal technical diagnostics for OneSignal push failures: timestamp, HTTP status code (if available), event type (incoming_call, call_cancelled, call_ignored), and a coarse internal error category.
+
+Never log push payloads or notification contents, API keys, authorization headers, private keys, Subscription IDs, user_id values, or other user/contact identifiers. Do not expose secrets or raw sensitive provider responses to the frontend. Logs are for troubleshooting only and must not become a user-data store.
