@@ -264,3 +264,7 @@ Decision: If the applicable 60-second response timeout expires without an answer
 - release call-related resources.
 
 The call ends locally regardless of push success. Push delivery is best-effort; ntfy is the primary cancellation signaling path.
+
+## Call timeout race condition
+
+The call lifecycle uses a first-terminal-event-wins rule. The recipient's answer is accepted only if it is processed before timeout/cancellation is committed. Once the caller's timeout has been committed and the call cancellation has been issued, any late answer is ignored. A completed or cancelled call cannot be reopened; a new call requires a new call_id.
