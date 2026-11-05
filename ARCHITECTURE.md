@@ -225,3 +225,8 @@ IndexedDB is the agreed local storage mechanism for the application's identity a
 - Contact trust and SAS-verification status.
 
 These data remain on the user's device. They are not synchronized to cloud storage or stored as a persistent address book on the backend. `localStorage` is not used for identity or contact data.
+
+
+## Local contact-data encryption
+
+Contact records in IndexedDB are stored without additional application-level encryption. This keeps local contact storage simple. The private key remains a non-extractable Web Crypto `CryptoKey` stored in IndexedDB, as specified in the private-key storage section. This decision does not claim that IndexedDB itself encrypts contact data.
