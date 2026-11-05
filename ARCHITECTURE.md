@@ -356,3 +356,7 @@ Generate a new cryptographically random UUID for every newly initiated call. All
 The 60-second incoming-call response window starts only after the Render backend has successfully responded to the wake-up/request. It must not be counted while Render is still waking from sleep. Start the ntfy signaling and WebRTC call flow in parallel with the Render wake-up request; do not make them wait for Render.
 
 If Render does not become available, do not wait for it before proceeding with ntfy/WebRTC. Use a separate call-response timeout for this Render-unavailable path. The duration of that separate timeout is not yet decided.
+
+## Call response timeout when Render is unavailable
+
+If Render does not become available for the call, use a separate 60-second response timeout measured from the caller pressing the call button. This timeout applies to the Render-unavailable path; it is independent of the normal 60-second response window that starts after a successful Render wake-up response.
