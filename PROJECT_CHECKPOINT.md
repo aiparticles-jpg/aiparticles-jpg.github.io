@@ -290,3 +290,7 @@ When the caller receives the recipient's `accepted` confirmation through ntfy, t
 ## WebRTC connection setup failure
 
 If WebRTC connection establishment fails after the recipient has accepted the call, both users are shown a clear failure message such as "Could not establish connection". The call is terminated and its resources are released. The exact WebRTC setup timeout and the signaling detail for notifying the peer of setup failure remain to be decided during the core implementation; do not add a new push event solely for this case without a separate decision.
+
+## WebRTC connection setup timeout
+
+After the recipient accepts the call, WebRTC has up to 30 seconds to establish the connection. If the connection is not established within 30 seconds, the call is terminated, both users are shown a connection-failure message, and call resources are released.
