@@ -78,9 +78,8 @@ Three distinct incoming-call actions are agreed:
 - These are architecture decisions, not proof of implementation.
 - Reject button/event handling has not been implemented or verified.
 - Exact rate-limit values are not finalized.
-- Initial storage foundation is implemented in `js/local-store.js`: IndexedDB identity/contact/history stores, non-extractable ECDSA private CryptoKey, public-key fingerprint, local contact CRUD, and 10-entry call-history CRUD. UI/signaling integration and browser compatibility testing remain pending.
-- Open question to discuss next: what should happen if browser data is cleared, the browser is reinstalled, or the user changes device and loses the non-extractable private key? Possible consequences include creating a new identity; recovery/backup would require a separate security design.
-- The current legacy UI and signaling modules still use username-based identity and have not yet been migrated. Continue incrementally from the new local storage foundation; do not claim the app is fully migrated until the call flow uses anonymous contacts and the agreed OneSignal/ntfy/Render architecture.
+- Initial storage foundation is implemented in `js/local-store.js`: IndexedDB identity/contact/history stores, non-extractable ECDSA private CryptoKey, public-key fingerprint, local contact CRUD (including lookup and safe metadata updates without changing `user_id`), and 10-entry call-history CRUD. UI/signaling integration and browser compatibility testing remain pending.
+- The current legacy UI and signaling modules still use username-based identity. In particular, `js/ntfy-signaling.js` creates a separate extractable ECDSA key and stores its private JWK in `localStorage`; this must be removed before the new identity is used for signaling. Do not simply pass the 64-character fingerprint as a username: topic addressing, signature identity, and contact trust storage must be migrated together. Next implementation step: adapt signaling to the IndexedDB CryptoKey and public key, resolve peer addresses from local contacts, and persist trust through IndexedDB. Keep the existing call flow intact until this replacement is integrated and verified.
 
 ## Identity recovery after private-key loss
 
