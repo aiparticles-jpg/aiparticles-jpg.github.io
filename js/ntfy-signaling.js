@@ -195,11 +195,11 @@ export class NtfySecureSignaling {
  }
  async sendCallRequest(){
   if(this.closed||this.ready||this.rateLimited||this.role!=="B")return;
-  const request={sid:b64u(crypto.getRandomValues(new Uint8Array(16))),from:this.me,to:this.peer,identity:this.identity.publicJwk,expiresAt:Date.now()+45000};
+  const request={sid:crypto.randomUUID(),from:this.me,to:this.peer,identity:this.identity.publicJwk,expiresAt:Date.now()+45000};
   this.outgoingRequest=request;
   await this.publish(this.peer,await this.signed("request",request));
   this.onStatus("Запрос на звонок отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
-  this.onDialing({peer:this.peerName||"контакт",expiresAt:request.expiresAt});
+  this.onDialing({peer:this.peerName||"контакт",expiresAt:request.expiresAt,callId:request.sid});
  }
  async cancelCall(){
   const request=this.outgoingRequest||this.hello;
@@ -214,13 +214,13 @@ export class NtfySecureSignaling {
   if(this.closed||this.ready||this.rateLimited||this.role!=="A")return;
   if(!this.hello){
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-   this.hello={sid:b64u(crypto.getRandomValues(new Uint8Array(16))),from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),expiresAt:Date.now()+45000};
+   this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),expiresAt:Date.now()+45000};
   }
   this.helloAttempts++;
   this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
   await this.publish(this.peer,await this.signed("hello",this.hello));
   this.onStatus("Запрос отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
-  if(!this.ready)this.onDialing({peer:this.peerName||"контакт",expiresAt:this.hello.expiresAt});
+  if(!this.ready)this.onDialing({peer:this.peerName||"контакт",expiresAt:this.hello.expiresAt,callId:this.hello.sid});
  }
  scheduleHelloRetry(delay){
   this.clearHelloRetry();
