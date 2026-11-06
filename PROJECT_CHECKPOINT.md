@@ -330,3 +330,11 @@ Agreed:
 - Never transmit call history, local contact names/aliases, or history identifiers to Render, OneSignal, ntfy, or another server.
 - History is a local activity list, not a backend call log.
 - Exact UI presentation and additional history-management actions are deferred to implementation.
+
+
+### Call-history deletion
+
+- Allow clearing the entire local call history.
+- Do not provide deletion of individual entries.
+- Clearing history removes the complete local history from IndexedDB.
+- Whether the UI requires a confirmation step is still to be decided.
