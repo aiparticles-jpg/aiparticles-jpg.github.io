@@ -547,7 +547,6 @@ export class WebRtcAudio {
 
   async activatePreparedOffer() {
     if (!this.isPrewarmed()) return false;
-    this.startStatsMonitoring(this.pc);
     const stream = await this.prepareOutgoingStream();
     const track = stream.getAudioTracks()[0];
     if (track && this.audioSender) await this.audioSender.replaceTrack(track);
@@ -561,7 +560,6 @@ export class WebRtcAudio {
 
   async createOffer() {
     const pc = await this.createPeerConnection();
-    this.startStatsMonitoring(pc);
     if (this.prewarmed && await this.activatePreparedOffer()) return;
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -570,7 +568,6 @@ export class WebRtcAudio {
 
   async handleSignal(payload) {
     const pc = await this.createPeerConnection();
-    this.startStatsMonitoring(pc);
     if (payload.description) {
       const description = payload.description;
       await pc.setRemoteDescription(description);
