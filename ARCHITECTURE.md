@@ -429,12 +429,13 @@ The message is displayed after returning to the main screen and disappears autom
 
 ## Local call history
 
-The main screen will show the 10 most recent call attempts. Record every call attempt, including answered calls, missed/unanswered calls, rejected calls, and calls cancelled by the caller. Each entry records the locally resolved contact name/alias, date, time, and outcome.
+The main screen will show the 10 most recent call attempts. Record every call attempt, including answered calls, missed/unanswered calls, rejected calls, and calls cancelled by the caller. Each attempt is a separate history entry, even when the same contact calls repeatedly. Each entry records the locally resolved contact name/alias, date, time, and outcome.
 
 - Store call history only in the browser's IndexedDB.
 - Do not send call-history records, contact aliases/names, or history identifiers to Render, OneSignal, ntfy, or any other server.
 - This is a local activity list, not a server-side call log.
 - The exact UI presentation and any additional history-management actions remain to be decided during implementation.
+- MVP scope rule: prioritize only essential functionality needed for a simple working app. Minor details, edge cases, and non-essential enhancements should be noted as deferred items rather than blocking progress; decide on them later.
 
 
 ### Call-history deletion
