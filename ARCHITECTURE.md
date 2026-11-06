@@ -410,3 +410,7 @@ While WebRTC is being established, both users see the status "Connecting…". On
 ## Established WebRTC connection loss
 
 If an established WebRTC connection is unexpectedly lost, the call is automatically terminated, call resources are released, and both users are shown the message "Connection lost".
+
+## Post-call navigation
+
+After a call ends for any reason, both participants return to the application's main screen. The application does not automatically initiate another call.
