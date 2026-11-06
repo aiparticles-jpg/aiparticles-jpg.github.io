@@ -324,8 +324,9 @@ The message is displayed after returning to the main screen and disappears autom
 ## Local call history
 
 Agreed:
-- Show the 10 most recent calls on the main screen.
-- Each entry includes the locally resolved contact name/alias, date, time, and outcome: answered, missed, or rejected.
+- Show the 10 most recent call attempts on the main screen.
+- Record every call attempt, including answered calls, missed/unanswered calls, rejected calls, and calls cancelled by the caller.
+- Each entry includes the locally resolved contact name/alias, date, time, and outcome.
 - Persist history only in IndexedDB on the user's device.
 - Never transmit call history, local contact names/aliases, or history identifiers to Render, OneSignal, ntfy, or another server.
 - History is a local activity list, not a backend call log.
