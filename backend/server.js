@@ -35,7 +35,7 @@ app.use((req, res, next) => {
 
 function cleanupCache(cache, now) {
   for (const [key, entry] of cache) {
-    if (entry.expiresAt <= now) cache.delete(key);
+    if ((entry.expiresAt ?? entry.resetAt ?? 0) <= now) cache.delete(key);
   }
 }
 
