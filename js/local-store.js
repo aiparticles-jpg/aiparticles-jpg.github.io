@@ -170,8 +170,8 @@ export async function deleteContact(userId) {
 }
 
 export async function addCallHistoryEntry(entry) {
-  if (!entry || !entry.outcome || !entry.created_at) {
-    throw new TypeError("A call-history entry requires an outcome and created_at timestamp.");
+  if (!entry || !entry.outcome || !entry.created_at || !Number.isFinite(Date.parse(entry.created_at))) {
+    throw new TypeError("A call-history entry requires an outcome and a valid created_at timestamp.");
   }
 
   const record = {
@@ -191,9 +191,10 @@ export async function addCallHistoryEntry(entry) {
   getAll.onsuccess = () => {
     const records = [...getAll.result, record]
       .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-    store.put(record);
-    for (const oldRecord of records.slice(HISTORY_LIMIT)) {
-      if (oldRecord.id !== record.id) store.delete(oldRecord.id);
+    const retainedIds = new Set(records.slice(0, HISTORY_LIMIT).map(item => item.id));
+    if (retainedIds.has(record.id)) store.put(record);
+    for (const oldRecord of records) {
+      if (!retainedIds.has(oldRecord.id)) store.delete(oldRecord.id);
     }
   };
 
