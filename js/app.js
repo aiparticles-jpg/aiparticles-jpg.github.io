@@ -3,6 +3,8 @@ import { NtfySecureSignaling } from "./ntfy-signaling.js?v=20";
 import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact } from "./local-store.js";
 import { verifyContactPackage } from "./contact-exchange.js";
+import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js";
+import { signWithIdentity } from "./local-store.js";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -12,7 +14,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),inviteQr:$("invite-qr")
 };
 let qrStream=null,qrScanActive=false;
 const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
@@ -387,6 +389,69 @@ async function refreshContactOptions(selectUserId=""){
  els.peer.disabled=contacts.length===0;
  if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
 }
+
+function toBase64UrlBytes(bytes){
+ let binary="";
+ for(const byte of bytes)binary+=String.fromCharCode(byte);
+ return btoa(binary).replaceAll("+","-").replaceAll("/","_").replace(/=+$/g,"");
+}
+async function ensureQrCodeLibrary(){
+ if(window.QRCode)return;
+ await new Promise((resolve,reject)=>{
+  const script=document.createElement("script");
+  script.src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+  script.onload=resolve;
+  script.onerror=()=>reject(new Error("Не удалось загрузить библиотеку QR-кодов."));
+  document.head.append(script);
+ });
+ if(!window.QRCode)throw new Error("Библиотека QR-кодов не инициализировалась.");
+}
+async function createContactInvitation(){
+ els.createInvite.disabled=true;
+ els.qrStatus.textContent="Подключаем push-уведомления OneSignal…";
+ try{
+  const subscriptionId=await enableOneSignalPush();
+  const identity=await getCurrentSignalingIdentity();
+  const unsigned={
+   version:1,
+   user_id:identity.user_id,
+   public_key:identity.public_key,
+   push_subscription_id:subscriptionId
+  };
+  const canonical=JSON.stringify(unsigned);
+  const signature=await signWithIdentity(canonical);
+  const contactPackage={...unsigned,signature};
+  const encoded=toBase64UrlBytes(new TextEncoder().encode(JSON.stringify(contactPackage)));
+  const url=window.location.origin+window.location.pathname+"#contact="+encoded;
+  els.inviteUrl.value=url;
+  els.inviteQr.replaceChildren();
+  try{
+   await ensureQrCodeLibrary();
+   new QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});
+   els.qrStatus.textContent="Приглашение создано и подписано. Передайте ссылку или QR-код собеседнику.";
+  }catch(qrError){
+   els.qrStatus.textContent="Ссылка создана и подписана. QR-код пока недоступен: "+(qrError.message||String(qrError));
+  }
+  els.inviteUrl.focus();
+  els.inviteUrl.select();
+  debug("Создано подписанное приглашение. OneSignal Subscription ID получен.");
+ }catch(error){
+  els.qrStatus.textContent="Не удалось создать приглашение: "+(error.message||String(error));
+  showError(error.message||String(error));
+ }finally{els.createInvite.disabled=false}
+}
+async function copyContactInvitation(){
+ const value=els.inviteUrl.value;
+ if(!value)return;
+ try{
+  await navigator.clipboard.writeText(value);
+  els.qrStatus.textContent="Ссылка скопирована.";
+ }catch{
+  els.inviteUrl.focus();els.inviteUrl.select();
+  els.qrStatus.textContent="Выделите ссылку и скопируйте её вручную.";
+ }
+}
+
 async function importContactFromInput(){
  els.importContact.disabled=true;
  try{
@@ -453,6 +518,8 @@ async function startQrScan(){
 }
 
 els.importContact.addEventListener("click",importContactFromInput);
+els.createInvite.addEventListener("click",createContactInvitation);
+els.copyInvite.addEventListener("click",copyContactInvitation);
 els.scanQr.addEventListener("click",startQrScan);
 window.addEventListener("pagehide",()=>{if(qrStream)for(const track of qrStream.getTracks())track.stop()});
 els.connect.addEventListener("click",connect);
@@ -510,6 +577,7 @@ async function initializeApp(){
   }catch(error){debug("Не удалось очистить устаревшие локальные ключи: "+(error.message||String(error)));}
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
+  initializeOneSignal().then(()=>debug("OneSignal Web Push SDK инициализирован.")).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
   await refreshContactOptions();
   const fragment=new URLSearchParams(window.location.hash.slice(1));
   if(fragment.has("contact")){els.contactPackage.value=window.location.hash;els.contactTools.open=true;els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
