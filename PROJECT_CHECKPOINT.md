@@ -78,9 +78,9 @@ Three distinct incoming-call actions are agreed:
 - These are architecture decisions, not proof of implementation.
 - Reject button/event handling has not been implemented or verified.
 - Exact rate-limit values are not finalized.
-- The non-extractable IndexedDB CryptoKey approach is agreed but not implemented or compatibility-tested.
+- Initial storage foundation is implemented in `js/local-store.js`: IndexedDB identity/contact/history stores, non-extractable ECDSA private CryptoKey, public-key fingerprint, local contact CRUD, and 10-entry call-history CRUD. UI/signaling integration and browser compatibility testing remain pending.
 - Open question to discuss next: what should happen if browser data is cleared, the browser is reinstalled, or the user changes device and loses the non-extractable private key? Possible consequences include creating a new identity; recovery/backup would require a separate security design.
-- Before coding, inspect the current repository files and reconcile them with this document.
+- The current legacy UI and signaling modules still use username-based identity and have not yet been migrated. Continue incrementally from the new local storage foundation; do not claim the app is fully migrated until the call flow uses anonymous contacts and the agreed OneSignal/ntfy/Render architecture.
 
 ## Identity recovery after private-key loss
 
