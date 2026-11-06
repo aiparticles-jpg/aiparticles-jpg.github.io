@@ -29,21 +29,16 @@
         <div><h2 id="room-title">Защищённое соединение</h2></div>
         <span class="lock-icon" aria-hidden="true">⌑</span>
       </div>
-      <label class="field-label" for="my-name">Моё имя пользователя</label>
+      <label class="field-label" for="peer-contact">Контакт</label>
       <div class="join-row">
-        <input id="my-name" type="text" maxlength="24" autocomplete="username" spellcheck="false" placeholder="например damir">
-        <button id="change-name" class="button button-secondary" type="button">Сменить имя пользователя</button>
-      </div>
-      <label class="field-label" for="peer-name">Имя собеседника</label>
-      <div class="join-row">
-        <input id="peer-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="например ivan">
+        <select id="peer-contact" autocomplete="off" aria-label="Выберите локальный контакт"><option value="">Загрузка контактов…</option></select>
         <button id="connect" class="button button-secondary" type="button">Подключиться</button>
         <button id="dismiss-incoming" class="button button-danger hidden" type="button">Скрыть вызов</button>
         <button id="hangup" class="button button-danger hidden" type="button" disabled>Завершить звонок</button>
       </div>
-      <p class="hint">Оба участника вводят свои имена и имена друг друга. Имя — это адрес для поиска, а криптографическая идентичность создаётся отдельно в каждом браузере.</p>
+      <p class="hint">Ваша анонимная идентичность создаётся автоматически на этом устройстве. Для звонка выберите контакт, сохранённый в локальной адресной книге.</p>
       <button id="reset-peer" class="button button-secondary reset-peer" type="button">Сбросить сопряжение с этим собеседником</button>
-      <p class="hint">Если собеседник сменил устройство, сбросьте сопряжение на обоих устройствах и подключитесь заново. Собственная идентичность при этом не удаляется.</p>
+      <p class="hint">Имя контакта хранится только на этом устройстве. В сети используется его анонимный криптографический идентификатор.</p>
       <div id="verify-panel" class="invite-panel hidden">
         <div class="invite-title">Проверка собеседника — только при первом подключении</div>
         <div id="verify-code" class="verification-code">--------</div>
@@ -95,6 +90,6 @@
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=34"></script>
+  <script type="module" src="./js/app.js?v=35"></script>
 </body>
 </html>
