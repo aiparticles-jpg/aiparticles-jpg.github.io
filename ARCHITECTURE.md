@@ -414,3 +414,14 @@ If an established WebRTC connection is unexpectedly lost, the call is automatica
 ## Post-call navigation
 
 After a call ends for any reason, both participants return to the application's main screen. The application does not automatically initiate another call.
+
+## Post-call result messages
+
+After a call ends, show a brief result message explaining the reason:
+- "Call ended"
+- "No answer"
+- "Connection lost"
+- "Could not establish connection"
+- "Call rejected"
+
+The message is displayed after returning to the main screen and disappears automatically after 3 seconds.
