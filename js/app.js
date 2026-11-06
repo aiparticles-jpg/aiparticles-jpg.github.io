@@ -4,6 +4,7 @@ import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, signWithIdentity } from "./local-store.js";
 import { verifyContactPackage } from "./contact-exchange.js";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js";
+import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -197,7 +198,7 @@ function createSecureSignaling(me,peer=""){
   onCancelIncoming:info=>{
    if(state.incomingCall){clearIncomingUi();stopRinging();state.secure?.dismissIncoming();setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");}
   },
-  onDialing:info=>{if(!state.answeringCall)startOutgoingCall(info)},
+  onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(els.peer.value,"incoming_call",info.callId,info.expiresAt).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
   onVerify:({sas,peer:name})=>{stopOutgoingCall();clearIncomingUi();stopRinging();els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+(els.peer.selectedOptions[0]?.textContent||"контактом")+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
   onReady:info=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady(info).catch(showError)},
   onError:e=>showError(e.message||String(e)),
