@@ -355,3 +355,13 @@ Agreed:
 - Browser runtime testing of two devices is still required. In particular, verify cross-device topic agreement, signature verification, first-time SAS confirmation, trusted reconnect, incoming-call handling with a selected contact, and WebRTC establishment. The old and new identity namespaces are intentionally not interoperable: existing legacy username identities will not be migrated automatically.
 
 - On migration startup, the app removes obsolete `vl.identity.v1.*` and `vl.peer.v1.*` entries from `localStorage`; active identity and trust are now stored in IndexedDB. The local contact selector has matching form styling.
+
+## Signed contact import via QR and URL — 2026-11-06
+
+- Added `js/contact-exchange.js` to decode a v1 contact package from raw JSON, base64url package text, a full invitation URL, or a URL fragment of the form `#contact=<base64url-json>`.
+- Import validates the package version, required OneSignal Subscription ID, public-key fingerprint (`SHA-256(raw P-256 public key)` equals `user_id`), and ECDSA P-256/SHA-256 signature before saving anything.
+- The v1 signature input is deterministic JSON with fields in this exact order: `version`, `user_id`, `public_key`, `push_subscription_id`. The signature field itself is excluded.
+- Added a local contact-import panel. The user supplies a local-only alias; verified contact details are saved to IndexedDB as untrusted until the first-call SAS check. Re-importing an existing ID requires confirmation and resets its local trust status.
+- Added QR camera scanning using the browser's built-in `BarcodeDetector` API where available. Camera access requires HTTPS and browser support; when unavailable, users can paste the QR payload or invitation URL.
+- Opening the app with `#contact=...` automatically opens the import panel and fills the package field. URL fragments are read by frontend JavaScript and are not sent in the HTTP request.
+- The current code can import contact invitations, but it does not yet generate the user's own signed invitation or QR. That requires the OneSignal Subscription ID to be available from the OneSignal integration; that integration is not yet wired into this app. QR scanning and import are therefore ready for a correctly formed package, while invitation generation remains deferred to the OneSignal step.
