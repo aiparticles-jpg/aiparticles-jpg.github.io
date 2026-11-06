@@ -90,7 +90,7 @@ The agreed baseline protection for the public Render endpoint is:
 - timestamp validation with a 60-second acceptance window;
 - a random nonce per request;
 - rate limiting;
-- only the three explicitly allowed event types;
+- only the explicitly allowed event types: `incoming_call`, `call_cancelled`, `call_ignored`, and `call_ended`;
 - no arbitrary message text or arbitrary OneSignal parameters from the client;
 - no persistent storage of user data.
 
@@ -124,6 +124,7 @@ Only these event types are allowed:
 - `incoming_call`
 - `call_cancelled`
 - `call_ignored`
+- `call_ended`
 
 The sender's display name is resolved locally from the recipient's address book. Do not send names, SDP, audio, private keys, or other sensitive data through OneSignal.
 
@@ -136,6 +137,7 @@ Agreed behavior:
 1. When an outgoing call starts, send `incoming_call` through Render/OneSignal at the same time as starting the call through ntfy.
 2. When the caller cancels the call, send `call_cancelled`.
 3. When the recipient explicitly rejects the call, send `call_ignored`.
+4. When either participant explicitly ends an established call, send `call_ended` through ntfy and submit the corresponding push event through Render/OneSignal when available; the peer terminates the call and releases its resources.
 4. No separate push is needed when the recipient answers; the answer arrives through ntfy.
 5. Merely hiding/dismissing the incoming-call screen is not rejection and must not send `call_ignored`. The caller continues waiting.
 
@@ -330,7 +332,7 @@ Treat OneSignal HTTP 401 and HTTP 403 responses as non-retryable configuration/a
 For OneSignal push failures, backend logs may contain only minimal technical diagnostics:
 - timestamp;
 - HTTP status code, when available;
-- event type (incoming_call, call_cancelled, or call_ignored);
+- event type (`incoming_call`, `call_cancelled`, `call_ignored`, or `call_ended`);
 - a coarse internal error category.
 
 Do not log push payloads, notification contents, API keys, authorization headers, private keys, Subscription IDs, user_id values, or other contact/user identifiers. Do not expose secrets or raw sensitive provider responses to the frontend. Logging is for troubleshooting only and must not become a user-data store.
@@ -349,7 +351,7 @@ The idempotency key includes both call_id and event type. Therefore, different a
 
 ## Call ID generation and lifetime
 
-Generate a new cryptographically random UUID for every newly initiated call. All events belonging to that call (such as incoming_call, call_cancelled, and call_ignored) must use the same call_id. A later call, including a retry initiated as a new call, receives a new call_id. The call_id identifies a call instance; it is not a persistent user identity.
+Generate a new cryptographically random UUID for every newly initiated call. All events belonging to that call (such as incoming_call, call_cancelled, call_ignored, and call_ended) must use the same call_id. A later call, including a retry initiated as a new call, receives a new call_id. The call_id identifies a call instance; it is not a persistent user identity.
 
 ## Incoming call timeout and Render wake-up timing
 
