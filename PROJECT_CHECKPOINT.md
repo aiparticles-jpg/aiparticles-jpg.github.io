@@ -298,3 +298,7 @@ After the recipient accepts the call, WebRTC has up to 30 seconds to establish t
 ## WebRTC connection status
 
 While WebRTC is being established, both users see the status "Connecting…". Once the WebRTC connection is successfully established, the status changes to "Connected".
+
+## Established WebRTC connection loss
+
+If an established WebRTC connection is unexpectedly lost, the call is automatically terminated, call resources are released, and both users are shown the message "Connection lost".
