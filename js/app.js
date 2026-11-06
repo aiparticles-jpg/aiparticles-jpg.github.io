@@ -1,10 +1,9 @@
 import { WebRtcAudio } from "./webrtc.js?v=14";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=20";
 import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact } from "./local-store.js";
+import { listContacts, getContact, saveContact, updateContact, signWithIdentity } from "./local-store.js";
 import { verifyContactPackage } from "./contact-exchange.js";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js";
-import { signWithIdentity } from "./local-store.js";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -427,7 +426,7 @@ async function createContactInvitation(){
   els.inviteQr.replaceChildren();
   try{
    await ensureQrCodeLibrary();
-   new QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});
+   new window.QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
    els.qrStatus.textContent="Приглашение создано и подписано. Передайте ссылку или QR-код собеседнику.";
   }catch(qrError){
    els.qrStatus.textContent="Ссылка создана и подписана. QR-код пока недоступен: "+(qrError.message||String(qrError));
