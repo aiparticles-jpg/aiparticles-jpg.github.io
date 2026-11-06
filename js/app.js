@@ -422,6 +422,13 @@ els.pilot.checked=false;
 els.dismissIncoming.classList.add("hidden");
 async function initializeApp(){
  try{
+  // Remove obsolete extractable legacy keys; the active identity and trust records live in IndexedDB.
+  try{
+   for(let i=localStorage.length-1;i>=0;i--){
+    const key=localStorage.key(i);
+    if(key?.startsWith("vl.identity.v1.")||key?.startsWith("vl.peer.v1."))localStorage.removeItem(key);
+   }
+  }catch(error){debug("Не удалось очистить устаревшие локальные ключи: "+(error.message||String(error)));}
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
   const contacts=await listContacts();
