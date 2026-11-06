@@ -376,3 +376,15 @@ Agreed:
 - Added copy-link UI and local QR rendering using QRCode.js loaded from cdnjs. The invitation payload is rendered locally; it is not sent to the QR library host.
 - Existing incoming invitation verification remains unchanged.
 - Not yet browser-tested: OneSignal dashboard platform/site configuration, actual permission prompt, Subscription ID availability, service-worker registration, QR rendering, and cross-device push delivery. The OneSignal app must be configured for Web Push with the site's origin https://aiparticles-jpg.github.io.
+
+## Backend scaffold — 2026-11-06
+
+Created the initial backend inside the existing repository under `backend/`; no separate repository was created.
+
+- `backend/package.json`: private Node.js package, Node.js >=20, Express 4, `npm start`.
+- `backend/server.js`: minimal Express server; listens on Render's `PORT` and binds to `0.0.0.0`; exposes `GET /health`.
+- `backend/README.md`: local run instructions and Render Web Service settings (Root Directory: `backend`, Build Command: `npm install`, Start Command: `npm start`, Health Check Path: `/health`).
+- No OneSignal REST API key or other secret is stored in the repository.
+- This is only the initial scaffold. Request authentication, signature/nonce validation, rate limiting, and OneSignal push submission remain unimplemented.
+
+Render deployment and runtime health check have not yet been performed.
