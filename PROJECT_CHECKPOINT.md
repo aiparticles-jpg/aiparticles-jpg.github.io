@@ -365,3 +365,14 @@ Agreed:
 - Added QR camera scanning using the browser's built-in `BarcodeDetector` API where available. Camera access requires HTTPS and browser support; when unavailable, users can paste the QR payload or invitation URL.
 - Opening the app with `#contact=...` automatically opens the import panel and fills the package field. URL fragments are read by frontend JavaScript and are not sent in the HTTP request.
 - The current code can import contact invitations, but it does not yet generate the user's own signed invitation or QR. That requires the OneSignal Subscription ID to be available from the OneSignal integration; that integration is not yet wired into this app. QR scanning and import are therefore ready for a correctly formed package, while invitation generation remains deferred to the OneSignal step.
+
+
+## OneSignal Web Push and signed invitation export — 2026-11-06
+
+- Added the user's OneSignal App ID to js/onesignal.js; this is a public application identifier, not a REST API secret.
+- Added OneSignal Web SDK v16 initialization and the root-scope OneSignalSDKWorker.js service worker.
+- OneSignal push permission is requested only after the user presses the explicit invitation-generation button. The app reads the current User.PushSubscription.id; no external user ID or username is assigned.
+- Invitation export builds the exact v1 canonical field order (version, user_id, public_key, push_subscription_id), signs it with the existing non-extractable local identity key, and encodes the package in the URL fragment.
+- Added copy-link UI and local QR rendering using QRCode.js loaded from cdnjs. The invitation payload is rendered locally; it is not sent to the QR library host.
+- Existing incoming invitation verification remains unchanged.
+- Not yet browser-tested: OneSignal dashboard platform/site configuration, actual permission prompt, Subscription ID availability, service-worker registration, QR rendering, and cross-device push delivery. The OneSignal app must be configured for Web Push with the site's origin https://aiparticles-jpg.github.io.
