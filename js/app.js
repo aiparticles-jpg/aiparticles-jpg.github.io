@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=14";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=20";
 import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact, signWithIdentity } from "./local-store.js";
+import { listContacts, getContact, saveContact, updateContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
 import { verifyContactPackage } from "./contact-exchange.js";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js";
 import { sendPushEventToContact } from "./push-api.js";
@@ -423,6 +423,7 @@ async function createContactInvitation(){
   const contactPackage={...unsigned,signature};
   const encoded=toBase64UrlBytes(new TextEncoder().encode(JSON.stringify(contactPackage)));
   const url=window.location.origin+window.location.pathname+"#contact="+encoded;
+  await saveMyInvitation(url);
   els.inviteUrl.value=url;
   els.inviteQr.replaceChildren();
   try{
@@ -462,6 +463,7 @@ async function importContactFromInput(){
   if(existing&&!window.confirm("Этот контакт уже сохранён как «"+existing.name+"». Обновить его данные и локальное имя?"))return;
   await saveContact({...verified,name,trusted:false,verified_at:null});
   await refreshContactOptions(verified.user_id);
+  if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
   els.contactPackage.value="";
   els.contactName.value="";
   els.contactTools.open=false;
@@ -579,6 +581,17 @@ async function initializeApp(){
   state.me=identity.user_id;
   initializeOneSignal().then(()=>debug("OneSignal Web Push SDK инициализирован.")).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
   await refreshContactOptions();
+  const savedInvitation=await getMyInvitation();
+  if(savedInvitation){
+   els.inviteUrl.value=savedInvitation;
+   try{
+    await ensureQrCodeLibrary();
+    new window.QRCode(els.inviteQr,{text:savedInvitation,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
+    els.qrStatus.textContent="Сохранённое приглашение восстановлено.";
+   }catch(qrError){
+    els.qrStatus.textContent="Ссылка-приглашение восстановлена; QR-код пока недоступен.";
+   }
+  }
   const fragment=new URLSearchParams(window.location.hash.slice(1));
   if(fragment.has("contact")){els.contactPackage.value=window.location.hash;els.contactTools.open=true;els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
   const contacts=await listContacts();
