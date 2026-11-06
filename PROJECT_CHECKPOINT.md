@@ -364,7 +364,7 @@ Agreed:
 - Added a local contact-import panel. The user supplies a local-only alias; verified contact details are saved to IndexedDB as untrusted until the first-call SAS check. Re-importing an existing ID requires confirmation and resets its local trust status.
 - Added QR camera scanning using the browser's built-in `BarcodeDetector` API where available. Camera access requires HTTPS and browser support; when unavailable, users can paste the QR payload or invitation URL.
 - Opening the app with `#contact=...` automatically opens the import panel and fills the package field. URL fragments are read by frontend JavaScript and are not sent in the HTTP request.
-- The current code can import contact invitations, but it does not yet generate the user's own signed invitation or QR. That requires the OneSignal Subscription ID to be available from the OneSignal integration; that integration is not yet wired into this app. QR scanning and import are therefore ready for a correctly formed package, while invitation generation remains deferred to the OneSignal step.
+- At the time this checkpoint section was first written, outgoing invitation generation was deferred pending OneSignal integration. It has since been implemented in the OneSignal section below.
 
 
 ## OneSignal Web Push and signed invitation export — 2026-11-06
