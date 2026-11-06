@@ -319,3 +319,14 @@ After a call ends, show a brief result message explaining the reason:
 - "Call rejected"
 
 The message is displayed after returning to the main screen and disappears automatically after 3 seconds.
+
+
+## Local call history
+
+Agreed:
+- Show the 10 most recent calls on the main screen.
+- Each entry includes the locally resolved contact name/alias, date, time, and outcome: answered, missed, or rejected.
+- Persist history only in IndexedDB on the user's device.
+- Never transmit call history, local contact names/aliases, or history identifiers to Render, OneSignal, ntfy, or another server.
+- History is a local activity list, not a backend call log.
+- Exact UI presentation and additional history-management actions are deferred to implementation.
