@@ -388,3 +388,20 @@ Created the initial backend inside the existing repository under `backend/`; no 
 - This is only the initial scaffold. Request authentication, signature/nonce validation, rate limiting, and OneSignal push submission remain unimplemented.
 
 Render deployment and runtime health check have not yet been performed.
+
+
+## Signed OneSignal push API — 2026-11-07
+
+Implemented initial end-to-end incoming-call push path:
+
+- `backend/server.js` now exposes `POST /v1/push` in addition to `GET /health`.
+- The backend verifies ECDSA P-256 signatures, checks that SHA-256 of the raw public key equals `user_id`, enforces a 60-second timestamp window, validates random nonces, restricts event types, validates UUID call IDs and Subscription IDs, and applies in-memory replay protection, idempotency, and rate limits.
+- OneSignal REST API requests are made server-side using the private Render environment variable `ONESIGNAL_REST_API_KEY`; the OneSignal App ID remains public.
+- Push payload data contains only event, sender_id, call_id, and expires_at. No contact names, SDP, audio, or call history are sent.
+- `js/push-api.js` signs requests with the existing local non-extractable ECDSA identity and sends them to the Render backend.
+- `js/ntfy-signaling.js` now uses UUID values for call SIDs and passes the call ID to the dialing callback.
+- `js/app.js` submits `incoming_call` to Render/OneSignal when the ntfy outgoing-call request is sent. A push failure is logged as non-blocking; ntfy/WebRTC call flow continues.
+- `backend/README.md` documents the endpoint and security model.
+- Frontend entrypoint cache version was bumped.
+
+Not yet verified: Render deployment of this backend commit, actual OneSignal API acceptance from Render, and an incoming push on a second device. Existing browser-dashboard test push only verified the OneSignal-to-Firefox dashboard test path. The next validation is to confirm the Render deployment is Live, then place a call to a contact whose imported package contains a current OneSignal Subscription ID and check the recipient device.
