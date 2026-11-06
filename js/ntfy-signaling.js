@@ -1,3 +1,4 @@
+import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, markPeerSignalingIdentityTrusted, isUserId } from "./ntfy-identity.js";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -6,7 +7,7 @@ const b64u=b=>{let s="";for(const x of bytes(b))s+=String.fromCharCode(x);return
 const un64=s=>{const x=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4));return Uint8Array.from(x,c=>c.charCodeAt(0))};
 const hex=b=>Array.from(bytes(b),x=>x.toString(16).padStart(2,"0")).join("");
 const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
-const validName=s=>/^[a-z0-9_-]{3,24}$/.test(s);
+
 export class NtfySecureSignaling {
  constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError,onDebug,onIncoming,onCancelIncoming,onDialing}) {
   this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
@@ -14,16 +15,7 @@ export class NtfySecureSignaling {
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});
   this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
- static validName(s){return validName(s)}
- async topic(name){return "vl-user-"+hex(await digest(enc.encode("voice-link-user-v1|"+name))).slice(0,40)}
- async loadIdentity(){
-  const key="vl.identity.v1."+this.me,raw=localStorage.getItem(key);
-  if(raw){const j=JSON.parse(raw);return {privateKey:await crypto.subtle.importKey("jwk",j.privateKey,{name:"ECDSA",namedCurve:"P-256"},true,["sign"]),publicJwk:j.publicKey}}
-  const pair=await crypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);
-  const privateJwk=await crypto.subtle.exportKey("jwk",pair.privateKey),publicJwk=await crypto.subtle.exportKey("jwk",pair.publicKey);
-  localStorage.setItem(key,JSON.stringify({privateKey:privateJwk,publicKey:publicJwk}));
-  return {privateKey:pair.privateKey,publicJwk};
- }
+ static validUserId(s){return isUserId(s)}
  async sign(payload){return b64u(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},this.identity.privateKey,enc.encode(stable(payload))))}
  async verify(payload,sig,jwk){
   const k=await crypto.subtle.importKey("jwk",jwk,{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
@@ -37,7 +29,7 @@ export class NtfySecureSignaling {
    this.onDebug(`[ntfy] POST → ${msg.type} (одна попытка)`);
    let r;
    try{
-    r=await fetch(BASE+await this.topic(to),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});
+    r=await fetch(BASE+await getNtfyTopic(to),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});
    }catch(error){
     this.lastPublishAt=Date.now();
     const failure=Error("Сетевая ошибка при POST в ntfy ("+msg.type+"): "+(error.message||String(error)));
@@ -70,15 +62,16 @@ export class NtfySecureSignaling {
  }
  async openSubscription(){
   this.onDebug(`[SSE ${this.debugId}] subscribe() вызван`);
-  if(!validName(this.me))throw Error("Имя пользователя: 3–24 символа, латинские буквы, цифры, _ или -.");
+  if(!isUserId(this.me))throw Error("Локальная анонимная идентичность не инициализирована.");
   if(!crypto.subtle||!window.isSecureContext)throw Error("Для защищённого соединения нужен браузер с Web Crypto и HTTPS.");
   if(this.es){
    if(this.es.readyState===EventSource.OPEN)return;
    if(this.sseReadyPromise)return this.sseReadyPromise;
   }
-  this.identity=await this.loadIdentity();
+  this.identity=await getCurrentSignalingIdentity();
+  if(this.identity.user_id!==this.me)throw Error("Локальная идентичность изменилась. Перезапустите подписку.");
   if(this.closed)throw Error("Открытие подписки отменено.");
-  const url=BASE+await this.topic(this.me)+"/sse?since=120s";
+  const url=BASE+await getNtfyTopic(this.me)+"/sse?since=120s";
   if(this.closed)throw Error("Открытие подписки отменено.");
   const es=new EventSource(url);this.es=es;
   let settled=false;
@@ -112,7 +105,8 @@ export class NtfySecureSignaling {
  }
  async start(){
   this.onDebug(`[SSE ${this.debugId}] start() вызван`);
-  if(!validName(this.me)||!validName(this.peer)||this.me===this.peer)throw Error("Имена: 3–24 символа, латинские буквы, цифры, _ или -. Имена должны различаться.");
+  if(!isUserId(this.me)||!isUserId(this.peer)||this.me===this.peer)throw Error("Выберите сохранённый контакт.");
+  await getPeerSignalingIdentity(this.peer);
   await this.subscribe();
   this.active=true;
   const pending=this.pendingEvents.splice(0);
@@ -127,7 +121,7 @@ export class NtfySecureSignaling {
   }
  }
  setPeer(peer){
-  if(peer!==""&&(!validName(peer)||peer===this.me))throw Error("Имя собеседника должно содержать 3–24 символа и отличаться от вашего имени.");
+  if(peer!==""&&(!isUserId(peer)||peer===this.me))throw Error("Выберите корректный локальный контакт.");
   if(peer===this.peer)return;
   this.resetSession({preservePending:true});this.peer=peer;this.role=peer?(this.me<peer?"A":"B"):null;
   this.inspectPendingIncoming().catch(error=>this.onError(error));
@@ -336,9 +330,9 @@ export class NtfySecureSignaling {
   }
  }
  async checkPinned(jwk){
-  const raw=localStorage.getItem("vl.peer.v1."+this.peer);if(!raw)return false;
-  if(stable(JSON.parse(raw))!==stable(jwk))throw Error("Ключ "+this.peer+" изменился! Соединение остановлено. Не подтверждайте новый ключ, пока не проверите собеседника.");
-  return true;
+  const contact=await getPeerSignalingIdentity(this.peer);
+  if(stable(contact.publicJwk)!==stable(jwk))throw Error("Ключ сохранённого контакта изменился. Соединение остановлено. Повторно проверьте личность собеседника.");
+  return contact.trusted;
  }
  async derive(hello,answer){
   const tr={v:1,sid:hello.sid,a:hello.from,b:hello.to,aIdentity:hello.identity,bIdentity:answer.identity,aEph:hello.eph,bEph:answer.eph,aNonce:hello.nonce,bNonce:answer.nonce};
@@ -358,7 +352,9 @@ export class NtfySecureSignaling {
  }
  async confirmPeer(){
   if(!this.ready||!this.peerJwk)throw Error("Ключ ещё не согласован.");
-  localStorage.setItem("vl.peer.v1."+this.peer,stable(this.peerJwk));this.confirmed=true;
+  const peerIdentity=await getPeerSignalingIdentity(this.peer);
+  if(stable(peerIdentity.publicJwk)!==stable(this.peerJwk))throw Error("Публичный ключ контакта не совпадает с ключом текущего соединения.");
+  await markPeerSignalingIdentityTrusted(this.peer,peerIdentity.public_key);this.confirmed=true;
   for(const payload of this.pendingSignals.splice(0))await this.onSignal(payload);
   this.onReady({trusted:false,sas:this.sas});
  }
