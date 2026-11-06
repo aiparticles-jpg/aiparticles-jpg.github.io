@@ -435,3 +435,8 @@ The main screen will show the 10 most recent calls. Each entry records the local
 - Do not send call-history records, contact aliases/names, or history identifiers to Render, OneSignal, ntfy, or any other server.
 - This is a local activity list, not a server-side call log.
 - The exact UI presentation and any additional history-management actions remain to be decided during implementation.
+
+
+### Call-history deletion
+
+The user may clear the entire local call history. Individual call-history entries cannot be deleted separately. The history remains local in IndexedDB; clearing it removes the complete local call-history list.
