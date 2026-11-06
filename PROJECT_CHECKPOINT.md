@@ -342,3 +342,14 @@ Agreed:
 - Clearing history removes the complete local history from IndexedDB.
 - Show a warning/confirmation dialog before clearing the entire history; delete it only after explicit user confirmation.
 - After clearing, show no entries; do not add a separate empty-state message.
+
+
+## Anonymous identity and local-contact signaling integration — 2026-11-06
+
+- Integrated `js/ntfy-identity.js` into `js/ntfy-signaling.js`. The signaling class now loads the current ECDSA identity from IndexedDB, validates its `user_id`, and uses the anonymous-ID-derived ntfy topic for both subscription and publishing.
+- Removed the legacy signaling code path that generated an extractable ECDSA key and stored its private JWK in `localStorage`.
+- Peer identity lookup and trust checks now resolve the selected peer from the local IndexedDB contacts. A received signaling public key must match the saved contact public key; successful SAS confirmation marks that contact trusted in IndexedDB.
+- The UI now creates/loads the local anonymous identity automatically and selects a peer from the locally stored contacts. Local contact aliases are used for visible call status; network addressing uses only anonymous `user_id` values.
+- Existing ntfy message types, signature envelope, role selection, call request/hello/answer flow, cancellation handling, and WebRTC signal transport were retained.
+- The contact selector currently displays contacts already present in IndexedDB. A user-facing contact import/add flow (QR / URL package) is not yet implemented in this UI; until then, a fresh browser with an empty address book cannot initiate a call. This is the next required functional step, not a reason to reintroduce manual usernames.
+- Browser runtime testing of two devices is still required. In particular, verify cross-device topic agreement, signature verification, first-time SAS confirmation, trusted reconnect, incoming-call handling with a selected contact, and WebRTC establishment. The old and new identity namespaces are intentionally not interoperable: existing legacy username identities will not be migrated automatically.
