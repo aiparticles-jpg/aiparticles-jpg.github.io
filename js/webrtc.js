@@ -216,7 +216,7 @@ export class WebRtcAudio {
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
       this.onState("ice-" + iceState);
-      this.logSelectedCandidatePair("ice-" + iceState, pc);
+      if (this.signalEnabled) this.logSelectedCandidatePair("ice-" + iceState, pc);
     };
 
     pc.ontrack = event => {
@@ -232,7 +232,6 @@ export class WebRtcAudio {
     };
 
     this.pc = pc;
-    this.startStatsMonitoring(pc);
     return pc;
   }
 
@@ -310,7 +309,7 @@ export class WebRtcAudio {
   }
 
   startStatsMonitoring(pc) {
-    if (this.statsTimer) clearInterval(this.statsTimer);
+    if (this.statsTimer) return;
     this.previousRtpStats.clear();
     this.previousIcePairStats.clear();
     this.statsTimer = setInterval(() => this.logMediaStats(pc), 1000);
@@ -548,6 +547,7 @@ export class WebRtcAudio {
 
   async activatePreparedOffer() {
     if (!this.isPrewarmed()) return false;
+    this.startStatsMonitoring(this.pc);
     const stream = await this.prepareOutgoingStream();
     const track = stream.getAudioTracks()[0];
     if (track && this.audioSender) await this.audioSender.replaceTrack(track);
@@ -561,6 +561,7 @@ export class WebRtcAudio {
 
   async createOffer() {
     const pc = await this.createPeerConnection();
+    this.startStatsMonitoring(pc);
     if (this.prewarmed && await this.activatePreparedOffer()) return;
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -569,6 +570,7 @@ export class WebRtcAudio {
 
   async handleSignal(payload) {
     const pc = await this.createPeerConnection();
+    this.startStatsMonitoring(pc);
     if (payload.description) {
       const description = payload.description;
       await pc.setRemoteDescription(description);
