@@ -439,4 +439,4 @@ The main screen will show the 10 most recent calls. Each entry records the local
 
 ### Call-history deletion
 
-The user may clear the entire local call history. Individual call-history entries cannot be deleted separately. The history remains local in IndexedDB; clearing it removes the complete local call-history list.
+The user may clear the entire local call history. Individual call-history entries cannot be deleted separately. The history remains local in IndexedDB; clearing it removes the complete local call-history list. Before clearing, show a warning/confirmation dialog. Delete the complete history from IndexedDB only after the user explicitly confirms.
