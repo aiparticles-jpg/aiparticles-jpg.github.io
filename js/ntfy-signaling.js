@@ -2,6 +2,7 @@ import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, ma
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
+const samePublicKey=(a,b)=>!!a&&!!b&&a.kty==="EC"&&b.kty==="EC"&&a.crv==="P-256"&&b.crv==="P-256"&&a.x===b.x&&a.y===b.y;
 const bytes=b=>b instanceof Uint8Array?b:new Uint8Array(b);
 const b64u=b=>{let s="";for(const x of bytes(b))s+=String.fromCharCode(x);return btoa(s).replaceAll("+","-").replaceAll("/","_").replace(/=+$/g,"")};
 const un64=s=>{const x=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4));return Uint8Array.from(x,c=>c.charCodeAt(0))};
@@ -170,7 +171,7 @@ export class NtfySecureSignaling {
   if(!await this.verify({type:"cancel",payload:p},m.sig,p.identity))throw Error("Подпись отмены вызова недействительна.");
   const pinned=await this.checkPinned(p.identity);
   if(!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
-  if(this.incomingIdentity&&stable(this.incomingIdentity)!==stable(p.identity))return;
+  if(this.incomingIdentity&&!samePublicKey(this.incomingIdentity,p.identity))return;
   if(!this.incomingIdentity&&!pinned){
    this.pendingCancels.set(p.sid,m);
    if(this.pendingCancels.size>50)this.pendingCancels.delete(this.pendingCancels.keys().next().value);
@@ -332,7 +333,7 @@ export class NtfySecureSignaling {
  }
  async checkPinned(jwk){
   const contact=await getPeerSignalingIdentity(this.peer);
-  if(stable(contact.publicJwk)!==stable(jwk))throw Error("Ключ сохранённого контакта изменился. Соединение остановлено. Повторно проверьте личность собеседника.");
+  if(!samePublicKey(contact.publicJwk,jwk))throw Error("Ключ сохранённого контакта изменился. Соединение остановлено. Повторно проверьте личность собеседника.");
   return contact.trusted;
  }
  async derive(hello,answer){
@@ -354,7 +355,7 @@ export class NtfySecureSignaling {
  async confirmPeer(){
   if(!this.ready||!this.peerJwk)throw Error("Ключ ещё не согласован.");
   const peerIdentity=await getPeerSignalingIdentity(this.peer);
-  if(stable(peerIdentity.publicJwk)!==stable(this.peerJwk))throw Error("Публичный ключ контакта не совпадает с ключом текущего соединения.");
+  if(!samePublicKey(peerIdentity.publicJwk,this.peerJwk))throw Error("Публичный ключ контакта не совпадает с ключом текущего соединения.");
   await markPeerSignalingIdentityTrusted(this.peer,peerIdentity.public_key);this.confirmed=true;
   for(const payload of this.pendingSignals.splice(0))await this.onSignal(payload);
   this.onReady({trusted:false,sas:this.sas});
