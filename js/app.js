@@ -1,9 +1,11 @@
 import { WebRtcAudio } from "./webrtc.js?v=14";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=19";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=20";
+import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
+import { listContacts, updateContact } from "./local-store.js";
 
 const $=id=>document.getElementById(id);
 const els={
- my:$("my-name"),changeName:$("change-name"),peer:$("peer-name"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
+ peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -33,7 +35,7 @@ function updateCallButtons(){
  els.hangup.disabled=!active||state.hangingUp;
  els.dismissIncoming.disabled=state.connecting;
 }
-function setBusy(value){state.connecting=value;updateCallButtons();els.my.disabled=value||!state.editingName;els.changeName.disabled=value;els.peer.disabled=value}
+function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging(){
  state.ringingKind=null;
  if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
@@ -143,10 +145,10 @@ async function finishNoAnswer(){
  debug("Исходящий вызов истёк через 45 секунд; отменяющий POST не отправлялся.");
 }
 function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
- const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
+ const me=state.me,peer=els.peer.value;
  return new WebRtcAudio({
   diagnosticPilot,
-  initiator:NtfySecureSignaling.validName(me)&&NtfySecureSignaling.validName(peer)&&me<peer,
+  initiator:NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer,
   onRemoteHangup:()=>handleRemoteHangup(),
   sendSignal:payload=>state.secure.sendSignal(payload),
   onRemoteStream:stream=>{els.audio.srcObject=stream;els.audio.play().catch(e=>debug("Не удалось включить удалённый звук: "+e.message))},
@@ -198,11 +200,11 @@ function createSecureSignaling(me,peer=""){
  });
 }
 async function subscribeForUser(me){
- if(!NtfySecureSignaling.validName(me))return;
+ if(!NtfySecureSignaling.validUserId(me))return;
  if(state.secure&&state.secure.me===me&&state.secure.es)return;
  if(state.secure){state.secure.close();state.secure=null}
- const peer=els.peer.value.trim().toLowerCase();
- const subscription=createSecureSignaling(me,NtfySecureSignaling.validName(peer)&&peer!==me?peer:"");
+ const peer=els.peer.value;
+ const subscription=createSecureSignaling(me,NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  state.secure=subscription;
  els.debugUrl.textContent="https://ntfy.sh/ · "+me;
  setStatus("Подписываемся на ntfy","Открываем постоянный канал входящих сообщений для "+me+".","wait");
@@ -220,9 +222,9 @@ function scheduleIcePrewarm(reason="input",force=false){
  if(state.prewarmTimer)clearTimeout(state.prewarmTimer);
  state.prewarmTimer=setTimeout(async()=>{
   state.prewarmTimer=null;
-  const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
+  const me=state.me,peer=els.peer.value;
   const names=me+"|"+peer;
-  const eligible=NtfySecureSignaling.validName(me)&&NtfySecureSignaling.validName(peer)&&
+  const eligible=NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&
    me!==peer&&me<peer&&!els.pilot.checked&&navigator.onLine;
   if(state.connecting||state.secure?.active||state.callStarted)return;
   if(!eligible){
@@ -245,7 +247,7 @@ function scheduleIcePrewarm(reason="input",force=false){
    try{
     debug("Предварительная подготовка ICE начата (причина: "+reason+"; без микрофона и без ntfy).");
     const count=await candidate.prepareIce();
-    const latestMe=els.my.value.trim().toLowerCase(),latestPeer=els.peer.value.trim().toLowerCase();
+    const latestMe=state.me,latestPeer=els.peer.value;
     const stillEligible=!state.secure?.active&&!state.callStarted&&!els.pilot.checked&&navigator.onLine&&
      latestMe+"|"+latestPeer===names&&latestMe<latestPeer;
     if(!stillEligible){
@@ -304,14 +306,13 @@ async function connect(){
  if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging()}
  clearError();els.verify.classList.add("hidden");setBusy(true);
  try{
-  const me=els.my.value.trim().toLowerCase(),peer=els.peer.value.trim().toLowerCase();
+  const me=state.me,peer=els.peer.value;
   if(state.prewarmPromise&&(state.prewarmTargetNames===me+"|"+peer||state.prewarmNames===me+"|"+peer)){try{await state.prewarmPromise}catch{}}
   const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer&&!els.pilot.checked);
   if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
   state.callStarted=false;state.peerPresent=false;
-  if(!NtfySecureSignaling.validName(me)||!NtfySecureSignaling.validName(peer)||me===peer)throw Error("Имена должны содержать 3–24 символа: a-z, 0-9, _ или -. Имена должны различаться.");
-  localStorage.setItem("vl.last-name",me);localStorage.setItem("vl.last-peer",peer);
-  state.editingName=false;els.my.disabled=true;els.changeName.textContent="Сменить имя пользователя";
+  if(!NtfySecureSignaling.validUserId(me)||!NtfySecureSignaling.validUserId(peer)||me===peer)throw Error("Имена должны содержать 3–24 символа: a-z, 0-9, _ или -. Имена должны различаться.");
+  
   if(state.secure&&state.secure.me!==me){state.secure.close();state.secure=null}
   if(!state.secure)state.secure=createSecureSignaling(me,peer);
   else state.secure.setPeer(peer);
@@ -378,40 +379,16 @@ els.connect.addEventListener("click",connect);
 els.dismissIncoming.addEventListener("click",()=>dismissIncoming(false));
 document.addEventListener("pointerdown",unlockRingingAudio,{passive:true});
 document.addEventListener("keydown",unlockRingingAudio);
-els.changeName.addEventListener("click",async()=>{
- if(!state.editingName){
-  state.editingName=true;els.my.disabled=false;els.my.focus();
-  els.changeName.textContent="Сохранить имя";
-  debug("Режим смены имени пользователя.");
-  return;
- }
- const next=els.my.value.trim().toLowerCase();
- if(!NtfySecureSignaling.validName(next)){
-  showError("Имя пользователя должно содержать 3–24 символа: a-z, 0-9, _ или -.");
-  return;
- }
- const previous=localStorage.getItem("vl.last-name")||"";
- if(previous!==next&&state.secure){
-  if(state.secure.active)await hangup();
-  state.secure.close();state.secure=null;
- }
- localStorage.setItem("vl.last-name",next);
- state.editingName=false;els.my.disabled=true;els.changeName.textContent="Сменить имя пользователя";
- clearError();
- if(previous!==next||!state.secure)await subscribeForUser(next);
- else setStatus("Подписка активна","Вы подписаны на входящие сообщения для "+next+".","idle");
-});
 els.pilot.addEventListener("change",async()=>{
  debug("Диагностический pilot-сигнал "+(els.pilot.checked?"включён":"выключен")+". Настройка применяется при следующем подключении.");
  if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
-els.my.addEventListener("input",()=>scheduleIcePrewarm("input"));
-els.peer.addEventListener("input",()=>{
- const peer=els.peer.value.trim().toLowerCase();
+els.peer.addEventListener("change",()=>{
+ const peer=els.peer.value;
  if(state.incomingCall&&peer!==state.secure?.peer)dismissIncoming(false);
  if(state.secure&&!state.secure.active&&!state.connecting){
-  const me=els.my.value.trim().toLowerCase();
-  state.secure.setPeer(NtfySecureSignaling.validName(peer)&&peer!==me?peer:"");
+  const me=state.me;
+  state.secure.setPeer(NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  }
  scheduleIcePrewarm("input");
 });
@@ -427,14 +404,14 @@ els.confirm.addEventListener("click",async()=>{
 });
 els.hangup.addEventListener("click",hangup);
 els.resetPeer.addEventListener("click",async()=>{
- const peer=els.peer.value.trim().toLowerCase();
- if(!NtfySecureSignaling.validName(peer)){
+ const peer=els.peer.value;
+ if(!NtfySecureSignaling.validUserId(peer)){
   showError("Сначала укажите корректное имя собеседника.");
   return;
  }
  if(!window.confirm("Удалить сохранённое доверие к устройству с именем "+peer+" на этом браузере? Собственный ключ не удаляется. Для повторного сопряжения выполните сброс и на другом устройстве."))return;
  await hangup();
- localStorage.removeItem("vl.peer.v1."+peer);
+ await updateContact(peer,{trusted:false,verified_at:null});
  clearError();
  debug("Удалено сохранённое сопряжение с "+peer+". При следующем подключении потребуется сверить новый код.");
  setStatus("Сопряжение сброшено","Подключитесь заново и сравните проверочные коды на обоих устройствах.","idle");
@@ -442,11 +419,24 @@ els.resetPeer.addEventListener("click",async()=>{
 els.tcp.classList.add("hidden");
 els.pilot.checked=false;
 els.dismissIncoming.classList.add("hidden");
-els.my.value=localStorage.getItem("vl.last-name")||"";
-els.peer.value=localStorage.getItem("vl.last-peer")||"";
-state.editingName=!NtfySecureSignaling.validName(els.my.value.trim().toLowerCase());
-els.my.disabled=!state.editingName;
-els.changeName.textContent=state.editingName?"Сохранить имя":"Сменить имя пользователя";
-setStatus("Ожидаем подключения","Введите имя собеседника.","idle");
-if(!state.editingName)subscribeForUser(els.my.value.trim().toLowerCase());
+async function initializeApp(){
+ try{
+  const identity=await getCurrentSignalingIdentity();
+  state.me=identity.user_id;
+  const contacts=await listContacts();
+  els.peer.replaceChildren(new Option("Выберите контакт",""));
+  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
+  els.peer.disabled=contacts.length===0;
+  els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
+  setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
+  await subscribeForUser(state.me);
+ }catch(error){
+  showError("Не удалось инициализировать приложение: "+(error.message||String(error)));
+  setStatus("Ошибка локального хранилища","Проверьте поддержку IndexedDB и Web Crypto.","error");
+ }
+}
+els.tcp.classList.add("hidden");
+els.pilot.checked=false;
+els.dismissIncoming.classList.add("hidden");
+initializeApp();
 scheduleIcePrewarm();
