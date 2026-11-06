@@ -22,7 +22,7 @@ body {
     var(--bg);
   font-family: 'DM Sans', system-ui, sans-serif;
 }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 .shell { width: min(100% - 36px, 680px); margin: 0 auto; padding: 26px 0 30px; }
 .topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:64px; }
 .brand { display:flex; align-items:center; gap:10px; color:var(--text); text-decoration:none; font:800 19px Manrope,sans-serif; letter-spacing:-.8px; }
@@ -52,7 +52,9 @@ h2 { font:700 20px Manrope,sans-serif; letter-spacing:-.5px; margin:7px 0 0; }
 .separator:before,.separator:after { content:""; height:1px; background:var(--line); flex:1; }
 .field-label { display:block; color:#aebed2; font-size:11px; font-weight:600; margin:13px 0 8px; }
 .join-row,.copy-row { display:flex; gap:9px; }
-input { width:100%; min-width:0; color:var(--text); background:#0c1727; border:1px solid var(--line); border-radius:10px; padding:12px 13px; outline:none; font-size:12px; }
+input, select { width:100%; min-width:0; color:var(--text); background:#0c1727; border:1px solid var(--line); border-radius:10px; padding:12px 13px; outline:none; font-size:12px; }
+select { color-scheme:dark; }
+select:focus { border-color:rgba(139,224,194,.65); box-shadow:0 0 0 3px rgba(139,224,194,.08); }
 input:focus { border-color:rgba(139,224,194,.65); box-shadow:0 0 0 3px rgba(139,224,194,.08); }
 input::placeholder { color:#60738d; }
 .invite-panel { margin-top:20px; padding:16px; border-radius:13px; border:1px solid rgba(139,224,194,.2); background:rgba(139,224,194,.045); }
