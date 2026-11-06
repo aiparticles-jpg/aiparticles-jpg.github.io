@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=14";
+import { WebRtcAudio } from "./webrtc.js?v=15";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=20";
 import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
