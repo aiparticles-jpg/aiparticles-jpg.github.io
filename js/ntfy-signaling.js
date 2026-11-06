@@ -161,7 +161,7 @@ export class NtfySecureSignaling {
   const pendingCancel=this.pendingCancels.get(p.sid);
   if(pendingCancel){this.pendingCancels.delete(p.sid);await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
   if(!pinned)this.onDebug("[incoming] ключ ещё не сопряжён: показываем запрос без звукового сигнала до проверки кода.");
-  this.onIncoming({peer:this.peer,sid:p.sid,expiresAt,trusted:pinned});
+  this.onIncoming({peer:this.peerName||"контакт",sid:p.sid,expiresAt,trusted:pinned});
  }
  async processCancel(m){
   const p=m?.payload;
@@ -181,7 +181,7 @@ export class NtfySecureSignaling {
   if(this.incomingSid===p.sid&&!this.hello&&!this.ready){
    this.onDebug("[signaling] получена подписанная отмена входящего вызова до ответа");
    this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
-   this.onCancelIncoming({peer:this.peer,sid:p.sid});
+   this.onCancelIncoming({peer:this.peerName||"контакт",sid:p.sid});
   }
  }
  async inspectPendingIncoming(){
@@ -286,7 +286,7 @@ export class NtfySecureSignaling {
     this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=p.identity;
     const pendingCancel=this.pendingCancels.get(p.sid);
     if(pendingCancel){this.pendingCancels.delete(p.sid);await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
-    this.onIncoming({peer:this.peer,sid:p.sid,expiresAt:Number(p.expiresAt),trusted:pinned});
+    this.onIncoming({peer:this.peerName||"контакт",sid:p.sid,expiresAt:Number(p.expiresAt),trusted:pinned});
    }
    return;
   }
@@ -349,7 +349,7 @@ export class NtfySecureSignaling {
   this.sendKey=this.role==="A"?ab:ba;this.recvKey=this.role==="A"?ba:ab;this.session=hello.sid;this.ready=true;this.clearHelloRetry();
   const pinned=await this.checkPinned(remote);
   if(pinned){this.confirmed=true;this.onReady({trusted:true,sas:this.sas});}
-  else this.onVerify({sas:this.sas,peer:this.peer});
+  else this.onVerify({sas:this.sas,peer:this.peerName||"контакт"});
  }
  async confirmPeer(){
   if(!this.ready||!this.peerJwk)throw Error("Ключ ещё не согласован.");
