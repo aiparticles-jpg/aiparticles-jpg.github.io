@@ -35,13 +35,13 @@ Anonymous peer-to-peer voice application.
 - ECDSA signature covers the package fields. Validate the fingerprint and signature on import. Initially mark imported contact unconfirmed; verify SAS on first connection before trusting it.
 - If OneSignal Subscription ID changes, share an updated contact package.
 
-## Latest agreed private-key storage decision (not yet recorded in ARCHITECTURE.md or implemented)
+## Private-key storage decision
 - Generate the private key using Web Crypto API as non-extractable.
 - Store the CryptoKey object in IndexedDB.
 - Do not export private-key material to JWK or store it in localStorage.
 - Use the stored CryptoKey directly for signing contact packages and authenticated backend requests.
 - Public key remains exportable for sharing.
-- Compatibility and browser behavior still need to be verified during implementation.
+- Implemented in `js/local-store.js`; browser compatibility and persistence behavior still require runtime testing.
 
 ## Backend security baseline
 - ECDSA P-256 request signatures.
@@ -78,8 +78,9 @@ Three distinct incoming-call actions are agreed:
 - These are architecture decisions, not proof of implementation.
 - Reject button/event handling has not been implemented or verified.
 - Exact rate-limit values are not finalized.
-- Initial storage foundation is implemented in `js/local-store.js`: IndexedDB identity/contact/history stores, non-extractable ECDSA private CryptoKey, public-key fingerprint, local contact CRUD (including lookup and safe metadata updates without changing `user_id`), and 10-entry call-history CRUD. UI/signaling integration and browser compatibility testing remain pending.
-- The current legacy UI and signaling modules still use username-based identity. In particular, `js/ntfy-signaling.js` creates a separate extractable ECDSA key and stores its private JWK in `localStorage`; this must be removed before the new identity is used for signaling. Do not simply pass the 64-character fingerprint as a username: topic addressing, signature identity, and contact trust storage must be migrated together. Next implementation step: adapt signaling to the IndexedDB CryptoKey and public key, resolve peer addresses from local contacts, and persist trust through IndexedDB. Keep the existing call flow intact until this replacement is integrated and verified.
+- Initial storage foundation is implemented in `js/local-store.js`: IndexedDB identity/contact/history stores, non-extractable ECDSA private CryptoKey, public-key fingerprint, local contact CRUD (including lookup and safe metadata updates without changing `user_id`), and 10-entry call-history CRUD.
+- Added `js/ntfy-identity.js` as a migration adapter. It derives the ntfy topic from the 64-character anonymous `user_id`, loads the local non-extractable identity and exports only its public key as JWK for the existing signaling message format, resolves a peer's public key from a locally saved contact while checking its fingerprint, and persists trust through IndexedDB only if the verified public key has not changed.
+- The adapter is not yet wired into `js/ntfy-signaling.js` or the UI. The legacy signaling class still creates an extractable ECDSA key and stores its private JWK in `localStorage`; do not treat the migration as complete. Next step: integrate the adapter into signaling while preserving the current call flow, then switch the UI's peer selection from typed usernames to locally saved contacts. Browser runtime tests remain pending.
 
 ## Identity recovery after private-key loss
 
