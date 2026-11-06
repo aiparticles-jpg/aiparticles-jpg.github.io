@@ -353,3 +353,5 @@ Agreed:
 - Existing ntfy message types, signature envelope, role selection, call request/hello/answer flow, cancellation handling, and WebRTC signal transport were retained.
 - The contact selector currently displays contacts already present in IndexedDB. A user-facing contact import/add flow (QR / URL package) is not yet implemented in this UI; until then, a fresh browser with an empty address book cannot initiate a call. This is the next required functional step, not a reason to reintroduce manual usernames.
 - Browser runtime testing of two devices is still required. In particular, verify cross-device topic agreement, signature verification, first-time SAS confirmation, trusted reconnect, incoming-call handling with a selected contact, and WebRTC establishment. The old and new identity namespaces are intentionally not interoperable: existing legacy username identities will not be migrated automatically.
+
+- On migration startup, the app removes obsolete `vl.identity.v1.*` and `vl.peer.v1.*` entries from `localStorage`; active identity and trust are now stored in IndexedDB. The local contact selector has matching form styling.
