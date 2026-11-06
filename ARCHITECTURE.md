@@ -26,6 +26,8 @@ Status: architecture agreed in part; implementation of the decisions below is no
 
 ## 3. Local contacts
 
+The IndexedDB storage foundation is implemented in `js/local-store.js`; contact CRUD is available locally but is not yet connected to the application UI or contact exchange.
+
 A locally saved contact contains:
 
 - `name`: local display name / alias;
@@ -171,7 +173,7 @@ The user explicitly approved the following browser-side private-key storage desi
 - Use the stored `CryptoKey` directly for signing contact packages and authenticated backend requests.
 - The public key remains exportable and may be shared with contacts.
 
-This is an agreed architecture decision, not an implemented or compatibility-tested feature. Browser support and IndexedDB structured-clone behavior for non-extractable `CryptoKey` objects must be verified during implementation.
+Implemented as the first storage foundation in `js/local-store.js`: the module creates the local IndexedDB stores and generates/loads the ECDSA P-256 identity with a non-extractable private `CryptoKey`. The public key is exported in raw form and `user_id` is its SHA-256 fingerprint. Browser compatibility and end-to-end integration with contact exchange/signaling still need to be tested.
 
 Open consequence to resolve before implementation: clearing browser data, reinstalling the browser, or moving to another device may destroy access to the private key and therefore the existing identity. Recovery or backup would require a separately agreed security design; do not silently introduce private-key export or cloud backup.
 
@@ -218,6 +220,8 @@ Identity and the contact list are not synchronized to cloud storage or the backe
 
 
 ## Local storage for identity and contacts
+
+Implemented foundation: `js/local-store.js` creates the `meta`, `contacts`, and `history` object stores and exposes local identity, contact, and call-history operations. This is a data-layer implementation only; the existing legacy UI/signaling flow has not yet been migrated to use it.
 
 IndexedDB is the agreed local storage mechanism for the application's identity and address book. The application uses IndexedDB for:
 
