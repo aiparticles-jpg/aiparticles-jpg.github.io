@@ -10,7 +10,7 @@ const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
 
 export class NtfySecureSignaling {
  constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError,onDebug,onIncoming,onCancelIncoming,onDialing}) {
-  this.me=me;this.peer=peer;this.role=me<peer?"A":"B";
+  this.me=me;this.peer=peer;this.peerName="";this.role=me<peer?"A":"B";
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});
   this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
@@ -106,7 +106,8 @@ export class NtfySecureSignaling {
  async start(){
   this.onDebug(`[SSE ${this.debugId}] start() вызван`);
   if(!isUserId(this.me)||!isUserId(this.peer)||this.me===this.peer)throw Error("Выберите сохранённый контакт.");
-  await getPeerSignalingIdentity(this.peer);
+  const peerContact=await getPeerSignalingIdentity(this.peer);
+  this.peerName=peerContact.name;
   await this.subscribe();
   this.active=true;
   const pending=this.pendingEvents.splice(0);
@@ -197,8 +198,8 @@ export class NtfySecureSignaling {
   const request={sid:b64u(crypto.getRandomValues(new Uint8Array(16))),from:this.me,to:this.peer,identity:this.identity.publicJwk,expiresAt:Date.now()+45000};
   this.outgoingRequest=request;
   await this.publish(this.peer,await this.signed("request",request));
-  this.onStatus("Запрос на звонок отправлен. Ожидаем "+this.peer+"…");
-  this.onDialing({peer:this.peer,expiresAt:request.expiresAt});
+  this.onStatus("Запрос на звонок отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
+  this.onDialing({peer:this.peerName||"контакт",expiresAt:request.expiresAt});
  }
  async cancelCall(){
   const request=this.outgoingRequest||this.hello;
@@ -218,8 +219,8 @@ export class NtfySecureSignaling {
   this.helloAttempts++;
   this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
   await this.publish(this.peer,await this.signed("hello",this.hello));
-  this.onStatus("Запрос отправлен. Ожидаем "+this.peer+"…");
-  if(!this.ready)this.onDialing({peer:this.peer,expiresAt:this.hello.expiresAt});
+  this.onStatus("Запрос отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
+  if(!this.ready)this.onDialing({peer:this.peerName||"контакт",expiresAt:this.hello.expiresAt});
  }
  scheduleHelloRetry(delay){
   this.clearHelloRetry();
