@@ -14,6 +14,7 @@ export function initializeOneSignal() {
       try {
         await OneSignal.init({
           appId: APP_ID,
+          autoRegister: false,
           serviceWorkerPath: "/OneSignalSDKWorker.js",
           serviceWorkerParam: { scope: "/" }
         });
