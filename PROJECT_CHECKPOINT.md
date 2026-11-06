@@ -59,11 +59,13 @@ Allowed push events:
 - incoming_call
 - call_cancelled
 - call_ignored
+- call_ended
 
 Push payload should contain minimal metadata (event, sender_id, call_id, expires_at). Do not send names, SDP, audio, private keys, or sensitive data through OneSignal.
 - Starting a call: send incoming_call through Render/OneSignal alongside ntfy signaling.
 - Caller cancels: send call_cancelled.
 - Recipient explicitly rejects: send call_ignored.
+- Either participant explicitly ends an established call: send call_ended through ntfy and submit the corresponding push through Render/OneSignal when available; the peer terminates the call and releases its resources.
 - Answer is delivered through ntfy; no separate push.
 - Hiding/dismissing the incoming-call UI is local only and must not notify the caller.
 
@@ -223,7 +225,7 @@ Decision:
 
 ## OneSignal error logging — privacy limits
 
-Decision: Keep only minimal technical diagnostics for OneSignal push failures: timestamp, HTTP status code (if available), event type (incoming_call, call_cancelled, call_ignored), and a coarse internal error category.
+Decision: Keep only minimal technical diagnostics for OneSignal push failures: timestamp, HTTP status code (if available), event type (incoming_call, call_cancelled, call_ignored, call_ended), and a coarse internal error category.
 
 Never log push payloads or notification contents, API keys, authorization headers, private keys, Subscription IDs, user_id values, or other user/contact identifiers. Do not expose secrets or raw sensitive provider responses to the frontend. Logs are for troubleshooting only and must not become a user-data store.
 
@@ -241,7 +243,7 @@ Decision: Because the idempotency key is (call_id, event type), different event 
 
 ## Call ID generation and lifetime
 
-Decision: Generate a new cryptographically random UUID for every newly initiated call. Reuse that call_id for all events belonging to that call (incoming_call, call_cancelled, call_ignored, etc.). A new call gets a new UUID, even if it is to the same contact. call_id identifies only a call instance, not a persistent user identity.
+Decision: Generate a new cryptographically random UUID for every newly initiated call. Reuse that call_id for all events belonging to that call (incoming_call, call_cancelled, call_ignored, call_ended, etc.). A new call gets a new UUID, even if it is to the same contact. call_id identifies only a call instance, not a persistent user identity.
 
 ## Incoming call timeout and Render wake-up
 
