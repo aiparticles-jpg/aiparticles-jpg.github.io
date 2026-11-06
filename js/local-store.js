@@ -161,6 +161,51 @@ export async function listContacts() {
   return records.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export async function getContact(userId) {
+  const db = await openDatabase();
+  const tx = db.transaction("contacts", "readonly");
+  const done = transactionDone(tx);
+  const record = await requestValue(tx.objectStore("contacts").get(userId));
+  await done;
+  return record || null;
+}
+
+export async function updateContact(userId, updates) {
+  if (!userId || !updates || typeof updates !== "object" || Array.isArray(updates)) {
+    throw new TypeError("A contact ID and an updates object are required.");
+  }
+  if (Object.hasOwn(updates, "user_id")) {
+    throw new TypeError("A contact user_id cannot be changed; save a newly verified identity instead.");
+  }
+
+  const db = await openDatabase();
+  const tx = db.transaction("contacts", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("contacts");
+  const existing = await requestValue(store.get(userId));
+  if (!existing) {
+    tx.abort();
+    try { await done; } catch {}
+    return null;
+  }
+
+  const updated = {
+    ...existing,
+    ...updates,
+    user_id: existing.user_id,
+    updated_at: new Date().toISOString()
+  };
+  if (typeof updated.name !== "string" || !updated.name.trim()) {
+    tx.abort();
+    try { await done; } catch {}
+    throw new TypeError("Contact name cannot be empty.");
+  }
+  updated.name = updated.name.trim();
+  store.put(updated);
+  await done;
+  return updated;
+}
+
 export async function deleteContact(userId) {
   const db = await openDatabase();
   const tx = db.transaction("contacts", "readwrite");
