@@ -45,6 +45,29 @@ function openDatabase() {
   return databasePromise;
 }
 
+export async function saveMyInvitation(url) {
+  if (typeof url !== "string" || !url.startsWith("https://")) {
+    throw new TypeError("A valid HTTPS invitation URL is required.");
+  }
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  tx.objectStore("meta").put({
+    key: "my_invitation",
+    value: { url, updated_at: new Date().toISOString() }
+  });
+  await done;
+}
+
+export async function getMyInvitation() {
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readonly");
+  const done = transactionDone(tx);
+  const record = await requestValue(tx.objectStore("meta").get("my_invitation"));
+  await done;
+  return record?.value?.url || "";
+}
+
 function requestValue(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
