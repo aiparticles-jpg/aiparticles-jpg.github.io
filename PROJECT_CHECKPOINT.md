@@ -338,3 +338,4 @@ Agreed:
 - Do not provide deletion of individual entries.
 - Clearing history removes the complete local history from IndexedDB.
 - Show a warning/confirmation dialog before clearing the entire history; delete it only after explicit user confirmation.
+- After clearing, show no entries; do not add a separate empty-state message.
