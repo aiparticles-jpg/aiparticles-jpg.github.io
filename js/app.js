@@ -105,10 +105,11 @@ function showIncomingCall({peer,expiresAt,trusted=true}){
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
  state.incomingCall=true;els.dismissIncoming.classList.remove("hidden");updateCallButtons();
+ const peerLabel=els.peer.selectedOptions[0]?.textContent||"сохранённый контакт";
  const description=trusted
-  ?"Вам звонит "+peer+". Нажмите «Ответить» или «Скрыть вызов».":"Запрос от "+peer+". Устройство ещё не сопряжено: после ответа обязательно сверьте проверочный код.";
+  ?"Вам звонит "+peerLabel+". Нажмите «Ответить» или «Скрыть вызов».":"Запрос от "+peerLabel+". Устройство ещё не сопряжено: после ответа обязательно сверьте проверочный код.";
  setStatus(trusted?"Входящий вызов":"Новый запрос на сопряжение",description,"wait");
- debug((trusted?"Входящий вызов от подтверждённого устройства ":"Новый запрос от непроверенного устройства ")+peer+".");
+ debug((trusted?"Входящий вызов от подтверждённого устройства ":"Новый запрос от непроверенного устройства ")+peerLabel+".");
  if(trusted)startRinging("incoming");
  state.incomingTimer=setTimeout(()=>dismissIncoming(true),remaining);
 }
@@ -120,7 +121,7 @@ function startOutgoingCall({peer,expiresAt}){
  if(state.outgoingCall||state.incomingCall||state.secure?.ready||state.peerPresent)return;
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
- state.outgoingCall=true;updateCallButtons();setStatus("Вызываем "+peer,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
+ state.outgoingCall=true;updateCallButtons();const peerLabel=els.peer.selectedOptions[0]?.textContent||"контакт";setStatus("Вызываем "+peerLabel,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
  startRinging("outgoing");
  state.callTimer=setTimeout(()=>finishNoAnswer(),remaining);
 }
@@ -193,7 +194,7 @@ function createSecureSignaling(me,peer=""){
    if(state.incomingCall){clearIncomingUi();stopRinging();state.secure?.dismissIncoming();setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");}
   },
   onDialing:info=>{if(!state.answeringCall)startOutgoingCall(info)},
-  onVerify:({sas,peer:name})=>{stopOutgoingCall();clearIncomingUi();stopRinging();els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+name+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
+  onVerify:({sas,peer:name})=>{stopOutgoingCall();clearIncomingUi();stopRinging();els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+(els.peer.selectedOptions[0]?.textContent||"контактом")+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
   onReady:info=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady(info).catch(showError)},
   onError:e=>showError(e.message||String(e)),
   onDebug:debug
@@ -206,11 +207,11 @@ async function subscribeForUser(me){
  const peer=els.peer.value;
  const subscription=createSecureSignaling(me,NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  state.secure=subscription;
- els.debugUrl.textContent="https://ntfy.sh/ · "+me;
+ els.debugUrl.textContent="https://ntfy.sh/ · "+me.slice(0,12)+"…";
  setStatus("Подписываемся на ntfy","Открываем постоянный канал входящих сообщений для "+me+".","wait");
  try{
   await subscription.subscribe();
-  debug("Фоновая подписка активна для имени "+me+". POST hello пока не отправлялся.");
+  debug("Фоновая подписка активна для локальной анонимной идентичности. POST hello пока не отправлялся.");
  }catch(error){
   if(state.secure===subscription){
    showError(error.message||String(error));
@@ -311,7 +312,7 @@ async function connect(){
   const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer&&!els.pilot.checked);
   if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
   state.callStarted=false;state.peerPresent=false;
-  if(!NtfySecureSignaling.validUserId(me)||!NtfySecureSignaling.validUserId(peer)||me===peer)throw Error("Имена должны содержать 3–24 символа: a-z, 0-9, _ или -. Имена должны различаться.");
+  if(!NtfySecureSignaling.validUserId(me)||!NtfySecureSignaling.validUserId(peer)||me===peer)throw Error("Выберите сохранённый контакт. Собеседник должен отличаться от вашей идентичности.");
   
   if(state.secure&&state.secure.me!==me){state.secure.close();state.secure=null}
   if(!state.secure)state.secure=createSecureSignaling(me,peer);
@@ -406,10 +407,10 @@ els.hangup.addEventListener("click",hangup);
 els.resetPeer.addEventListener("click",async()=>{
  const peer=els.peer.value;
  if(!NtfySecureSignaling.validUserId(peer)){
-  showError("Сначала укажите корректное имя собеседника.");
+  showError("Сначала выберите сохранённый контакт.");
   return;
  }
- if(!window.confirm("Удалить сохранённое доверие к устройству с именем "+peer+" на этом браузере? Собственный ключ не удаляется. Для повторного сопряжения выполните сброс и на другом устройстве."))return;
+ if(!window.confirm("Сбросить локальное доверие к контакту «"+(els.peer.selectedOptions[0]?.textContent||"контакт")+"»? При следующем звонке потребуется повторная сверка кода."))return;
  await hangup();
  await updateContact(peer,{trusted:false,verified_at:null});
  clearError();
