@@ -337,4 +337,4 @@ Agreed:
 - Allow clearing the entire local call history.
 - Do not provide deletion of individual entries.
 - Clearing history removes the complete local history from IndexedDB.
-- Whether the UI requires a confirmation step is still to be decided.
+- Show a warning/confirmation dialog before clearing the entire history; delete it only after explicit user confirmation.
