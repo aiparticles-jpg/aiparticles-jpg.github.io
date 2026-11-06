@@ -1,7 +1,8 @@
 import { WebRtcAudio } from "./webrtc.js?v=14";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=20";
 import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
-import { listContacts, updateContact } from "./local-store.js";
+import { listContacts, getContact, saveContact, updateContact } from "./local-store.js";
+import { verifyContactPackage } from "./contact-exchange.js";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -10,8 +11,10 @@ const els={
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
- debugUrl:$("debug-url"),debugState:$("debug-state")
+ debugUrl:$("debug-url"),debugState:$("debug-state"),
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status")
 };
+let qrStream=null,qrScanActive=false;
 const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
@@ -376,6 +379,82 @@ function handleRemoteHangup(){
  debug("Собеседник завершил звонок: получено HANGUP по RTCDataChannel.");
  hangup({notifyPeer:false,remote:true});
 }
+
+async function refreshContactOptions(selectUserId=""){
+ const contacts=await listContacts();
+ els.peer.replaceChildren(new Option("Выберите контакт",""));
+ for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
+ els.peer.disabled=contacts.length===0;
+ if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
+}
+async function importContactFromInput(){
+ els.importContact.disabled=true;
+ try{
+  const verified=await verifyContactPackage(els.contactPackage.value);
+  const name=els.contactName.value.trim();
+  if(!name)throw Error("Укажите имя, под которым контакт будет сохранён только на этом устройстве.");
+  const existing=await getContact(verified.user_id);
+  if(existing&&!window.confirm("Этот контакт уже сохранён как «"+existing.name+"». Обновить его данные и локальное имя?"))return;
+  await saveContact({...verified,name,trusted:false,verified_at:null});
+  await refreshContactOptions(verified.user_id);
+  els.contactPackage.value="";
+  els.contactName.value="";
+  els.contactTools.open=false;
+  els.qrStatus.textContent="Контакт «"+name+"» успешно проверен и сохранён локально.";
+  clearError();
+  debug("Импортирован и криптографически проверен новый контакт: "+name+".");
+  setStatus("Контакт добавлен","Теперь его можно выбрать для звонка.","idle");
+ }catch(error){
+  showError(error.message||String(error));
+  els.qrStatus.textContent="Не удалось импортировать контакт.";
+ }finally{els.importContact.disabled=false}
+}
+async function stopQrScan(){
+ qrScanActive=false;
+ if(qrStream){for(const track of qrStream.getTracks())track.stop();qrStream=null}
+ els.qrVideo.srcObject=null;
+ els.qrVideo.classList.add("hidden");
+ els.scanQr.textContent="Сканировать QR-код";
+}
+async function startQrScan(){
+ if(qrScanActive){await stopQrScan();return}
+ if(!("BarcodeDetector" in window)){
+  els.qrStatus.textContent="В этом браузере нет встроенного сканера QR. Используйте ссылку или вставьте содержимое QR-кода в поле выше.";
+  return;
+ }
+ try{
+  const detector=new BarcodeDetector({formats:["qr_code"]});
+  qrStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+  els.qrVideo.srcObject=qrStream;
+  els.qrVideo.classList.remove("hidden");
+  await els.qrVideo.play();
+  qrScanActive=true;
+  els.scanQr.textContent="Остановить сканирование";
+  els.qrStatus.textContent="Наведите камеру на QR-код контакта.";
+  const scan=async()=>{
+   if(!qrScanActive)return;
+   try{
+    const codes=await detector.detect(els.qrVideo);
+    if(codes.length&&codes[0].rawValue){
+     els.contactPackage.value=codes[0].rawValue;
+     await stopQrScan();
+     els.qrStatus.textContent="QR-код считан. Укажите локальное имя контакта и нажмите «Проверить и сохранить».";
+     els.contactName.focus();
+     return;
+    }
+   }catch(error){debug("Ошибка чтения QR: "+(error.message||String(error)))}
+   if(qrScanActive)setTimeout(scan,250);
+  };
+  scan();
+ }catch(error){
+  await stopQrScan();
+  showError("Не удалось запустить камеру для QR-сканирования: "+(error.message||String(error)));
+ }
+}
+
+els.importContact.addEventListener("click",importContactFromInput);
+els.scanQr.addEventListener("click",startQrScan);
+window.addEventListener("pagehide",()=>{if(qrStream)for(const track of qrStream.getTracks())track.stop()});
 els.connect.addEventListener("click",connect);
 els.dismissIncoming.addEventListener("click",()=>dismissIncoming(false));
 document.addEventListener("pointerdown",unlockRingingAudio,{passive:true});
@@ -431,10 +510,10 @@ async function initializeApp(){
   }catch(error){debug("Не удалось очистить устаревшие локальные ключи: "+(error.message||String(error)));}
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
+  await refreshContactOptions();
+  const fragment=new URLSearchParams(window.location.hash.slice(1));
+  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;els.contactTools.open=true;els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
   const contacts=await listContacts();
-  els.peer.replaceChildren(new Option("Выберите контакт",""));
-  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
-  els.peer.disabled=contacts.length===0;
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
   await subscribeForUser(state.me);
