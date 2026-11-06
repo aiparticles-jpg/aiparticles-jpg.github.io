@@ -41,8 +41,22 @@ Create a **Web Service** from the existing repository:
 
 Render provides the `PORT` environment variable. The server binds to `0.0.0.0`.
 
+## Push API
+
+The frontend submits signed push events to:
+
+```text
+POST /v1/push
+```
+
+Allowed events: `incoming_call`, `call_cancelled`, `call_ignored`, and `call_ended`.
+
+Each request includes the sender's public P-256 key, its SHA-256 `user_id`, timestamp, random nonce, event, UUID call ID, recipient OneSignal Subscription ID, expiry, and ECDSA signature. The signature covers all request fields except the signature itself. The backend verifies the key fingerprint, signature, timestamp, nonce, event, and request limits before calling OneSignal.
+
+The backend does not store contacts or call history. Replay protection, rate limits, and event idempotency are held temporarily in memory and reset when the service restarts. Push submission is best-effort and does not replace ntfy signaling or WebRTC.
+
 ## Security
 
-Do not put OneSignal REST API keys or other secrets in this repository or frontend code. They will be configured as private environment variables in Render when push sending is implemented.
+Set `ONESIGNAL_REST_API_KEY` as a private environment variable in Render. Never put it in this repository or frontend code. The OneSignal App ID is public and is embedded in the backend.
 
-This initial scaffold exposes only the health endpoint. Authenticated push endpoints and request validation are not implemented yet.
+The API accepts browser requests only from `https://aiparticles-jpg.github.io`. Do not log API keys, signatures, Subscription IDs, user IDs, request bodies, or OneSignal response bodies.
