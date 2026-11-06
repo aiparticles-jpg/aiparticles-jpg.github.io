@@ -38,6 +38,20 @@
       <p class="hint">Ваша анонимная идентичность создаётся автоматически на этом устройстве. Для звонка выберите контакт, сохранённый в локальной адресной книге.</p>
       <button id="reset-peer" class="button button-secondary reset-peer" type="button">Сбросить сопряжение с этим собеседником</button>
       <p class="hint">Имя контакта хранится только на этом устройстве. В сети используется его анонимный криптографический идентификатор.</p>
+
+      <details id="contact-tools" class="contact-tools">
+        <summary>Добавить контакт — QR-код или ссылка</summary>
+        <p class="hint">Отсканируйте QR-код собеседника или вставьте его ссылку. Публичный ключ, fingerprint и подпись проверяются до сохранения. Имя контакта останется только на этом устройстве.</p>
+        <video id="qr-video" class="qr-video hidden" playsinline muted></video>
+        <button id="scan-qr" class="button button-secondary" type="button">Сканировать QR-код</button>
+        <label class="field-label" for="contact-package">Ссылка или содержимое QR-кода</label>
+        <textarea id="contact-package" rows="3" autocomplete="off" spellcheck="false" placeholder="Вставьте ссылку вида https://…/#contact=… или содержимое QR-кода"></textarea>
+        <label class="field-label" for="contact-name">Имя контакта на этом устройстве</label>
+        <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
+        <button id="import-contact" class="button button-primary" type="button">Проверить и сохранить контакт</button>
+        <p id="qr-status" class="hint" aria-live="polite"></p>
+      </details>
+
       <div id="verify-panel" class="invite-panel hidden">
         <div class="invite-title">Проверка собеседника — только при первом подключении</div>
         <div id="verify-code" class="verification-code">--------</div>
@@ -89,6 +103,6 @@
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=35"></script>
+  <script type="module" src="./js/app.js?v=36"></script>
 </body>
 </html>
