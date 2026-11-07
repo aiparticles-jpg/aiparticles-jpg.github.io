@@ -1,14 +1,14 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=21";
 import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
+import { listContacts, getContact, saveContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
 import { verifyContactPackage } from "./contact-exchange.js";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js";
 import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
+ peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -39,6 +39,7 @@ function updateCallButtons(){
  els.hangup.classList.toggle("hidden",!active);
  els.hangup.disabled=!active||state.hangingUp;
  els.dismissIncoming.disabled=state.connecting;
+ els.deletePeer.disabled=!NtfySecureSignaling.validUserId(els.peer.value)||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging(){
@@ -408,6 +409,7 @@ async function refreshContactOptions(selectUserId=""){
  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
  els.peer.disabled=contacts.length===0;
  if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
+ updateCallButtons();
 }
 
 function toBase64UrlBytes(bytes){
@@ -471,6 +473,31 @@ async function copyContactInvitation(){
   els.inviteUrl.focus();els.inviteUrl.select();
   els.qrStatus.textContent="Выделите ссылку и скопируйте её вручную.";
  }
+}
+
+async function deleteSelectedContact(){
+ const peer=els.peer.value;
+ if(!NtfySecureSignaling.validUserId(peer)){
+  showError("Сначала выберите сохранённый контакт.");
+  return;
+ }
+ if(state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall){
+  showError("Сначала завершите текущий вызов, чтобы удалить контакт.");
+  return;
+ }
+ const name=els.peer.selectedOptions[0]?.textContent||"контакт";
+ if(!window.confirm("Удалить контакт «"+name+"» с этого устройства? Будут удалены его публичный ключ, OneSignal ID и статус доверия. Чтобы связаться снова, собеседник должен передать новую ссылку или QR-код."))return;
+ els.deletePeer.disabled=true;
+ try{
+  await deleteContact(peer);
+  if(state.secure?.peer===peer)state.secure.setPeer("");
+  await refreshContactOptions();
+  clearError();
+  debug("Контакт "+name+" и все его сохранённые данные удалены из локальной адресной книги.");
+  setStatus("Контакт удалён","Локальные данные контакта удалены. Чтобы добавить его снова, импортируйте новую ссылку или QR-код.","idle");
+ }catch(error){
+  showError("Не удалось удалить контакт: "+(error.message||String(error)));
+ }finally{updateCallButtons()}
 }
 
 async function importContactFromInput(){
@@ -574,19 +601,7 @@ els.confirm.addEventListener("click",async()=>{
  catch(e){showError(e.message);els.confirm.disabled=false}
 });
 els.hangup.addEventListener("click",hangup);
-els.resetPeer.addEventListener("click",async()=>{
- const peer=els.peer.value;
- if(!NtfySecureSignaling.validUserId(peer)){
-  showError("Сначала выберите сохранённый контакт.");
-  return;
- }
- if(!window.confirm("Сбросить локальное доверие к контакту «"+(els.peer.selectedOptions[0]?.textContent||"контакт")+"»? При следующем звонке потребуется повторная сверка кода."))return;
- await hangup();
- await updateContact(peer,{trusted:false,verified_at:null});
- clearError();
- debug("Удалено сохранённое сопряжение с "+peer+". При следующем подключении потребуется сверить новый код.");
- setStatus("Сопряжение сброшено","Подключитесь заново и сравните проверочные коды на обоих устройствах.","idle");
-});
+els.deletePeer.addEventListener("click",deleteSelectedContact);
 els.tcp.classList.add("hidden");
 try{els.pilot.checked=localStorage.getItem("vl.simulateMicrophone.v1")==="1"}catch{els.pilot.checked=false}
 els.dismissIncoming.classList.add("hidden");
