@@ -474,7 +474,7 @@ async function createContactInvitation(){
   try{
    await ensureQrCodeLibrary();
    new window.QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-   els.inviteStatus.textContent="Приглашение создано. Передайте ссылку или QR-код собеседнику.";
+   els.inviteStatus.textContent="";
   }catch(qrError){
    els.inviteStatus.textContent="Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError));
   }
