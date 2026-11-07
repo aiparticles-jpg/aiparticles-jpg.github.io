@@ -792,7 +792,7 @@ els.pasteContactInline.addEventListener("click",pasteContactInvitation);
 els.contactName.addEventListener("input",updateImportContactButton);
 els.importContact.addEventListener("click",importContactFromInput);
 updateImportContactButton();
-els.replyInvite.addEventListener("click",sendContactRequest);
+els.replyInvite.addEventListener("click",()=>sendContactRequest());
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
 els.contactRequestName.addEventListener("focus",()=>{if(els.contactRequestName.value==="Новый контакт")els.contactRequestName.select()});
