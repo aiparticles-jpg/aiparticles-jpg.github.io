@@ -43,6 +43,8 @@
         <button id="hangup" class="button button-danger hidden" type="button" disabled>Завершить звонок</button>
       </div>
       <button id="delete-peer" class="button button-danger reset-peer" type="button" disabled>Удалить контакт</button>
+      <button id="reply-contact-invite" class="button button-secondary hidden" type="button">Послать ответное приглашение</button>
+      <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
 
       <div id="contact-request-panel" class="invite-panel hidden">
         <div class="invite-title">Запрос на добавление в контакты</div>
@@ -67,8 +69,6 @@
         <p class="hint">Имя контакта хранится только на этом устройстве. В сети используется его анонимный криптографический идентификатор.</p>
         <button id="import-contact" class="button button-primary" type="button">Проверить и сохранить контакт</button>
         <p id="qr-status" class="hint" aria-live="polite"></p>
-        <button id="reply-contact-invite" class="button button-secondary" type="button" disabled>Ответить на приглашение</button>
-        <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
       </details>
 
       <details id="invite-tools" class="contact-tools invite-tools">
