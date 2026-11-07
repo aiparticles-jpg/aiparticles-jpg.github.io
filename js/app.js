@@ -1,8 +1,8 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=22";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=23";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
-import { verifyContactPackage } from "./contact-exchange.js";
+import { verifyContactPackage } from "./contact-exchange.js?v=2";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=2";
 import { sendPushEventToContact } from "./push-api.js";
 
@@ -460,7 +460,8 @@ async function createContactInvitation(){
    version:1,
    user_id:identity.user_id,
    public_key:identity.public_key,
-   push_subscription_id:subscriptionId
+   push_subscription_id:subscriptionId,
+   created_at:Date.now()
   };
   const canonical=JSON.stringify(unsigned);
   const signature=await signWithIdentity(canonical);
@@ -510,8 +511,9 @@ async function sendContactRequest(){
   const identity=await getCurrentSignalingIdentity();
   const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,created_at:Date.now()};
   const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
+  if(!Number.isFinite(Number(contact.created_at)))throw Error("У сохранённого контакта нет даты исходного приглашения. Удалите его и импортируйте заново по новой ссылке.");
   const requestId=crypto.randomUUID(),expiresAt=Date.now()+120000;
-  const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,identity:identity.publicJwk,contact_package:contactPackage};
+  const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_created_at:Number(contact.created_at),identity:identity.publicJwk,contact_package:contactPackage};
   const message={v:1,type:"contact_request",payload,sig:await signWithIdentity({type:"contact_request",payload})};
   const topic=await getNtfyTopic(peer);
   const response=await fetch("https://ntfy.sh/"+topic,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message),cache:"no-store"});
@@ -531,11 +533,25 @@ async function sendContactRequest(){
  }finally{els.replyInvite.disabled=false}
 }
 
+function formatInvitationAge(timestamp){
+ const elapsed=Math.max(0,Date.now()-Number(timestamp));
+ const rtf=new Intl.RelativeTimeFormat("ru",{numeric:"always"});
+ const minutes=elapsed/60000;
+ if(minutes<60)return rtf.format(-Math.max(1,Math.round(minutes)),"minute");
+ const hours=elapsed/3600000;
+ if(hours<24)return rtf.format(-Math.max(1,Math.round(hours)),"hour");
+ const days=elapsed/86400000;
+ if(days<30)return rtf.format(-Math.max(1,Math.round(days)),"day");
+ const months=days/30.4375;
+ if(months<12)return rtf.format(-Math.max(1,Math.round(months)),"month");
+ return rtf.format(-Math.max(1,Math.round(days/365.25)),"year");
+}
 function renderContactRequest(){
  const request=state.pendingContactRequests[0];
  els.contactRequestPanel.classList.toggle("hidden",!request);
  if(!request)return;
- els.contactRequestText.textContent="Устройство "+request.contact.user_id.slice(0,12)+"… хочет добавить вас в контакты. Проверьте запрос и подтвердите добавление.";
+ const age=request.invitationCreatedAt?" Вы отправили приглашение "+formatInvitationAge(request.invitationCreatedAt)+".":" Это ответ на ранее отправленное вами приглашение.";
+ els.contactRequestText.textContent="Ответ на ваше приглашение."+age;
  if(!els.contactRequestName.value)els.contactRequestName.value="Новый контакт";
  els.acceptContactRequest.disabled=false;
 }
@@ -665,6 +681,7 @@ els.importContact.addEventListener("click",importContactFromInput);
 els.replyInvite.addEventListener("click",sendContactRequest);
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
+els.contactRequestName.addEventListener("focus",()=>{if(els.contactRequestName.value==="Новый контакт")els.contactRequestName.select()});
 els.createInvite.addEventListener("click",createContactInvitation);
 function updateInvitationPanel(){
  const granted="Notification" in window&&Notification.permission==="granted";
