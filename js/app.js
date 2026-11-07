@@ -64,8 +64,10 @@ function updateCallButtons(){
  els.hangup.classList.toggle("hidden",!active);
  els.hangup.disabled=!active||state.hangingUp;
  els.dismissIncoming.disabled=state.connecting;
- els.deletePeer.disabled=!NtfySecureSignaling.validUserId(els.peer.value)||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
+ els.contactEditTools.classList.toggle("hidden",!selectedPeer);
+ els.deletePeer.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
+ els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim();
  const trustedPeer=selectedPeer&&trustedContactIds.has(els.peer.value);
  els.replyInvite.classList.toggle("hidden",!selectedPeer||trustedPeer);
  els.replyInvite.textContent=sentContactRequests[els.peer.value]?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
@@ -441,6 +443,7 @@ async function refreshContactOptions(selectUserId=""){
  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
  els.peer.disabled=contacts.length===0;
  if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
+ els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
  updateReplyInviteStatus();
  updateCallButtons();
 }
