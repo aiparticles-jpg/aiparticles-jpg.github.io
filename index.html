@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=36">
+  <link rel="stylesheet" href="./css/style.css?v=37">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -19,7 +19,7 @@
     <header class="topbar">
       <a class="brand" href="./" aria-label="Voice Link">
         <span class="brand-mark">V</span>
-        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.08-73</small></span>
+        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.08-74</small></span>
       </a>
       <div class="topbar-actions">
         <details id="privacy-help" class="privacy-help">
@@ -51,12 +51,12 @@
         <div id="contacts-list-items" class="contacts-list-items" role="list"></div>
         <p id="contacts-list-empty" class="contacts-list-empty">Пока нет контактов. Нажмите «+», чтобы добавить первый контакт.</p>
       </div>
-      <button id="add-contact-fab" class="add-contact-fab" type="button" aria-label="Добавить контакт" title="Добавить контакт"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
-    </sectio
-    <section class="utility-dock" aria-label="Профиль и диагностика">
-      <button id="profile-dock-button" class="dock-action" type="button" aria-label="Открыть профиль" title="Профиль"><span class="dock-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span><span id="profile-dock-label" class="dock-label">Профиль</span></button>
+    </section>
+    <section class="utility-dock" aria-label="Основные действия">
       <button id="diagnostic-dock-button" class="dock-action" type="button" aria-label="Открыть диагностику" title="Диагностика"><span class="dock-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-6 4.6 12 2.2-6H21"/><path d="M4 4h16v16H4z" opacity=".35"/></svg></span><span class="dock-label">Диагностика</span></button>
-    </section>n>
+      <button id="profile-dock-button" class="dock-action" type="button" aria-label="Открыть профиль" title="Профиль"><span class="dock-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span><span id="profile-dock-label" class="dock-label">Профиль</span></button>
+      <button id="add-contact-fab" class="dock-action" type="button" aria-label="Добавить контакт" title="Добавить контакт"><span class="dock-icon add-contact-dock-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span class="dock-label">Добавить</span></button>
+    </section>
     <section id="add-contact-screen" class="add-contact-screen hidden" role="dialog" aria-modal="true" aria-labelledby="add-contact-screen-title">
       <header class="contact-edit-screen-header">
         <button id="add-contact-screen-back" class="contact-screen-back" type="button" aria-label="Вернуться к контактам"><span aria-hidden="true">←</span></button>
@@ -184,7 +184,7 @@
           <div id="invite-qr" class="invite-qr" aria-label="QR-код моего приглашения"></div>
         </div>
         <p id="invite-status" class="hint" aria-live="polite"></p>
-      </details
+      </details>
       </div>
     </section>
     <section id="diagnostic-screen" class="contact-edit-screen hidden" role="dialog" aria-modal="true" aria-labelledby="diagnostic-screen-title">
@@ -215,12 +215,8 @@
           <button id="accept-contact-request" class="button button-primary" type="button">Добавить контакт</button>
           <button id="decline-contact-request" class="button button-secondary" type="button">Отклонить</button>
         </div>
-
+      </div>
     </section>
-    <footer>
-      <span>Voice Link · экспериментальный прототип</span>
-      <span>WebRTC P2P · TCP fallback</span>
-    </footer>
   </main>
 
   <script type="module" src="./js/app.js?v=85"></script>
