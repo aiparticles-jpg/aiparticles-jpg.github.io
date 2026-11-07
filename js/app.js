@@ -459,6 +459,7 @@ async function createContactInvitation(){
   els.inviteUrl.focus();
   els.inviteUrl.select();
   debug("Создано подписанное приглашение с действующим OneSignal Subscription ID.");
+  updateInvitationPanel();
  }catch(error){
   const message=error.message||String(error);
   els.inviteStatus.textContent="Приглашение не создано. "+message;
