@@ -14,7 +14,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),inviteQr:$("invite-qr")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),inviteQr:$("invite-qr")
 };
 let qrStream=null,qrScanActive=false;
 const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
@@ -430,7 +430,7 @@ async function ensureQrCodeLibrary(){
 }
 async function createContactInvitation(){
  els.createInvite.disabled=true;
- els.qrStatus.textContent="Проверяем разрешение на push-уведомления…";
+ els.inviteStatus.textContent="Проверяем разрешение на push-уведомления…";
  clearError();
  try{
   const subscriptionId=await enableOneSignalPush();
@@ -452,16 +452,16 @@ async function createContactInvitation(){
   try{
    await ensureQrCodeLibrary();
    new window.QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-   els.qrStatus.textContent="Приглашение создано. Передайте ссылку или QR-код собеседнику.";
+   els.inviteStatus.textContent="Приглашение создано. Передайте ссылку или QR-код собеседнику.";
   }catch(qrError){
-   els.qrStatus.textContent="Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError));
+   els.inviteStatus.textContent="Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError));
   }
   els.inviteUrl.focus();
   els.inviteUrl.select();
   debug("Создано подписанное приглашение с действующим OneSignal Subscription ID.");
  }catch(error){
   const message=error.message||String(error);
-  els.qrStatus.textContent="Приглашение не создано. "+message;
+  els.inviteStatus.textContent="Приглашение не создано. "+message;
   showError(message);
  }finally{els.createInvite.disabled=false}
 }
@@ -470,10 +470,10 @@ async function copyContactInvitation(){
  if(!value)return;
  try{
   await navigator.clipboard.writeText(value);
-  els.qrStatus.textContent="Ссылка скопирована.";
+  els.inviteStatus.textContent="Ссылка скопирована.";
  }catch{
   els.inviteUrl.focus();els.inviteUrl.select();
-  els.qrStatus.textContent="Выделите ссылку и скопируйте её вручную.";
+  els.inviteStatus.textContent="Выделите ссылку и скопируйте её вручную.";
  }
 }
 
@@ -626,9 +626,9 @@ async function initializeApp(){
    try{
     await ensureQrCodeLibrary();
     new window.QRCode(els.inviteQr,{text:savedInvitation,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-    els.qrStatus.textContent="Сохранённое приглашение восстановлено.";
+    els.inviteStatus.textContent="Сохранённое приглашение восстановлено.";
    }catch(qrError){
-    els.qrStatus.textContent="Ссылка-приглашение восстановлена; QR-код пока недоступен.";
+    els.inviteStatus.textContent="Ссылка-приглашение восстановлена; QR-код пока недоступен.";
    }
   }
   const fragment=new URLSearchParams(window.location.hash.slice(1));
