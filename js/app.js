@@ -508,7 +508,7 @@ async function sendContactRequest(){
   if(!contact?.push_subscription_id)throw Error("У контакта отсутствует OneSignal ID. Попросите его обновить приглашение.");
   const subscriptionId=await enableOneSignalPush();
   const identity=await getCurrentSignalingIdentity();
-  const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId};
+  const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,created_at:Date.now()};
   const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
   const requestId=crypto.randomUUID(),expiresAt=Date.now()+120000;
   const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,identity:identity.publicJwk,contact_package:contactPackage};
