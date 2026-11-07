@@ -493,7 +493,6 @@ function renderContactList(contacts){
  for(const contact of contacts){
   const item=document.createElement("button");
   item.type="button";item.className="contact-list-item";item.dataset.peer=contact.user_id;
-  item.setAttribute("role","listitem");
   item.setAttribute("aria-pressed",String(els.peer.value===contact.user_id));
   const avatar=document.createElement("span");
   avatar.className="contact-avatar";avatar.textContent=contactInitials(contact.name);
@@ -913,6 +912,7 @@ els.peer.addEventListener("change",()=>{
  updateReplyInviteStatus();
  updateCallButtons();
  const peer=els.peer.value;
+ for(const item of els.contactList.querySelectorAll(".contact-list-item"))item.setAttribute("aria-pressed",String(item.dataset.peer===peer));
  if(state.incomingCall&&peer!==state.secure?.peer)dismissIncoming(false);
  if(state.secure&&!state.secure.active&&!state.connecting){
   const me=state.me;
