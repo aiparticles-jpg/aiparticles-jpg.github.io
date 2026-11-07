@@ -495,12 +495,17 @@ function formatLastInteraction(value){
  return new Date(timestamp).toLocaleDateString("ru-RU",{day:"numeric",month:"short"});
 }
 let contactListInitialPositioned=false;
+let allContacts=[];
 function renderContactList(contacts){
+ allContacts=contacts;
+ const query=els.contactSearch.value.trim().toLowerCase();
+ const visibleContacts=allContacts.filter(contact=>String(contact.name||"").toLowerCase().includes(query));
  els.contactListItems.replaceChildren();
- els.contactsCount.textContent=String(contacts.length);
- els.contactListEmpty.classList.toggle("hidden",contacts.length>0);
- els.privacyHelp.classList.toggle("hidden",contacts.length>0);
- for(const contact of contacts){
+ els.contactsCount.textContent=String(visibleContacts.length);
+ els.contactListEmpty.textContent=query?"По вашему запросу ничего не найдено.":"Пока нет контактов. Нажмите «+», чтобы добавить первый контакт.";
+ els.contactListEmpty.classList.toggle("hidden",visibleContacts.length>0);
+ els.privacyHelp.classList.toggle("hidden",allContacts.length>0);
+ for(const contact of visibleContacts){
   const item=document.createElement("button");
   item.type="button";item.className="contact-list-item";item.dataset.peer=contact.user_id;item.setAttribute("role","listitem");
   item.setAttribute("aria-pressed",String(els.peer.value===contact.user_id));
@@ -538,6 +543,8 @@ async function refreshContactOptions(selectUserId=""){
  updateReplyInviteStatus();
  updateCallButtons();
 }
+
+els.contactSearch.addEventListener("input",()=>renderContactList(allContacts));
 
 function toBase64UrlBytes(bytes){
  let binary="";
