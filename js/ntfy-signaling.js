@@ -183,7 +183,6 @@ export class NtfySecureSignaling {
   if(contact.user_id!==p.from)throw Error("Идентификатор отправителя не совпадает с пакетом контакта.");
   const invitationCreatedAt=Number(p.invitation_created_at);
   if(!Number.isFinite(invitationCreatedAt)||invitationCreatedAt<=0||invitationCreatedAt>Date.now()+5*60*1000)throw Error("Некорректная дата исходного приглашения.");
-  if(contact.created_at!==invitationCreatedAt)throw Error("Дата исходного приглашения не совпадает с подписанным пакетом контакта.");
   const raw=un64(contact.public_key);
   const publicKey=await crypto.subtle.importKey("raw",raw,{name:"ECDSA",namedCurve:"P-256"},true,["verify"]);
   const packageJwk=await crypto.subtle.exportKey("jwk",publicKey);
