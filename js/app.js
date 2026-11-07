@@ -855,6 +855,7 @@ async function stopQrScan(){
  els.scanQr.textContent="Сканировать QR-код";
 }
 async function configureQrScannerButton(){
+ els.scanQr.classList.add("hidden");
  let supported=false;
  try{
   if("BarcodeDetector" in window){
@@ -867,12 +868,13 @@ async function configureQrScannerButton(){
    }
   }
  }catch(error){supported=false}
- els.scanQr.classList.toggle("hidden",!supported);
+ if(supported)els.scanQr.classList.remove("hidden");
 }
 configureQrScannerButton();
 async function startQrScan(){
  if(qrScanActive){await stopQrScan();return}
  if(!("BarcodeDetector" in window)){
+  els.scanQr.classList.add("hidden");
   els.qrStatus.textContent="В этом браузере нет встроенного сканера QR. Используйте ссылку или вставьте содержимое QR-кода в поле выше.";
   return;
  }
