@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=30">
+  <link rel="stylesheet" href="./css/style.css?v=31">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -96,7 +96,10 @@
           <div class="contact-delete-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-11 0 1 14h12l1-14M10 11v5m4-5v5"/></svg></div>
           <h3 id="contact-delete-name" class="contact-delete-name"></h3>
           <p class="hint">Контакт и все сохранённые данные о нём будут удалены с этого устройства. Чтобы снова связаться, придётся заново обменяться приглашениями.</p>
-          <button id="confirm-delete-contact" class="button button-danger" type="button">Удалить контакт</button>
+          <div class="contact-delete-actions">
+            <button id="confirm-delete-contact" class="button button-danger" type="button">Подтвердить удаление</button>
+            <button id="cancel-delete-contact" class="button button-secondary" type="button">Отменить удаление</button>
+          </div>
         </div>
       </div>
     </section>
@@ -212,10 +215,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.08-67</span>
+      <span id="app-version">Версия 2026.11.08-68</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=79"></script>
+  <script type="module" src="./js/app.js?v=80"></script>
 </body>
 </html>

@@ -400,3 +400,4 @@ body.contact-screen-open{overflow:hidden}
 .contact-delete-name{margin:0 0 12px;color:var(--text);font:700 19px Manrope,sans-serif}
 .contact-delete-content .hint{max-width:440px;margin:0 auto 24px;line-height:1.6}
 .contact-delete-content .button{width:100%;max-width:360px}
+.contact-delete-actions{display:grid;gap:10px;justify-items:center}
