@@ -1,6 +1,6 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=21";
-import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
+import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
 import { verifyContactPackage } from "./contact-exchange.js";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=2";
@@ -14,10 +14,10 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),inviteQr:$("invite-qr")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 let qrStream=null,qrScanActive=false;
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],pendingContactRequests:[]};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -215,6 +215,7 @@ function createSecureSignaling(me,peer=""){
   onSignal:handleSignal,
   onStatus:m=>{els.statusText.textContent=m;debug(m)},
   onIncoming:showIncomingCall,
+  onContactRequest:handleIncomingContactRequest,
   onCancelIncoming:info=>{
    if(state.incomingCall){clearIncomingUi();stopRinging();state.secure?.dismissIncoming();setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");}
   },
@@ -478,6 +479,75 @@ async function copyContactInvitation(){
  }
 }
 
+async function sendContactRequest(){
+ const peer=els.peer.value;
+ if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите контакт, от которого вы получили приглашение.");return;}
+ const contact=await getContact(peer);
+ if(!contact?.push_subscription_id){showError("У контакта отсутствует OneSignal ID. Попросите его обновить приглашение.");return;}
+ els.replyInvite.disabled=true;els.replyInviteStatus.textContent="Подготавливаем подписанный запрос…";clearError();
+ try{
+  const subscriptionId=await enableOneSignalPush();
+  const identity=await getCurrentSignalingIdentity();
+  const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId};
+  const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
+  const requestId=crypto.randomUUID(),expiresAt=Date.now()+120000;
+  const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,identity:identity.publicJwk,contact_package:contactPackage};
+  const message={v:1,type:"contact_request",payload,sig:await signWithIdentity({type:"contact_request",payload})};
+  const topic=await getNtfyTopic(peer);
+  const response=await fetch("https://ntfy.sh/"+topic,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message),cache:"no-store"});
+  if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
+  try{
+   await sendPushEventToContact(peer,"contact_request",requestId,expiresAt);
+   els.replyInviteStatus.textContent="Запрос отправлен. Алиса получит push-уведомление через OneSignal.";
+   debug("Подписанный запрос на добавление контакта опубликован в ntfy; OneSignal принял push.");
+  }catch(pushError){
+   els.replyInviteStatus.textContent="Запрос передан через ntfy, но push не отправлен: "+(pushError.message||String(pushError));
+   debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(pushError.message||String(pushError)));
+  }
+ }catch(error){
+  els.replyInviteStatus.textContent="Не удалось отправить запрос: "+(error.message||String(error));showError(error.message||String(error));
+ }finally{els.replyInvite.disabled=false}
+}
+
+function renderContactRequest(){
+ const request=state.pendingContactRequests[0];
+ els.contactRequestPanel.classList.toggle("hidden",!request);
+ if(!request)return;
+ els.contactRequestText.textContent="Устройство "+request.contact.user_id.slice(0,12)+"… хочет добавить вас в контакты. Проверьте запрос и подтвердите добавление.";
+ if(!els.contactRequestName.value)els.contactRequestName.value="Новый контакт";
+ els.acceptContactRequest.disabled=false;
+}
+
+function handleIncomingContactRequest(request){
+ if(state.pendingContactRequests.some(item=>item.requestId===request.requestId))return;
+ if(state.pendingContactRequests.some(item=>item.contact.user_id===request.contact.user_id))return;
+ getContact(request.contact.user_id).then(existing=>{
+  if(existing){debug("Запрос контакта пропущен: отправитель уже сохранён в адресной книге.");return;}
+  state.pendingContactRequests.push(request);renderContactRequest();
+  debug("Получен подписанный запрос на добавление контакта через ntfy.");
+ }).catch(error=>debug("Не удалось проверить запрос контакта: "+(error.message||String(error))));
+}
+
+async function acceptContactRequest(){
+ const request=state.pendingContactRequests[0];if(!request)return;
+ const name=els.contactRequestName.value.trim();
+ if(!name){showError("Укажите имя контакта.");return;}
+ els.acceptContactRequest.disabled=true;
+ try{
+  const existing=await getContact(request.contact.user_id);
+  if(!existing)await saveContact({...request.contact,name,trusted:false,verified_at:null});
+  await refreshContactOptions(request.contact.user_id);
+  state.pendingContactRequests.shift();els.contactRequestName.value="";renderContactRequest();
+  setStatus("Контакт добавлен","Теперь можно звонить этому контакту.","idle");
+  debug("Подписанный запрос принят; контакт "+name+" сохранён только в IndexedDB.");
+ }catch(error){showError("Не удалось сохранить контакт: "+(error.message||String(error)));els.acceptContactRequest.disabled=false}
+}
+
+function declineContactRequest(){
+ if(!state.pendingContactRequests.length)return;
+ state.pendingContactRequests.shift();els.contactRequestName.value="";renderContactRequest();
+ debug("Запрос на добавление контакта отклонён локально; отправитель не уведомляется.");
+}
 async function deleteSelectedContact(){
  const peer=els.peer.value;
  if(!NtfySecureSignaling.validUserId(peer)){
@@ -570,6 +640,9 @@ async function startQrScan(){
 }
 
 els.importContact.addEventListener("click",importContactFromInput);
+els.replyInvite.addEventListener("click",sendContactRequest);
+els.acceptContactRequest.addEventListener("click",acceptContactRequest);
+els.declineContactRequest.addEventListener("click",declineContactRequest);
 els.createInvite.addEventListener("click",createContactInvitation);
 function updateInvitationPanel(){
  const granted="Notification" in window&&Notification.permission==="granted";
