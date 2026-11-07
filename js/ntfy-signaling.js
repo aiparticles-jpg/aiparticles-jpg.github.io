@@ -182,7 +182,7 @@ export class NtfySecureSignaling {
   const contact=await verifyContactPackage(JSON.stringify(p.contact_package));
   if(contact.user_id!==p.from)throw Error("Идентификатор отправителя не совпадает с пакетом контакта.");
   const raw=un64(contact.public_key);
-  const publicKey=await crypto.subtle.importKey("raw",raw,{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
+  const publicKey=await crypto.subtle.importKey("raw",raw,{name:"ECDSA",namedCurve:"P-256"},true,["verify"]);
   const packageJwk=await crypto.subtle.exportKey("jwk",publicKey);
   if(!samePublicKey(packageJwk,p.identity))throw Error("Ключ запроса не совпадает с подписанным пакетом контакта.");
   if(!await this.verify({type:"contact_request",payload:p},m.sig,p.identity))throw Error("Подпись запроса на добавление контакта недействительна.");
