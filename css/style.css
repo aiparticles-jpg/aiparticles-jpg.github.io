@@ -436,3 +436,8 @@ body.contact-screen-open{overflow:hidden}
 .diagnostic-screen-content .diagnostic-content,.diagnostic-screen-content .event-log-panel{margin-top:0}
 .call-system-panel{display:contents}
 @media(max-width:520px){.shell{padding-bottom:calc(128px + env(safe-area-inset-bottom))}.utility-dock{height:calc(100px + env(safe-area-inset-bottom));min-height:calc(100px + env(safe-area-inset-bottom));gap:8px}}
+
+
+/* Fill the available viewport with the contacts area above the fixed dock. */
+.shell{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
+.contacts-list-panel{flex:1 1 auto;height:auto;min-height:190px;max-height:none;margin-bottom:0}
