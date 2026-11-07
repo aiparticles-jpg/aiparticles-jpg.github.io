@@ -31,13 +31,32 @@ export function initializeOneSignal() {
 
 export async function enableOneSignalPush() {
   const OneSignal = await initializeOneSignal();
+
+  if (!("Notification" in window)) {
+    throw new Error("Этот браузер не поддерживает разрешения на уведомления.");
+  }
+
+  let permission = Notification.permission;
+  if (permission === "denied") {
+    throw new Error("Уведомления для VoiceLink запрещены в настройках браузера. Разрешите уведомления для этого сайта и повторите попытку.");
+  }
+
+  if (permission === "default") {
+    await OneSignal.Notifications.requestPermission();
+    permission = Notification.permission;
+  }
+
+  if (permission !== "granted") {
+    throw new Error("Для создания приглашения необходимо разрешить push-уведомления.");
+  }
+
   await OneSignal.User.PushSubscription.optIn();
 
-  // Subscription ID can arrive asynchronously after the permission prompt.
+  // Subscription ID can arrive asynchronously after permission and opt-in.
   for (let attempt = 0; attempt < 60; attempt++) {
     const id = OneSignal.User.PushSubscription.id;
     if (typeof id === "string" && id.trim()) return id;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
-  throw new Error("OneSignal не выдал Subscription ID. Проверьте разрешение на уведомления и настройки Web Push в OneSignal.");
+  throw new Error("Разрешение получено, но OneSignal не выдал Subscription ID. Проверьте настройки Web Push и попробуйте ещё раз.");
 }
