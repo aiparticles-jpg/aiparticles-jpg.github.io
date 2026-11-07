@@ -23,10 +23,19 @@ function loadSentContactRequests(){
  catch{return {}}
 }
 const sentContactRequests=loadSentContactRequests();
-function markContactRequestSent(userId){
- sentContactRequests[userId]=Date.now();
+let trustedContactIds=new Set();
+function persistSentContactRequests(){
  try{localStorage.setItem(CONTACT_REQUESTS_KEY,JSON.stringify(sentContactRequests))}
  catch(error){debug("Не удалось сохранить историю отправки приглашения: "+(error.message||String(error)))}
+}
+function markContactRequestSent(userId){
+ sentContactRequests[userId]=Date.now();
+ persistSentContactRequests();
+}
+function clearSentContactRequest(userId){
+ if(!Object.prototype.hasOwnProperty.call(sentContactRequests,userId))return;
+ delete sentContactRequests[userId];
+ persistSentContactRequests();
 }
 function updateReplyInviteStatus(){
  const peer=els.peer.value;
@@ -57,9 +66,10 @@ function updateCallButtons(){
  els.dismissIncoming.disabled=state.connecting;
  els.deletePeer.disabled=!NtfySecureSignaling.validUserId(els.peer.value)||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
- els.replyInvite.classList.toggle("hidden",!selectedPeer);
- els.replyInvite.textContent=sentContactRequests[els.peer.value]?"Послать приглашение ещё раз":"Послать ответное приглашение";
- els.replyInvite.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
+ const trustedPeer=selectedPeer&&trustedContactIds.has(els.peer.value);
+ els.replyInvite.classList.toggle("hidden",!selectedPeer||trustedPeer);
+ els.replyInvite.textContent=sentContactRequests[els.peer.value]?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
+ els.replyInvite.disabled=!selectedPeer||trustedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging(){
@@ -426,6 +436,7 @@ function handleRemoteHangup(){
 
 async function refreshContactOptions(selectUserId=""){
  const contacts=await listContacts();
+ trustedContactIds=new Set(contacts.filter(contact=>contact.trusted===true).map(contact=>contact.user_id));
  els.peer.replaceChildren(new Option("Выберите контакт",""));
  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
  els.peer.disabled=contacts.length===0;
@@ -576,7 +587,7 @@ async function acceptContactRequest(){
  els.acceptContactRequest.disabled=true;
  try{
   const existing=await getContact(request.contact.user_id);
-  if(!existing)await saveContact({...request.contact,name,trusted:true,verified_at:new Date().toISOString()});
+  await saveContact({...existing,...request.contact,name:existing?.name||name,trusted:true,verified_at:new Date().toISOString()});
   await refreshContactOptions(request.contact.user_id);
   state.pendingContactRequests.shift();els.contactRequestName.value="";renderContactRequest();
   setStatus("Контакт добавлен","Теперь можно звонить этому контакту.","idle");
@@ -604,6 +615,7 @@ async function deleteSelectedContact(){
  els.deletePeer.disabled=true;
  try{
   await deleteContact(peer);
+  clearSentContactRequest(peer);
   if(state.secure?.peer===peer)state.secure.setPeer("");
   await refreshContactOptions();
   clearError();
