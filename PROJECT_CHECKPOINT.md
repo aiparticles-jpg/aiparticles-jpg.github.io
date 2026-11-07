@@ -34,6 +34,7 @@ Anonymous peer-to-peer voice application.
 - Contact package includes user_id, public_key, push_subscription_id, version, and signature; never includes the private key.
 - ECDSA signature covers the package fields. Validate the fingerprint and signature on import. Initially mark imported contact unconfirmed; verify SAS on first connection before trusting it.
 - If OneSignal Subscription ID changes, share an updated contact package.
+- Contacts can be deleted locally. Deletion removes the complete contact record (public key, OneSignal Subscription ID, and trust state); call-history entries remain as non-credential historical records. Re-add a contact by importing a newly shared signed URL/QR package. There is no separate “reset pairing/trust” action.
 
 ## Private-key storage decision
 - Generate the private key using Web Crypto API as non-extractable.
