@@ -536,7 +536,7 @@ async function acceptContactRequest(){
  els.acceptContactRequest.disabled=true;
  try{
   const existing=await getContact(request.contact.user_id);
-  if(!existing)await saveContact({...request.contact,name,trusted:false,verified_at:null});
+  if(!existing)await saveContact({...request.contact,name,trusted:true,verified_at:new Date().toISOString()});
   await refreshContactOptions(request.contact.user_id);
   state.pendingContactRequests.shift();els.contactRequestName.value="";renderContactRequest();
   setStatus("Контакт добавлен","Теперь можно звонить этому контакту.","idle");
