@@ -167,6 +167,7 @@ export class NtfySecureSignaling {
   if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись входящего вызова недействительна.");
   const pinned=await this.checkPinned(p.identity);
   if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
+  this.onPeerMessage(p.from);
   this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=p.identity;
   const pendingCancel=this.pendingCancels.get(p.sid);
   if(pendingCancel){this.pendingCancels.delete(p.sid);await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
