@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=17">
+  <link rel="stylesheet" href="./css/style.css?v=18">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -72,8 +72,9 @@
       </details>
 
       <details id="invite-tools" class="contact-tools invite-tools">
-        <summary>Поделиться приглашением</summary>
-        <button id="copy-invite" class="button button-secondary invite-copy-button" type="button" aria-label="Скопировать приглашение" title="Скопировать приглашение" disabled><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>
+        <summary class="invite-summary">Поделиться приглашением
+          <button id="copy-invite" class="button button-secondary invite-copy-button" type="button" aria-label="Скопировать приглашение" title="Скопировать приглашение" disabled><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>
+        </summary>
         <div id="invite-permission">
           <p class="hint">Разрешите push-уведомления, чтобы получать оповещения о входящих звонках, даже когда VoiceLink не открыт на экране. После разрешения мы создадим вашу ссылку и QR-код приглашения.</p>
           <button id="create-invite" class="button button-primary" type="button">Разрешить уведомления</button>
@@ -81,7 +82,10 @@
         <div id="invite-content" class="hidden">
           <p class="hint">Передайте собеседнику ссылку или QR-код, чтобы он мог добавить вас в контакты.</p>
           <label class="field-label" for="invite-url">Моя ссылка-приглашение</label>
-          <textarea id="invite-url" rows="3" readonly spellcheck="false" placeholder="Создаём приглашение…"></textarea>
+          <div class="invite-url-row">
+            <textarea id="invite-url" rows="3" readonly spellcheck="false" placeholder="Создаём приглашение…"></textarea>
+            <button id="copy-invite-inline" class="button button-secondary invite-copy-inline" type="button" disabled>Копировать</button>
+          </div>
           <div id="invite-qr" class="invite-qr" aria-label="QR-код моего приглашения"></div>
         </div>
         <p id="invite-status" class="hint" aria-live="polite"></p>
@@ -134,10 +138,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.07-53</span>
+      <span id="app-version">Версия 2026.11.07-54</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=62"></script>
+  <script type="module" src="./js/app.js?v=63"></script>
 </body>
 </html>
