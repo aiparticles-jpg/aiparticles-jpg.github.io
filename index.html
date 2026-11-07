@@ -52,15 +52,17 @@
         <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
         <button id="import-contact" class="button button-primary" type="button">Проверить и сохранить контакт</button>
         <p id="qr-status" class="hint" aria-live="polite"></p>
-        <div class="invite-generator">
-          <button id="create-invite" class="button button-primary" type="button">Поделиться приглашением</button>
-          <label class="field-label" for="invite-url">Моя ссылка-приглашение</label>
-          <textarea id="invite-url" rows="3" readonly spellcheck="false" placeholder="Ссылка появится после разрешения уведомлений"></textarea>
-          <button id="copy-invite" class="button button-secondary" type="button">Скопировать ссылку</button>
-          <div id="invite-qr" class="invite-qr" aria-label="QR-код моего приглашения"></div>
-          <p class="hint">Для создания приглашения необходимо разрешить push-уведомления — так вы сможете получать оповещения о входящих вызовах. Ссылка содержит только публичный ключ, анонимный ID, OneSignal Subscription ID и подпись. Приватный ключ не покидает устройство.</p>
-        </div>
       </details>
+
+      <section class="invite-generator" aria-label="Поделиться приглашением">
+        <button id="create-invite" class="button button-primary" type="button">Поделиться приглашением</button>
+        <label class="field-label" for="invite-url">Моя ссылка-приглашение</label>
+        <textarea id="invite-url" rows="3" readonly spellcheck="false" placeholder="Ссылка появится после разрешения уведомлений"></textarea>
+        <button id="copy-invite" class="button button-secondary" type="button">Скопировать ссылку</button>
+        <div id="invite-qr" class="invite-qr" aria-label="QR-код моего приглашения"></div>
+        <p id="invite-status" class="hint" aria-live="polite"></p>
+        <p class="hint">Для создания приглашения необходимо разрешить push-уведомления — так вы сможете получать оповещения о входящих вызовах. Ссылка содержит только публичный ключ, анонимный ID, OneSignal Subscription ID и подпись. Приватный ключ не покидает устройство.</p>
+      </section>
 
       <div id="verify-panel" class="invite-panel hidden">
         <div class="invite-title">Проверка собеседника — только при первом подключении</div>
@@ -109,10 +111,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.07-36</span>
+      <span id="app-version">Версия 2026.11.07-37</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=46"></script>
+  <script type="module" src="./js/app.js?v=47"></script>
 </body>
 </html>
