@@ -8,13 +8,13 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
+ contactList:$("contacts-list"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),pasteContactInline:$("paste-contact-inline"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 let qrStream=null,qrScanActive=false;
 let originalEditContactName="";
@@ -804,7 +804,7 @@ async function deleteSelectedContact(){
 let importingContact=false;
 function updateImportContactButton(){
  els.importContact.disabled=importingContact||!els.contactPackage.value.trim()||!els.contactName.value.trim();
- els.pasteContactInline.textContent=els.contactPackage.value.trim()?"Заменить":"Вставить";
+
 }
 async function importContactFromInput(){
  importingContact=true;
@@ -820,7 +820,7 @@ async function importContactFromInput(){
   if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
   els.contactPackage.value="";
   els.contactName.value="";
-  els.contactTools.open=false;
+  closeAddContactScreen();
   setInlineStatus(els.qrStatus,"Контакт «"+name+"» успешно проверен и сохранён локально.");
   clearError();
   debug("Импортирован и криптографически проверен новый контакт: "+name+".");
@@ -880,8 +880,8 @@ async function startQrScan(){
 }
 
 els.contactPackage.addEventListener("input",updateImportContactButton);
-els.pasteContact.addEventListener("click",pasteContactInvitation);
-els.pasteContactInline.addEventListener("click",pasteContactInvitation);
+
+
 els.contactName.addEventListener("input",updateImportContactButton);
 els.importContact.addEventListener("click",importContactFromInput);
 updateImportContactButton();
@@ -931,6 +931,19 @@ document.addEventListener("pointerdown",event=>{
 document.addEventListener("keydown",event=>{
  if(event.key==="Escape"&&els.headerMenu.open){els.headerMenu.open=false;els.headerMenu.querySelector("summary").focus()}
 });
+function openAddContactScreen(pasteFromClipboard=false){
+ els.addContactScreen.classList.remove("hidden");
+ document.body.classList.add("contact-screen-open");
+ els.contactTools.open=true;
+ if(pasteFromClipboard)pasteContactInvitation();
+ else els.contactPackage.focus();
+}
+function closeAddContactScreen(){
+ if(qrScanActive)stopQrScan();
+ els.addContactScreen.classList.add("hidden");
+ document.body.classList.remove("contact-screen-open");
+ els.addContactFab.focus();
+}
 function openContactScreen(item,preserveSelection=false){
  const peer=item.dataset.peer;
  if(!preserveSelection){
@@ -981,6 +994,24 @@ els.contactList.addEventListener("click",event=>{
  if(!item||!els.contactList.contains(item))return;
  openContactScreen(item);
 });
+let addContactLongPressTimer=null;
+let addContactLongPressTriggered=false;
+els.addContactFab.addEventListener("pointerdown",event=>{
+ if(event.button!==undefined&&event.button!==0)return;
+ addContactLongPressTriggered=false;
+ addContactLongPressTimer=window.setTimeout(()=>{addContactLongPressTriggered=true;openAddContactScreen(true);},550);
+});
+function cancelAddContactLongPress(){
+ if(addContactLongPressTimer!==null){window.clearTimeout(addContactLongPressTimer);addContactLongPressTimer=null;}
+}
+els.addContactFab.addEventListener("pointerup",cancelAddContactLongPress);
+els.addContactFab.addEventListener("pointerleave",cancelAddContactLongPress);
+els.addContactFab.addEventListener("pointercancel",cancelAddContactLongPress);
+els.addContactFab.addEventListener("click",event=>{
+ if(addContactLongPressTriggered){event.preventDefault();addContactLongPressTriggered=false;return;}
+ openAddContactScreen(false);
+});
+els.addContactScreenBack.addEventListener("click",closeAddContactScreen);
 els.contactScreenBack.addEventListener("click",closeContactScreen);
 els.contactScreenCall.addEventListener("click",()=>els.connect.click());
 els.openContactEdit.addEventListener("click",openContactEditScreen);
@@ -992,6 +1023,7 @@ document.addEventListener("keydown",event=>{
  if(event.key!=="Escape")return;
  if(!els.contactDeleteScreen.classList.contains("hidden"))closeContactDeleteScreen();
  else if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
+ else if(!els.addContactScreen.classList.contains("hidden"))closeAddContactScreen();
  else if(!els.contactScreen.classList.contains("hidden"))closeContactScreen();
 });
 els.peer.addEventListener("change",()=>{
@@ -1056,7 +1088,7 @@ async function initializeApp(){
    if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
   }).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
   const fragment=new URLSearchParams(window.location.hash.slice(1));
-  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;els.contactTools.open=true;els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
+  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;openAddContactScreen(false);els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
