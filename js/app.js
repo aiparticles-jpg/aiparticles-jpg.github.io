@@ -564,7 +564,7 @@ async function pasteContactInvitation(event){
   els.contactPackage.value=value.trim();
   els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
   setInlineStatus(els.qrStatus,"Содержимое буфера вставлено. Укажите имя контакта.");
-  els.contactPackage.focus();
+  els.contactName.focus();
  }catch(error){
   setInlineStatus(els.qrStatus,"Не удалось прочитать буфер обмена. Разрешите доступ браузеру или вставьте ссылку в поле вручную.",true);
   els.contactPackage.focus();
