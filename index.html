@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=34">
+  <link rel="stylesheet" href="./css/style.css?v=36">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -19,7 +19,7 @@
     <header class="topbar">
       <a class="brand" href="./" aria-label="Voice Link">
         <span class="brand-mark">V</span>
-        <span>voice<span class="brand-light">link</span></span>
+        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.08-73</small></span>
       </a>
       <div class="topbar-actions">
         <details id="privacy-help" class="privacy-help">
@@ -52,7 +52,11 @@
         <p id="contacts-list-empty" class="contacts-list-empty">Пока нет контактов. Нажмите «+», чтобы добавить первый контакт.</p>
       </div>
       <button id="add-contact-fab" class="add-contact-fab" type="button" aria-label="Добавить контакт" title="Добавить контакт"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
-    </section>
+    </sectio
+    <section class="utility-dock" aria-label="Профиль и диагностика">
+      <button id="profile-dock-button" class="dock-action" type="button" aria-label="Открыть профиль" title="Профиль"><span class="dock-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span><span id="profile-dock-label" class="dock-label">Профиль</span></button>
+      <button id="diagnostic-dock-button" class="dock-action" type="button" aria-label="Открыть диагностику" title="Диагностика"><span class="dock-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-6 4.6 12 2.2-6H21"/><path d="M4 4h16v16H4z" opacity=".35"/></svg></span><span class="dock-label">Диагностика</span></button>
+    </section>n>
     <section id="add-contact-screen" class="add-contact-screen hidden" role="dialog" aria-modal="true" aria-labelledby="add-contact-screen-title">
       <header class="contact-edit-screen-header">
         <button id="add-contact-screen-back" class="contact-screen-back" type="button" aria-label="Вернуться к контактам"><span aria-hidden="true">←</span></button>
@@ -158,30 +162,11 @@
       </div>
     </section>
 
-    <section class="panel" aria-labelledby="room-title">
-      <div class="panel-heading">
-        <div><h2 id="room-title">Вызов</h2></div>
-        <span class="lock-icon" aria-hidden="true">⌑</span>
-      </div>
-      <div class="call-internal-controls hidden" aria-hidden="true">
-        <select id="peer-contact" autocomplete="off" aria-label="Выбранный контакт"><option value="">Загрузка контактов…</option></select>
-        <button id="connect" class="button button-secondary" type="button" tabindex="-1">Подключиться</button>
-      </div>
-
-      <div id="contact-request-panel" class="invite-panel hidden">
-        <div class="invite-title">Запрос на добавление в контакты</div>
-        <p id="contact-request-text" class="hint"></p>
-        <label class="field-label" for="contact-request-name">Имя контакта на этом устройстве</label>
-        <input id="contact-request-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Боб">
-        <div class="actions">
-          <button id="accept-contact-request" class="button button-primary" type="button">Добавить контакт</button>
-          <button id="decline-contact-request" class="button button-secondary" type="button">Отклонить</button>
-        </div>
-      </div>
-
-
-
-      <details id="invite-tools" class="contact-tools invite-tools">
+ 
+    <section id="profile-screen" class="contact-edit-screen hidden" role="dialog" aria-modal="true" aria-labelledby="profile-screen-title">
+      <header class="contact-edit-screen-header"><button id="profile-screen-back" class="contact-screen-back" type="button" aria-label="Назад"><span aria-hidden="true">←</span></button><h2 id="profile-screen-title" class="contact-edit-screen-title">Профиль</h2></header>
+      <div class="contact-edit-screen-content profile-screen-content">
+      <details id="invite-tools" class="contact-tools invite-tools" open>
         <summary class="invite-summary">Поделиться приглашением
           <button id="copy-invite" class="button button-secondary invite-copy-button" type="button" aria-label="Скопировать приглашение" title="Скопировать приглашение" disabled><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>
         </summary>
@@ -199,12 +184,12 @@
           <div id="invite-qr" class="invite-qr" aria-label="QR-код моего приглашения"></div>
         </div>
         <p id="invite-status" class="hint" aria-live="polite"></p>
-      </details>
-
+      </details
+      </div>
     </section>
-
-    <details class="panel call-panel diagnostic-panel">
-      <summary class="diagnostic-summary"><h2 id="call-title">Диагностика</h2><span id="connection-indicator" class="status-pill status-idle">Не подключено</span></summary>
+    <section id="diagnostic-screen" class="contact-edit-screen hidden" role="dialog" aria-modal="true" aria-labelledby="diagnostic-screen-title">
+      <header class="contact-edit-screen-header"><button id="diagnostic-screen-back" class="contact-screen-back" type="button" aria-label="Назад"><span aria-hidden="true">←</span></button><h2 id="diagnostic-screen-title" class="contact-edit-screen-title">Диагностика</h2><span id="connection-indicator" class="status-pill status-idle">Не подключено</span></header>
+      <div class="contact-edit-screen-content diagnostic-screen-content">
       <div class="diagnostic-content">
         <div class="actions">
           <button id="tcp-fallback" class="button button-secondary hidden" type="button" disabled>TCP-аудио недоступно</button>
@@ -217,15 +202,27 @@
           <pre id="debug-log" class="debug-log">Ожидаем подключения. Здесь появятся события защищённого канала.</pre>
         </section>
       </div>
-    </details>
+      </div>
+    </section>
+    <section class="call-system-panel" aria-label="Системные действия">
+      <div class="call-internal-controls hidden" aria-hidden="true"><select id="peer-contact" autocomplete="off" aria-label="Выбранный контакт"><option value="">Загрузка контактов…</option></select><button id="connect" class="button button-secondary" type="button" tabindex="-1">Подключиться</button></div>
+      <div id="contact-request-panel" class="invite-panel hidden">
+        <div class="invite-title">Запрос на добавление в контакты</div>
+        <p id="contact-request-text" class="hint"></p>
+        <label class="field-label" for="contact-request-name">Имя контакта на этом устройстве</label>
+        <input id="contact-request-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Боб">
+        <div class="actions">
+          <button id="accept-contact-request" class="button button-primary" type="button">Добавить контакт</button>
+          <button id="decline-contact-request" class="button button-secondary" type="button">Отклонить</button>
+        </div>
 
+    </section>
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.08-72</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=83"></script>
+  <script type="module" src="./js/app.js?v=85"></script>
 </body>
 </html>

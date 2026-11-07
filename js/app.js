@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
+ contactList:$("contacts-list"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -615,7 +615,7 @@ async function copyContactInvitation(event){
   }
   setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
  }catch{
-  els.inviteTools.open=true;
+  openProfileScreen();
   els.inviteUrl.focus();els.inviteUrl.select();
   setInlineStatus(els.inviteStatus,"Выделите ссылку и скопируйте её вручную.");
  }
@@ -910,6 +910,20 @@ function updateInvitationPanel(){
 els.inviteTools.addEventListener("toggle",()=>{
  if(els.inviteTools.open)updateInvitationPanel();
 });
+function openProfileScreen(){els.profileScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.inviteTools.open=true;updateInvitationPanel();els.profileScreenBack.focus();}
+function closeProfileScreen(){els.profileScreen.classList.add("hidden");document.body.classList.remove("contact-screen-open");els.profileDockButton.focus();}
+function openDiagnosticScreen(){els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.diagnosticScreenBack.focus();}
+function closeDiagnosticScreen(){els.diagnosticScreen.classList.add("hidden");document.body.classList.remove("contact-screen-open");els.diagnosticDockButton.focus();}
+let profileLongPressTimer=null,profileLongPressTriggered=false;
+els.profileDockButton.addEventListener("click",event=>{if(profileLongPressTriggered){event.preventDefault();profileLongPressTriggered=false;return;}openProfileScreen();});
+els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
+els.profileScreenBack.addEventListener("click",closeProfileScreen);
+els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
+els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;profileLongPressTriggered=false;profileLongPressTimer=window.setTimeout(async()=>{profileLongPressTriggered=true;if(!els.inviteUrl.value.trim()){openProfileScreen();setInlineStatus(els.inviteStatus,"Ссылка появится после разрешения push-уведомлений.");return;}try{await navigator.clipboard.writeText(els.inviteUrl.value.trim());els.profileDockLabel.textContent="Скопировано";setInlineStatus(els.inviteStatus,"Ссылка скопирована.");window.setTimeout(()=>{els.profileDockLabel.textContent="Профиль"},1500);}catch(error){openProfileScreen();els.inviteUrl.focus();els.inviteUrl.select();setInlineStatus(els.inviteStatus,"Не удалось скопировать автоматически. Скопируйте ссылку из поля вручную.",true);}},550);});
+function cancelProfileLongPress(){if(profileLongPressTimer!==null){window.clearTimeout(profileLongPressTimer);profileLongPressTimer=null;}}
+els.profileDockButton.addEventListener("pointerup",cancelProfileLongPress);
+els.profileDockButton.addEventListener("pointerleave",cancelProfileLongPress);
+els.profileDockButton.addEventListener("pointercancel",cancelProfileLongPress);
 els.copyInvite.addEventListener("click",copyContactInvitation);
 els.copyInviteInline.addEventListener("click",copyContactInvitation);
 els.scanQr.addEventListener("click",startQrScan);
@@ -1022,6 +1036,8 @@ document.addEventListener("keydown",event=>{
  if(event.key!=="Escape")return;
  if(!els.contactDeleteScreen.classList.contains("hidden"))closeContactDeleteScreen();
  else if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
+ else if(!els.profileScreen.classList.contains("hidden"))closeProfileScreen();
+ else if(!els.diagnosticScreen.classList.contains("hidden"))closeDiagnosticScreen();
  else if(!els.addContactScreen.classList.contains("hidden"))closeAddContactScreen();
  else if(!els.contactScreen.classList.contains("hidden"))closeContactScreen();
 });
