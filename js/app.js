@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=24";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=25";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
 import { verifyContactPackage } from "./contact-exchange.js?v=2";
@@ -17,6 +17,7 @@ const els={
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),pasteContactInline:$("paste-contact-inline"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 let qrStream=null,qrScanActive=false;
+let originalEditContactName="";
 const CONTACT_REQUESTS_KEY="vl.contactRequestsSent.v1";
 const CONTACT_REQUESTS_CONFIRMED_KEY="vl.contactRequestsConfirmed.v1";
 function loadConfirmedContactRequests(){
@@ -85,7 +86,7 @@ function updateCallButtons(){
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
  els.contactEditTools.classList.toggle("hidden",!selectedPeer);
  els.deletePeer.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
- els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim();
+ els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim()||els.editContactName.value.trim()===originalEditContactName;
  const trustedPeer=selectedPeer&&trustedContactIds.has(els.peer.value);
  const exchangeCompleted=selectedPeer&&completedContactRequests.has(els.peer.value);
  els.replyInvite.classList.toggle("hidden",!selectedPeer||trustedPeer||exchangeCompleted);
@@ -464,6 +465,7 @@ async function refreshContactOptions(selectUserId=""){
  els.peer.disabled=contacts.length===0;
  if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
  els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
+ originalEditContactName=els.editContactName.value.trim();
  updateReplyInviteStatus();
  updateCallButtons();
 }
@@ -572,12 +574,12 @@ async function pasteContactInvitation(event){
  }
 }
 
-async function sendContactRequest(peerOverride=els.peer.value){
+async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus){
  const peer=peerOverride;
  if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите контакт, от которого вы получили приглашение.");return false;}
  markContactRequestSent(peer);
  updateCallButtons();
- els.replyInvite.disabled=true;setInlineStatus(els.replyInviteStatus,"Подготавливаем подписанный запрос…");clearError();
+ els.replyInvite.disabled=true;setInlineStatus(statusElement,"Подготавливаем подписанный запрос…");clearError();
  try{
   const contact=await getContact(peer);
   if(!contact?.push_subscription_id)throw Error("У контакта отсутствует OneSignal ID. Попросите его обновить приглашение.");
@@ -594,15 +596,15 @@ async function sendContactRequest(peerOverride=els.peer.value){
   if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   try{
    await sendPushEventToContact(peer,"contact_request",requestId,expiresAt);
-   setInlineStatus(els.replyInviteStatus,"Ответное приглашение отправлено. Push-уведомление передано в OneSignal.");
+   setInlineStatus(statusElement,"Ответное приглашение отправлено. Push-уведомление передано в OneSignal.");
    debug("Подписанный запрос на добавление контакта опубликован в ntfy; OneSignal принял push.");
   }catch(pushError){
-   setInlineStatus(els.replyInviteStatus,"Ответное приглашение передано через ntfy, но push не отправлен: "+(pushError.message||String(pushError)),true);
+   setInlineStatus(statusElement,"Ответное приглашение передано через ntfy, но push не отправлен: "+(pushError.message||String(pushError)),true);
    debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(pushError.message||String(pushError)));
   }
   return true;
  }catch(error){
-  setInlineStatus(els.replyInviteStatus,"Не удалось отправить запрос: "+(error.message||String(error)),true);showError(error.message||String(error));
+  setInlineStatus(statusElement,"Не удалось отправить ответное приглашение: "+(error.message||String(error)),true);showError(error.message||String(error));
   return false;
  }finally{els.replyInvite.disabled=false;updateCallButtons()}
 }
@@ -732,8 +734,9 @@ async function importContactFromInput(){
   debug("Импортирован и криптографически проверен новый контакт: "+name+".");
   setStatus("Контакт добавлен","Теперь его можно выбрать для звонка.","idle");
   if(!existing){
-   debug("Автоматически отправляем ответный запрос новому контакту.");
-   await sendContactRequest(verified.user_id);
+   setInlineStatus(els.qrStatus,"Контакт сохранён. Отправляем ответное приглашение…");
+   debug("Автоматически отправляем ответное приглашение новому контакту.");
+   await sendContactRequest(verified.user_id,els.qrStatus);
   }
  }catch(error){
   showError(error.message||String(error));
@@ -831,6 +834,7 @@ els.pilot.addEventListener("change",async()=>{
 });
 els.peer.addEventListener("change",()=>{
  els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
+ originalEditContactName=els.editContactName.value.trim();
  updateReplyInviteStatus();
  updateCallButtons();
  const peer=els.peer.value;
