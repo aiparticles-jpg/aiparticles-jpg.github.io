@@ -499,7 +499,7 @@ async function sendContactRequest(){
   if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   try{
    await sendPushEventToContact(peer,"contact_request",requestId,expiresAt);
-   els.replyInviteStatus.textContent="Запрос отправлен. Алиса получит push-уведомление через OneSignal.";
+   els.replyInviteStatus.textContent="Запрос отправлен. Push-уведомление передано в OneSignal.";
    debug("Подписанный запрос на добавление контакта опубликован в ntfy; OneSignal принял push.");
   }catch(pushError){
    els.replyInviteStatus.textContent="Запрос передан через ntfy, но push не отправлен: "+(pushError.message||String(pushError));
