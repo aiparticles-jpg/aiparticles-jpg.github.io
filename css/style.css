@@ -146,11 +146,11 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 .diagnostic-toggle small { color:var(--muted); font-size:10px; line-height:1.5; }
 .diagnostic-toggle input:disabled { opacity:.5; }
 
-.contact-tools{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(5,13,24,.25)}
-.contact-tools summary{color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
-.contact-tools textarea{display:block;width:100%;min-height:76px;resize:vertical;padding:12px;color:var(--text);background:#0c1727;border:1px solid var(--line);border-radius:10px;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
-.contact-tools input{margin-bottom:12px}
-.contact-tools .button{margin-top:10px}
+.contact-tools,.invite-tools{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(5,13,24,.25)}
+.contact-tools summary,.invite-tools summary{color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
+.contact-tools textarea,.invite-tools textarea{display:block;width:100%;min-height:76px;resize:vertical;padding:12px;color:var(--text);background:#0c1727;border:1px solid var(--line);border-radius:10px;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
+.contact-tools input,.invite-tools input{margin-bottom:12px}
+.contact-tools .button,.invite-tools .button{margin-top:10px}
 .qr-video{display:block;width:100%;max-height:280px;object-fit:cover;margin-top:12px;border-radius:10px;background:#000}
 
 .invite-generator{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(5,13,24,.25)}
