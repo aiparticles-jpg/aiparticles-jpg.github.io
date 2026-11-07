@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),verify:$("verify-panel"),
+ peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -617,6 +617,26 @@ function declineContactRequest(){
  state.pendingContactRequests.shift();els.contactRequestName.value="";renderContactRequest();
  debug("Запрос на добавление контакта отклонён локально; отправитель не уведомляется.");
 }
+async function saveSelectedContactName(){
+ const peer=els.peer.value;
+ const name=els.editContactName.value.trim();
+ if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите сохранённый контакт.");return}
+ if(!name){showError("Укажите имя контакта.");els.editContactName.focus();return}
+ if(state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall){showError("Завершите текущий вызов, чтобы изменить имя контакта.");return}
+ els.saveContactName.disabled=true;
+ try{
+  const contact=await getContact(peer);
+  if(!contact)throw Error("Контакт не найден в локальной адресной книге.");
+  await saveContact({...contact,name});
+  await refreshContactOptions(peer);
+  clearError();
+  setStatus("Имя контакта сохранено","Новое имя хранится только на этом устройстве.","idle");
+  debug("Локальное имя контакта изменено на: "+name+".");
+ }catch(error){
+  showError("Не удалось сохранить имя контакта: "+(error.message||String(error)));
+ }finally{updateCallButtons()}
+}
+
 async function deleteSelectedContact(){
  const peer=els.peer.value;
  if(!NtfySecureSignaling.validUserId(peer)){
@@ -785,6 +805,8 @@ els.confirm.addEventListener("click",async()=>{
 });
 els.hangup.addEventListener("click",hangup);
 els.deletePeer.addEventListener("click",deleteSelectedContact);
+els.saveContactName.addEventListener("click",saveSelectedContactName);
+els.editContactName.addEventListener("input",updateCallButtons);
 els.tcp.classList.add("hidden");
 try{els.pilot.checked=localStorage.getItem("vl.simulateMicrophone.v1")==="1"}catch{els.pilot.checked=false}
 els.dismissIncoming.classList.add("hidden");
