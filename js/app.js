@@ -713,6 +713,7 @@ async function deleteSelectedContact(){
 let importingContact=false;
 function updateImportContactButton(){
  els.importContact.disabled=importingContact||!els.contactPackage.value.trim()||!els.contactName.value.trim();
+ els.pasteContactInline.textContent=els.contactPackage.value.trim()?"Заменить":"Вставить";
 }
 async function importContactFromInput(){
  importingContact=true;
