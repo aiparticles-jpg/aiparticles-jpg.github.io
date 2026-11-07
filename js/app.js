@@ -512,9 +512,11 @@ async function copyContactInvitation(){
  }
 }
 
-async function sendContactRequest(){
- const peer=els.peer.value;
- if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите контакт, от которого вы получили приглашение.");return;}
+async function sendContactRequest(peerOverride=els.peer.value){
+ const peer=peerOverride;
+ if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите контакт, от которого вы получили приглашение.");return false;}
+ markContactRequestSent(peer);
+ updateCallButtons();
  els.replyInvite.disabled=true;setInlineStatus(els.replyInviteStatus,"Подготавливаем подписанный запрос…");clearError();
  try{
   const contact=await getContact(peer);
@@ -530,8 +532,6 @@ async function sendContactRequest(){
   const topic=await getNtfyTopic(peer);
   const response=await fetch("https://ntfy.sh/"+topic,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message),cache:"no-store"});
   if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
-  markContactRequestSent(peer);
-  updateCallButtons();
   try{
    await sendPushEventToContact(peer,"contact_request",requestId,expiresAt);
    setInlineStatus(els.replyInviteStatus,"Ответное приглашение отправлено. Push-уведомление передано в OneSignal.");
@@ -540,9 +540,11 @@ async function sendContactRequest(){
    setInlineStatus(els.replyInviteStatus,"Ответное приглашение передано через ntfy, но push не отправлен: "+(pushError.message||String(pushError)),true);
    debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(pushError.message||String(pushError)));
   }
+  return true;
  }catch(error){
   setInlineStatus(els.replyInviteStatus,"Не удалось отправить запрос: "+(error.message||String(error)),true);showError(error.message||String(error));
- }finally{els.replyInvite.disabled=false}
+  return false;
+ }finally{els.replyInvite.disabled=false;updateCallButtons()}
 }
 
 function formatInvitationAge(timestamp){
@@ -639,7 +641,7 @@ async function importContactFromInput(){
   if(!name)throw Error("Укажите имя, под которым контакт будет сохранён только на этом устройстве.");
   const existing=await getContact(verified.user_id);
   if(existing&&!window.confirm("Этот контакт уже сохранён как «"+existing.name+"». Обновить его данные и локальное имя?"))return;
-  await saveContact({...verified,name,trusted:false,verified_at:null});
+  await saveContact({...verified,name,trusted:existing?.trusted===true,verified_at:existing?.verified_at||null});
   await refreshContactOptions(verified.user_id);
   if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
   els.contactPackage.value="";
@@ -649,6 +651,10 @@ async function importContactFromInput(){
   clearError();
   debug("Импортирован и криптографически проверен новый контакт: "+name+".");
   setStatus("Контакт добавлен","Теперь его можно выбрать для звонка.","idle");
+  if(!existing){
+   debug("Автоматически отправляем ответный запрос новому контакту.");
+   await sendContactRequest(verified.user_id);
+  }
  }catch(error){
   showError(error.message||String(error));
   setInlineStatus(els.qrStatus,"Не удалось импортировать контакт.",true);
