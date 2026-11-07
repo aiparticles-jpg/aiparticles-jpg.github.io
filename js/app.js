@@ -14,7 +14,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),pasteContactInline:$("paste-contact-inline"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 let qrStream=null,qrScanActive=false;
 const CONTACT_REQUESTS_KEY="vl.contactRequestsSent.v1";
@@ -530,6 +530,28 @@ async function copyContactInvitation(event){
  }
 }
 
+async function pasteContactInvitation(event){
+ event?.preventDefault();
+ event?.stopPropagation();
+ els.contactTools.open=true;
+ try{
+  if(!navigator.clipboard?.readText)throw Error("Чтение буфера обмена не поддерживается этим браузером.");
+  const value=await navigator.clipboard.readText();
+  if(!value.trim()){
+   setInlineStatus(els.qrStatus,"Буфер обмена пуст.");
+   return;
+  }
+  els.contactPackage.value=value.trim();
+  els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
+  setInlineStatus(els.qrStatus,"Содержимое буфера вставлено. Укажите имя контакта.");
+  els.contactPackage.focus();
+ }catch(error){
+  setInlineStatus(els.qrStatus,"Не удалось прочитать буфер обмена. Разрешите доступ браузеру или вставьте ссылку в поле вручную.",true);
+  els.contactPackage.focus();
+  debug("Не удалось вставить приглашение из буфера обмена: "+(error.message||String(error)));
+ }
+}
+
 async function sendContactRequest(peerOverride=els.peer.value){
  const peer=peerOverride;
  if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите контакт, от которого вы получили приглашение.");return false;}
@@ -742,6 +764,8 @@ async function startQrScan(){
 }
 
 els.contactPackage.addEventListener("input",updateImportContactButton);
+els.pasteContact.addEventListener("click",pasteContactInvitation);
+els.pasteContactInline.addEventListener("click",pasteContactInvitation);
 els.contactName.addEventListener("input",updateImportContactButton);
 els.importContact.addEventListener("click",importContactFromInput);
 updateImportContactButton();
