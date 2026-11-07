@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=22">
+  <link rel="stylesheet" href="./css/style.css?v=23">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -67,13 +67,15 @@
         <summary class="contact-summary">Добавить контакт — QR-код или ссылка
           <button id="paste-contact" class="button button-secondary contact-paste-button" type="button" aria-label="Вставить приглашение из буфера обмена" title="Вставить приглашение из буфера обмена">Вставить</button>
         </summary>
-        <p class="hint">Отсканируйте QR-код собеседника или вставьте его приглашение.</p>
+        <p class="hint">Вставьте приглашение или отсканируйте QR-код собеседника.</p>
         <video id="qr-video" class="qr-video hidden" playsinline muted></video>
-        <button id="scan-qr" class="button button-secondary" type="button">Сканировать QR-код</button>
         <label class="field-label" for="contact-package">Ссылка или содержимое QR-кода</label>
         <div class="contact-package-row">
           <textarea id="contact-package" rows="3" autocomplete="off" spellcheck="false" placeholder="Вставьте ссылку вида https://…/#contact=… или содержимое QR-кода"></textarea>
-          <button id="paste-contact-inline" class="button button-secondary contact-paste-inline" type="button">Вставить</button>
+          <div class="contact-package-actions">
+            <button id="paste-contact-inline" class="button button-secondary contact-paste-inline" type="button">Вставить</button>
+            <button id="scan-qr" class="button button-secondary" type="button">Сканировать QR-код</button>
+          </div>
         </div>
         <label class="field-label" for="contact-name">Имя контакта на этом устройстве</label>
         <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
@@ -154,6 +156,6 @@
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=71"></script>
+  <script type="module" src="./js/app.js?v=72"></script>
 </body>
 </html>
