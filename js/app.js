@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
+ contactList:$("contacts-list"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -938,6 +938,33 @@ els.pilot.addEventListener("change",async()=>{
  debug("Симуляция микрофона "+(els.pilot.checked?"включена":"выключена")+". Настройка применяется при следующем подключении.");
  if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
+function openAboutScreen(){
+ els.headerMenu.open=false;
+ els.aboutScreen.classList.remove("hidden");
+ document.body.classList.add("contact-screen-open");
+ els.aboutScreenBack.focus();
+}
+function closeAboutScreen(){
+ els.aboutScreen.classList.add("hidden");
+ document.body.classList.remove("contact-screen-open");
+ els.privacyHelp.focus();
+}
+function openSettingsScreen(){
+ els.headerMenu.open=false;
+ els.settingsScreen.classList.remove("hidden");
+ document.body.classList.add("contact-screen-open");
+ els.settingsScreenBack.focus();
+}
+function closeSettingsScreen(){
+ els.settingsScreen.classList.add("hidden");
+ document.body.classList.remove("contact-screen-open");
+ els.headerMenu.querySelector("summary").focus();
+}
+els.privacyHelp.addEventListener("click",openAboutScreen);
+els.openAboutScreen.addEventListener("click",openAboutScreen);
+els.openSettingsScreen.addEventListener("click",openSettingsScreen);
+els.aboutScreenBack.addEventListener("click",closeAboutScreen);
+els.settingsScreenBack.addEventListener("click",closeSettingsScreen);
 document.addEventListener("pointerdown",event=>{
  if(els.headerMenu.open&&!els.headerMenu.contains(event.target))els.headerMenu.open=false;
 });
@@ -1037,6 +1064,8 @@ document.addEventListener("keydown",event=>{
  if(!els.contactDeleteScreen.classList.contains("hidden"))closeContactDeleteScreen();
  else if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
  else if(!els.profileScreen.classList.contains("hidden"))closeProfileScreen();
+ else if(!els.aboutScreen.classList.contains("hidden"))closeAboutScreen();
+ else if(!els.settingsScreen.classList.contains("hidden"))closeSettingsScreen();
  else if(!els.diagnosticScreen.classList.contains("hidden"))closeDiagnosticScreen();
  else if(!els.addContactScreen.classList.contains("hidden"))closeAddContactScreen();
  else if(!els.contactScreen.classList.contains("hidden"))closeContactScreen();
