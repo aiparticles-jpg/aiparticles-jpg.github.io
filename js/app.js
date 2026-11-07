@@ -516,7 +516,7 @@ function renderContactList(contacts){
   item.append(avatar,details,last);
   els.contactListItems.append(item);
  }
- if(!contactListInitialPositioned&&contacts.length){
+ if(!contactListInitialPositioned){
   requestAnimationFrame(()=>{els.contactList.scrollTop=42;});
   contactListInitialPositioned=true;
  }

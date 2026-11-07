@@ -270,7 +270,7 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 .header-menu-content .diagnostic-toggle{margin-top:0}
 @media(max-width:520px){
  .shell{padding-top:0}
- .topbar{min-height:48px;margin-bottom:10px;padding:6px 12px}
+ .topbar{min-height:64px;margin-bottom:10px;padding:6px 12px}
  .topbar-actions{gap:8px}
  .header-menu-trigger{width:34px;height:34px}
  .privacy-label{font-size:10px}
