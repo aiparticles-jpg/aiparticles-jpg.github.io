@@ -267,17 +267,21 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
  background:#172438;box-shadow:0 16px 40px rgba(0,0,0,.4);
 }
 .header-menu-item{
- width:100%;padding:12px;border:0;border-radius:8px;
+ display:flex;align-items:center;gap:10px;width:100%;padding:12px;border:0;border-radius:8px;
  color:var(--text);background:transparent;text-align:left;
  font:600 13px 'DM Sans',system-ui,sans-serif;cursor:pointer;
 }
+.header-menu-icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var(--muted);flex:0 0 20px}
+.header-menu-icon svg{display:block}
 .header-menu-item:hover{background:rgba(139,224,194,.1)}
 .privacy-label{border:0;padding:0;background:transparent;cursor:pointer}
 .about-screen-content,.settings-screen-content{padding:18px 16px}
 .about-section{max-width:640px;margin:0 auto}
 .about-section h3{margin:0 0 14px;color:var(--text);font:700 17px Manrope,sans-serif}
 .about-section p{margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.65}
-.settings-screen-content .diagnostic-toggle{max-width:640px;margin:0 auto}
+.settings-section{max-width:640px;margin:0 auto}
+.settings-section-title{margin:0 0 12px;color:var(--text);font:700 15px Manrope,sans-serif}
+.settings-screen-content .diagnostic-toggle{max-width:none;margin:0}
 @media(max-width:520px){
  .shell{padding-top:0}
  .topbar{min-height:64px;margin-bottom:10px;padding:6px 12px}
