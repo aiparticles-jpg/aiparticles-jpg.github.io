@@ -679,6 +679,7 @@ els.pilot.addEventListener("change",async()=>{
  if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
 els.peer.addEventListener("change",()=>{
+ updateCallButtons();
  const peer=els.peer.value;
  if(state.incomingCall&&peer!==state.secure?.peer)dismissIncoming(false);
  if(state.secure&&!state.secure.active&&!state.connecting){
