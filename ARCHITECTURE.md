@@ -454,3 +454,17 @@ The user may clear the entire local call history. Individual call-history entrie
 ## Invitation creation requires push permission
 
 The single “Поделиться приглашением” action also represents the user's consent to receive incoming-call push notifications. A signed invitation is created only after browser notification permission is granted and OneSignal provides a non-empty Subscription ID. If the user denies the permission, no new invitation is created. If permission is already denied, the app does not repeatedly request it; it directs the user to the browser's site settings. Existing invitation package fields and signature format remain unchanged.
+
+
+## Contact request reply flow — 2026-11-07
+
+- Bob imports Alice's signed invitation, selects her contact, and presses “Ответить на приглашение”.
+- The action obtains Bob's current OneSignal Subscription ID (requesting browser permission if needed), builds the existing v1 signed contact package, and wraps it in a second ECDSA-signed `contact_request` envelope addressed to Alice's anonymous user ID.
+- The signed request envelope is published to Alice's existing ntfy topic. The package contains only Bob's public key, anonymous user ID, OneSignal Subscription ID, and signature; it is not an encrypted message. The signature and recipient binding protect authenticity and integrity. The ntfy topic is derived from Alice's public ID and is not treated as a confidentiality boundary.
+- After ntfy accepts the message, the frontend submits a `contact_request` event to the existing Render `/v1/push` endpoint. Render sends a OneSignal notification: “Пользователь хочет добавить вас в контакты VoiceLink.” The push contains only event metadata; it does not carry the contact package.
+- Alice's existing startup ntfy subscription validates the contact package, fingerprint, outer signature, recipient ID, and expiry. The UI shows a pending request and lets Alice enter a local alias and accept or decline it.
+- Accepting saves Bob's verified package in Alice's IndexedDB as an untrusted contact. Bob already has Alice saved from importing her invitation. First-call SAS verification remains unchanged.
+- Declining removes the request from the local UI only; no decline notification is sent.
+- Contact requests expire after two minutes. The existing ntfy subscription replays messages from the last 120 seconds, matching this request lifetime.
+- OneSignal is best-effort. If push submission fails after ntfy publication, the request remains published and the sender sees a warning; no contact data is placed in the push payload.
+- Browser testing on two independent devices, including delayed push/open behavior, remains required.
