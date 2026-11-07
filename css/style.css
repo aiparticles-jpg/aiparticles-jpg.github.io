@@ -424,7 +424,8 @@ body.contact-screen-open{overflow:hidden}
 .brand-copy{display:flex;flex-direction:column;gap:1px;line-height:1.05}
 .brand-name{font:800 19px Manrope,sans-serif;letter-spacing:-.8px}
 .brand-version{font:500 9px/1.2 'DM Sans',system-ui,sans-serif;letter-spacing:0;color:var(--muted)}
-.utility-dock{width:100%;height:104px;min-height:104px;flex:0 0 104px;display:flex;align-items:center;justify-content:space-evenly;gap:12px;margin:16px 0 20px;padding:8px 16px;border:1px solid var(--line);border-radius:18px;background:rgba(18,29,46,.88)}
+.shell{padding-bottom:calc(132px + env(safe-area-inset-bottom))}
+.utility-dock{position:fixed;left:0;right:0;bottom:0;z-index:100;width:100%;height:calc(104px + env(safe-area-inset-bottom));min-height:calc(104px + env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-evenly;gap:12px;margin:0;padding:8px 16px calc(8px + env(safe-area-inset-bottom));border:1px solid var(--line);border-bottom:0;border-radius:18px 18px 0 0;background:rgba(18,29,46,.97);box-shadow:0 -8px 24px rgba(0,0,0,.22);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 .dock-action{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-width:84px;padding:0;border:0;background:transparent;color:var(--text);cursor:pointer;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .dock-icon{display:grid;place-items:center;width:54px;height:54px;border:1px solid rgba(139,224,194,.28);border-radius:50%;background:#1a2a3e;color:var(--accent);box-shadow:0 4px 12px rgba(0,0,0,.2)}
 .dock-label{font-size:11px;line-height:1.2;color:var(--muted)}
@@ -434,4 +435,4 @@ body.contact-screen-open{overflow:hidden}
 .profile-screen-content #invite-tools>summary{display:none}
 .diagnostic-screen-content .diagnostic-content,.diagnostic-screen-content .event-log-panel{margin-top:0}
 .call-system-panel{display:contents}
-@media(max-width:520px){.utility-dock{height:100px;min-height:100px;flex-basis:100px;margin-top:12px;gap:8px}}
+@media(max-width:520px){.shell{padding-bottom:calc(128px + env(safe-area-inset-bottom))}.utility-dock{height:calc(100px + env(safe-area-inset-bottom));min-height:calc(100px + env(safe-area-inset-bottom));gap:8px}}
