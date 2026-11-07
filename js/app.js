@@ -563,7 +563,18 @@ async function pasteContactInvitation(event){
    setInlineStatus(els.qrStatus,"Буфер обмена пуст.");
    return;
   }
-  els.contactPackage.value=value.trim();
+  const clipboardValue=value.trim();
+  try{
+   const pastedContact=await verifyContactPackage(clipboardValue);
+   const ownIdentity=await getCurrentSignalingIdentity();
+   if(pastedContact.user_id===ownIdentity.user_id){
+    setInlineStatus(els.qrStatus,"Это ваше собственное приглашение. Его нельзя добавить как контакт.",true);
+    return;
+   }
+  }catch{
+   // Некорректные или неподдерживаемые данные останутся на обычной проверке при сохранении.
+  }
+  els.contactPackage.value=clipboardValue;
   els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
   setInlineStatus(els.qrStatus,"Содержимое буфера вставлено. Укажите имя контакта.");
   els.contactName.focus();
