@@ -769,16 +769,16 @@ async function initializeApp(){
     }
    }
   }
+  initializeOneSignal().then(async()=>{
+   debug("OneSignal Web Push SDK инициализирован.");
+   if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
+  }).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
   const fragment=new URLSearchParams(window.location.hash.slice(1));
   if(fragment.has("contact")){els.contactPackage.value=window.location.hash;els.contactTools.open=true;els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
   await subscribeForUser(state.me);
-  initializeOneSignal().then(async()=>{
-   debug("OneSignal Web Push SDK инициализирован.");
-   if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
-  }).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
  }catch(error){
   showError("Не удалось инициализировать приложение: "+(error.message||String(error)));
   setStatus("Ошибка локального хранилища","Проверьте поддержку IndexedDB и Web Crypto.","error");
