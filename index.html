@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=21">
+  <link rel="stylesheet" href="./css/style.css?v=22">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -137,15 +137,15 @@
         </div>
         <audio id="remote-audio" autoplay playsinline></audio>
         <p id="error-message" class="error-message hidden" role="alert"></p>
+
+        <section class="event-log-panel" aria-labelledby="event-log-title">
+          <div class="panel-heading"><h2 id="event-log-title">Журнал событий</h2></div>
+          <div class="debug-meta" hidden>Канал: <code id="debug-url">ntfy.sh</code></div>
+          <div class="debug-meta" hidden>Состояние: <strong id="debug-state">—</strong></div>
+          <pre id="debug-log" class="debug-log">Ожидаем подключения. Здесь появятся события защищённого канала.</pre>
+        </section>
       </div>
     </details>
-
-    <section class="panel event-log-panel" aria-labelledby="event-log-title">
-      <div class="panel-heading"><h2 id="event-log-title">Журнал событий</h2></div>
-      <div class="debug-meta" hidden>Канал: <code id="debug-url">ntfy.sh</code></div>
-      <div class="debug-meta" hidden>Состояние: <strong id="debug-state">—</strong></div>
-      <pre id="debug-log" class="debug-log">Ожидаем подключения. Здесь появятся события защищённого канала.</pre>
-    </section>
 
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
