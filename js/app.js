@@ -17,6 +17,21 @@ const els={
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 let qrStream=null,qrScanActive=false;
+const CONTACT_REQUESTS_KEY="vl.contactRequestsSent.v1";
+function loadSentContactRequests(){
+ try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_KEY)||"{}");return value&&typeof value==="object"&&!Array.isArray(value)?value:{}}
+ catch{return {}}
+}
+const sentContactRequests=loadSentContactRequests();
+function markContactRequestSent(userId){
+ sentContactRequests[userId]=Date.now();
+ try{localStorage.setItem(CONTACT_REQUESTS_KEY,JSON.stringify(sentContactRequests))}
+ catch(error){debug("Не удалось сохранить историю отправки приглашения: "+(error.message||String(error)))}
+}
+function updateReplyInviteStatus(){
+ const peer=els.peer.value;
+ els.replyInviteStatus.textContent=sentContactRequests[peer]?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"";
+}
 const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],pendingContactRequests:[]};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
@@ -40,7 +55,10 @@ function updateCallButtons(){
  els.hangup.disabled=!active||state.hangingUp;
  els.dismissIncoming.disabled=state.connecting;
  els.deletePeer.disabled=!NtfySecureSignaling.validUserId(els.peer.value)||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
- els.replyInvite.disabled=!NtfySecureSignaling.validUserId(els.peer.value)||els.peer.value===state.me||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
+ const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
+ els.replyInvite.classList.toggle("hidden",!selectedPeer);
+ els.replyInvite.textContent=sentContactRequests[els.peer.value]?"Послать приглашение ещё раз":"Послать ответное приглашение";
+ els.replyInvite.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging(){
@@ -411,6 +429,7 @@ async function refreshContactOptions(selectUserId=""){
  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
  els.peer.disabled=contacts.length===0;
  if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
+ updateReplyInviteStatus();
  updateCallButtons();
 }
 
@@ -497,12 +516,14 @@ async function sendContactRequest(){
   const topic=await getNtfyTopic(peer);
   const response=await fetch("https://ntfy.sh/"+topic,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message),cache:"no-store"});
   if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
+  markContactRequestSent(peer);
+  updateCallButtons();
   try{
    await sendPushEventToContact(peer,"contact_request",requestId,expiresAt);
-   els.replyInviteStatus.textContent="Запрос отправлен. Push-уведомление передано в OneSignal.";
+   els.replyInviteStatus.textContent="Ответное приглашение отправлено. Push-уведомление передано в OneSignal.";
    debug("Подписанный запрос на добавление контакта опубликован в ntfy; OneSignal принял push.");
   }catch(pushError){
-   els.replyInviteStatus.textContent="Запрос передан через ntfy, но push не отправлен: "+(pushError.message||String(pushError));
+   els.replyInviteStatus.textContent="Ответное приглашение передано через ntfy, но push не отправлен: "+(pushError.message||String(pushError));
    debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(pushError.message||String(pushError)));
   }
  }catch(error){
@@ -679,6 +700,7 @@ els.pilot.addEventListener("change",async()=>{
  if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
 els.peer.addEventListener("change",()=>{
+ updateReplyInviteStatus();
  updateCallButtons();
  const peer=els.peer.value;
  if(state.incomingCall&&peer!==state.secure?.peer)dismissIncoming(false);
