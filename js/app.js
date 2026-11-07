@@ -14,7 +14,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 let qrStream=null,qrScanActive=false;
 const CONTACT_REQUESTS_KEY="vl.contactRequestsSent.v1";
@@ -502,16 +502,23 @@ async function createContactInvitation(){
  }finally{els.createInvite.disabled=false}
 }
 function updateInviteCopyButton(){
- els.copyInvite.disabled=!els.inviteUrl.value.trim();
+ const disabled=!els.inviteUrl.value.trim();
+ els.copyInvite.disabled=disabled;
+ els.copyInviteInline.disabled=disabled;
 }
-async function copyContactInvitation(){
+async function copyContactInvitation(event){
+ event?.preventDefault();
+ event?.stopPropagation();
  const value=els.inviteUrl.value.trim();
  if(!value)return;
  try{
   await navigator.clipboard.writeText(value);
-  const originalLabel=els.copyInvite.textContent;
-  els.copyInvite.textContent="Скопировано";
-  window.setTimeout(()=>{els.copyInvite.textContent=originalLabel},1600);
+  const button=event?.currentTarget;
+  if(button===els.copyInviteInline){
+   const originalLabel=button.textContent;
+   button.textContent="Скопировано";
+   window.setTimeout(()=>{button.textContent=originalLabel},1600);
+  }
   setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
  }catch{
   els.inviteTools.open=true;
@@ -742,6 +749,7 @@ els.inviteTools.addEventListener("toggle",()=>{
  if(els.inviteTools.open)updateInvitationPanel();
 });
 els.copyInvite.addEventListener("click",copyContactInvitation);
+els.copyInviteInline.addEventListener("click",copyContactInvitation);
 els.scanQr.addEventListener("click",startQrScan);
 window.addEventListener("pagehide",()=>{if(qrStream)for(const track of qrStream.getTracks())track.stop()});
 els.connect.addEventListener("click",connect);
