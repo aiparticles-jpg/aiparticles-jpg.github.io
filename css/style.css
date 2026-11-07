@@ -307,6 +307,14 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
  color:var(--text);font-size:12px;outline:none;
 }
 .contacts-search input:focus{border-color:rgba(139,224,194,.65);box-shadow:0 0 0 3px rgba(139,224,194,.08)}
+.contacts-search input::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none;display:none}
+.contacts-search-clear{
+ flex:0 0 22px;width:22px;height:26px;margin-left:-3px;padding:0;
+ border:0;border-radius:50%;background:transparent;color:var(--muted);
+ font:20px/1 Arial,sans-serif;cursor:pointer;
+}
+.contacts-search-clear:hover{background:rgba(255,255,255,.09);color:var(--text)}
+.contacts-search-clear:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .contacts-list-items{min-height:calc(100% + 48px)}
 .contacts-list-empty{min-height:70px}
 @media(max-width:520px){
