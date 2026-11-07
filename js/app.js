@@ -30,7 +30,7 @@ function markContactRequestSent(userId){
 }
 function updateReplyInviteStatus(){
  const peer=els.peer.value;
- els.replyInviteStatus.textContent=sentContactRequests[peer]?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"";
+ setInlineStatus(els.replyInviteStatus,sentContactRequests[peer]?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
 const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],pendingContactRequests:[]};
 function debug(message){
@@ -46,6 +46,7 @@ function setStatus(title,text,kind="idle"){
 }
 function showError(message){els.error.textContent=message;els.error.classList.remove("hidden");debug("ОШИБКА: "+message)}
 function clearError(){els.error.textContent="";els.error.classList.add("hidden")}
+function setInlineStatus(element,message,isError=false){element.textContent=message;element.classList.toggle("hint-error",isError)}
 function updateCallButtons(){
  const active=!!(state.peerPresent||state.outgoingCall||state.secure?.active);
  els.connect.classList.toggle("hidden",active);
@@ -451,7 +452,7 @@ async function ensureQrCodeLibrary(){
 }
 async function createContactInvitation(){
  els.createInvite.disabled=true;
- els.inviteStatus.textContent="Проверяем разрешение на push-уведомления…";
+ setInlineStatus(els.inviteStatus,"Проверяем разрешение на push-уведомления…");
  clearError();
  try{
   const subscriptionId=await enableOneSignalPush();
@@ -474,9 +475,9 @@ async function createContactInvitation(){
   try{
    await ensureQrCodeLibrary();
    new window.QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-   els.inviteStatus.textContent="";
+   setInlineStatus(els.inviteStatus,"");
   }catch(qrError){
-   els.inviteStatus.textContent="Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError));
+   setInlineStatus(els.inviteStatus,"Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError)),true);
   }
   els.inviteUrl.focus();
   els.inviteUrl.select();
@@ -484,7 +485,7 @@ async function createContactInvitation(){
   updateInvitationPanel();
  }catch(error){
   const message=error.message||String(error);
-  els.inviteStatus.textContent="Приглашение не создано. "+message;
+  setInlineStatus(els.inviteStatus,"Приглашение не создано. "+message,true);
   showError(message);
  }finally{els.createInvite.disabled=false}
 }
@@ -493,17 +494,17 @@ async function copyContactInvitation(){
  if(!value)return;
  try{
   await navigator.clipboard.writeText(value);
-  els.inviteStatus.textContent="Ссылка скопирована.";
+  setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
  }catch{
   els.inviteUrl.focus();els.inviteUrl.select();
-  els.inviteStatus.textContent="Выделите ссылку и скопируйте её вручную.";
+  setInlineStatus(els.inviteStatus,"Выделите ссылку и скопируйте её вручную.");
  }
 }
 
 async function sendContactRequest(){
  const peer=els.peer.value;
  if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите контакт, от которого вы получили приглашение.");return;}
- els.replyInvite.disabled=true;els.replyInviteStatus.textContent="Подготавливаем подписанный запрос…";clearError();
+ els.replyInvite.disabled=true;setInlineStatus(els.replyInviteStatus,"Подготавливаем подписанный запрос…");clearError();
  try{
   const contact=await getContact(peer);
   if(!contact?.push_subscription_id)throw Error("У контакта отсутствует OneSignal ID. Попросите его обновить приглашение.");
@@ -522,14 +523,14 @@ async function sendContactRequest(){
   updateCallButtons();
   try{
    await sendPushEventToContact(peer,"contact_request",requestId,expiresAt);
-   els.replyInviteStatus.textContent="Ответное приглашение отправлено. Push-уведомление передано в OneSignal.";
+   setInlineStatus(els.replyInviteStatus,"Ответное приглашение отправлено. Push-уведомление передано в OneSignal.");
    debug("Подписанный запрос на добавление контакта опубликован в ntfy; OneSignal принял push.");
   }catch(pushError){
-   els.replyInviteStatus.textContent="Ответное приглашение передано через ntfy, но push не отправлен: "+(pushError.message||String(pushError));
+   setInlineStatus(els.replyInviteStatus,"Ответное приглашение передано через ntfy, но push не отправлен: "+(pushError.message||String(pushError)),true);
    debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(pushError.message||String(pushError)));
   }
  }catch(error){
-  els.replyInviteStatus.textContent="Не удалось отправить запрос: "+(error.message||String(error));showError(error.message||String(error));
+  setInlineStatus(els.replyInviteStatus,"Не удалось отправить запрос: "+(error.message||String(error)),true);showError(error.message||String(error));
  }finally{els.replyInvite.disabled=false}
 }
 
@@ -632,13 +633,13 @@ async function importContactFromInput(){
   els.contactPackage.value="";
   els.contactName.value="";
   els.contactTools.open=false;
-  els.qrStatus.textContent="Контакт «"+name+"» успешно проверен и сохранён локально.";
+  setInlineStatus(els.qrStatus,"Контакт «"+name+"» успешно проверен и сохранён локально.");
   clearError();
   debug("Импортирован и криптографически проверен новый контакт: "+name+".");
   setStatus("Контакт добавлен","Теперь его можно выбрать для звонка.","idle");
  }catch(error){
   showError(error.message||String(error));
-  els.qrStatus.textContent="Не удалось импортировать контакт.";
+  setInlineStatus(els.qrStatus,"Не удалось импортировать контакт.",true);
  }finally{importingContact=false;updateImportContactButton()}
 }
 async function stopQrScan(){
@@ -703,11 +704,11 @@ function updateInvitationPanel(){
    try{
     await ensureQrCodeLibrary();
     if(!els.inviteQr.childElementCount)new window.QRCode(els.inviteQr,{text:els.inviteUrl.value,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-   }catch(error){els.inviteStatus.textContent="Ссылка доступна, но QR-код пока не удалось восстановить."}
+   }catch(error){setInlineStatus(els.inviteStatus,"Ссылка доступна, но QR-код пока не удалось восстановить.",true)}
   })();
  }
  if(!granted&&"Notification" in window&&Notification.permission==="denied"){
-  els.inviteStatus.textContent="Уведомления уже запрещены. Разрешите их для VoiceLink в настройках сайта вашего браузера, затем закройте и снова откройте этот раздел.";
+  setInlineStatus(els.inviteStatus,"Уведомления уже запрещены. Разрешите их для VoiceLink в настройках сайта вашего браузера, затем закройте и снова откройте этот раздел.",true);
  }
 }
 els.inviteTools.addEventListener("toggle",()=>{
@@ -771,9 +772,9 @@ async function initializeApp(){
     try{
      await ensureQrCodeLibrary();
      new window.QRCode(els.inviteQr,{text:savedInvitation,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-     els.inviteStatus.textContent="";
+     setInlineStatus(els.inviteStatus,"");
     }catch(qrError){
-     els.inviteStatus.textContent="Ссылка-приглашение восстановлена; QR-код пока недоступен.";
+     setInlineStatus(els.inviteStatus,"Ссылка-приглашение восстановлена; QR-код пока недоступен.",true);
     }
    }
   }
