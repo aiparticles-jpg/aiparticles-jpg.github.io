@@ -464,3 +464,25 @@ body.contact-screen-open{overflow:hidden}
 .contacts-list-items{min-height:0}
 .contacts-list-empty{min-height:70px}
 @media(max-width:520px){.topbar{min-height:58px}}
+
+
+/* The diagnostics log occupies the remaining viewport height and scrolls internally. */
+.diagnostic-screen-content{
+ display:flex;flex-direction:column;overflow:hidden;min-height:0;
+ padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+}
+.diagnostic-screen-content .diagnostic-content{
+ display:flex;flex:1 1 auto;flex-direction:column;min-height:0;width:100%;
+ margin:0;
+}
+.diagnostic-screen-content .actions{flex:0 0 auto;margin:0}
+.diagnostic-screen-content .event-log-panel{
+ display:flex;flex:1 1 auto;flex-direction:column;min-height:0;
+ margin:0;padding:0;border:0;border-radius:0;background:transparent;
+}
+.diagnostic-screen-content .event-log-panel .panel-heading{flex:0 0 auto;padding:0 2px 10px}
+.diagnostic-screen-content .debug-log{
+ flex:1 1 auto;min-height:0;max-height:none;overflow:auto;
+ margin:0;padding:12px;border:1px solid var(--line);border-radius:10px;
+ overscroll-behavior:contain;
+}
