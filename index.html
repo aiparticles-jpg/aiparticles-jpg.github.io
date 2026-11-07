@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=15">
+  <link rel="stylesheet" href="./css/style.css?v=16">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -73,6 +73,7 @@
 
       <details id="invite-tools" class="contact-tools invite-tools">
         <summary>Поделиться приглашением</summary>
+        <button id="copy-invite" class="button button-secondary invite-copy-button" type="button" disabled>Копировать</button>
         <div id="invite-permission">
           <p class="hint">Разрешите push-уведомления, чтобы получать оповещения о входящих звонках, даже когда VoiceLink не открыт на экране. После разрешения мы создадим вашу ссылку и QR-код приглашения.</p>
           <button id="create-invite" class="button button-primary" type="button">Разрешить уведомления</button>
@@ -81,7 +82,6 @@
           <p class="hint">Передайте собеседнику ссылку или QR-код, чтобы он мог добавить вас в контакты.</p>
           <label class="field-label" for="invite-url">Моя ссылка-приглашение</label>
           <textarea id="invite-url" rows="3" readonly spellcheck="false" placeholder="Создаём приглашение…"></textarea>
-          <button id="copy-invite" class="button button-secondary" type="button">Скопировать ссылку</button>
           <div id="invite-qr" class="invite-qr" aria-label="QR-код моего приглашения"></div>
         </div>
         <p id="invite-status" class="hint" aria-live="polite"></p>
@@ -134,10 +134,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.07-51</span>
+      <span id="app-version">Версия 2026.11.07-52</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=60"></script>
+  <script type="module" src="./js/app.js?v=61"></script>
 </body>
 </html>
