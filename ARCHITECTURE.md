@@ -26,7 +26,7 @@ Status: architecture agreed in part; implementation of the decisions below is no
 
 ## 3. Local contacts
 
-The IndexedDB storage foundation is implemented in `js/local-store.js`; contact CRUD is available locally but is not yet connected to the application UI or contact exchange.
+Contacts are stored locally in the IndexedDB `contacts` object store. The application supports importing signed contact packages, listing contacts, updating trust after SAS verification, and deleting a contact.
 
 A locally saved contact contains:
 
@@ -36,6 +36,8 @@ A locally saved contact contains:
 - `push_subscription_id`: OneSignal Subscription ID.
 
 The contact list is stored only in the browser. Render does not store contacts or a mapping between `user_id` and OneSignal Subscription ID.
+
+Contact deletion removes the complete contact record, including its public key, OneSignal Subscription ID, and trust/verification state. Local call-history entries are retained and contain no cryptographic keys or push identifiers. To reconnect after deletion or key rotation, import a newly shared signed URL/QR package.
 
 ## 4. Contact exchange: QR code and URL
 
