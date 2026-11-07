@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=25">
+  <link rel="stylesheet" href="./css/style.css?v=26">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -38,13 +38,19 @@
       </div>
     </header>
 
-    <section class="contacts-list-panel" aria-labelledby="contacts-list-title">
-      <div class="contacts-list-heading">
-        <h2 id="contacts-list-title">Контакты</h2>
-        <span id="contacts-count" class="contacts-count">0</span>
+    <section class="contacts-list-panel" aria-label="Контакты">
+      <div id="contacts-list" class="contacts-list" aria-label="Список контактов">
+        <div class="contacts-list-heading">
+          <h2 id="contacts-list-title">Контакты</h2>
+          <span class="contacts-search">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg>
+            <input id="contact-search" type="search" placeholder="Поиск" aria-label="Поиск контактов" autocomplete="off">
+          </span>
+          <span id="contacts-count" class="contacts-count">0</span>
+        </div>
+        <div id="contacts-list-items" class="contacts-list-items" role="list"></div>
+        <p id="contacts-list-empty" class="contacts-list-empty">Пока нет контактов. Добавьте контакт по QR-коду или ссылке ниже.</p>
       </div>
-      <div id="contacts-list" class="contacts-list" role="list" aria-label="Список контактов"></div>
-      <p id="contacts-list-empty" class="contacts-list-empty">Пока нет контактов. Добавьте контакт по QR-коду или ссылке ниже.</p>
     </section>
 
     <section class="panel" aria-labelledby="room-title">
@@ -165,10 +171,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.07-62</span>
+      <span id="app-version">Версия 2026.11.07-63</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=74"></script>
+  <script type="module" src="./js/app.js?v=75"></script>
 </body>
 </html>

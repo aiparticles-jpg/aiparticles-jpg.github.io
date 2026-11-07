@@ -275,3 +275,30 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
  .header-menu-trigger{width:34px;height:34px}
  .privacy-label{font-size:10px}
 }
+
+
+/* Contacts header sits in the scrollable list and can be revealed with a short pull-down. */
+.topbar{margin-bottom:0}
+.contacts-list-panel{margin-top:0;padding-top:0;border-top:0}
+.contacts-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.contacts-list-heading{
+ position:relative;display:flex;align-items:center;gap:10px;
+ min-height:54px;padding:7px 17px 9px;
+}
+.contacts-list-heading h2{flex:1;margin:0;font-size:17px}
+.contacts-search{display:flex;align-items:center;gap:7px;min-width:0;width:min(48%,230px);color:var(--muted)}
+.contacts-search input{
+ min-width:0;width:100%;height:34px;padding:7px 9px;
+ border:1px solid var(--line);border-radius:9px;background:#0c1727;
+ color:var(--text);font-size:12px;outline:none;
+}
+.contacts-search input:focus{border-color:rgba(139,224,194,.65);box-shadow:0 0 0 3px rgba(139,224,194,.08)}
+.contacts-list-items{min-height:calc(100% + 48px)}
+.contacts-list-empty{min-height:70px}
+@media(max-width:520px){
+ .topbar{margin-bottom:0}
+ .contacts-list-panel{margin-top:0}
+ .contacts-list-heading{min-height:52px;padding-left:14px;padding-right:14px;gap:8px}
+ .contacts-search{width:min(52%,190px);gap:5px}
+ .contacts-search input{height:32px;padding:6px 8px}
+}

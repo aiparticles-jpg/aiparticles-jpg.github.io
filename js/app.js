@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
+ contactList:$("contacts-list"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -486,14 +486,15 @@ function formatLastInteraction(value){
  if(days<7)return days+" дн.";
  return new Date(timestamp).toLocaleDateString("ru-RU",{day:"numeric",month:"short"});
 }
+let contactListInitialPositioned=false;
 function renderContactList(contacts){
- els.contactList.replaceChildren();
+ els.contactListItems.replaceChildren();
  els.contactsCount.textContent=String(contacts.length);
  els.contactListEmpty.classList.toggle("hidden",contacts.length>0);
  els.privacyHelp.classList.toggle("hidden",contacts.length>0);
  for(const contact of contacts){
   const item=document.createElement("button");
-  item.type="button";item.className="contact-list-item";item.dataset.peer=contact.user_id;
+  item.type="button";item.className="contact-list-item";item.dataset.peer=contact.user_id;item.setAttribute("role","listitem");
   item.setAttribute("aria-pressed",String(els.peer.value===contact.user_id));
   const avatar=document.createElement("span");
   avatar.className="contact-avatar";avatar.textContent=contactInitials(contact.name);
@@ -505,7 +506,11 @@ function renderContactList(contacts){
   details.append(name,status);
   const last=document.createElement("span");last.className="contact-list-last";last.textContent=formatLastInteraction(contact.last_interaction_at);
   item.append(avatar,details,last);
-  els.contactList.append(item);
+  els.contactListItems.append(item);
+ }
+ if(!contactListInitialPositioned&&contacts.length){
+  requestAnimationFrame(()=>{els.contactList.scrollTop=42;});
+  contactListInitialPositioned=true;
  }
 }
 async function refreshContactOptions(selectUserId=""){
