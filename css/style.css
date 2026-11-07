@@ -202,3 +202,36 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 .contact-package-actions .button{margin-top:0!important;white-space:nowrap}
 .contact-paste-inline{flex:0 0 auto;align-self:stretch}
 @media(max-width:520px){.contact-package-row{flex-direction:column}.contact-package-actions{width:100%}.contact-package-actions .button{flex:1}}
+
+/* Messenger-style contacts list */
+.topbar{margin-bottom:24px}
+.contacts-list-panel{
+ width:100vw;height:50vh;min-height:190px;max-height:520px;
+ margin:0 0 16px calc(50% - 50vw);padding:15px 0 0;
+ display:flex;flex-direction:column;overflow:hidden;
+ border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+ background:rgba(18,29,46,.88);
+}
+.contacts-list-heading{display:flex;align-items:center;justify-content:space-between;padding:0 17px 11px}
+.contacts-list-heading h2{margin:0;font-size:17px}
+.contacts-count{min-width:24px;padding:3px 8px;border-radius:20px;background:#26364d;color:var(--muted);font-size:11px;text-align:center}
+.contacts-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.contact-list-item{
+ display:flex;align-items:center;gap:12px;width:100%;min-height:72px;padding:10px 17px;
+ border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);
+ text-align:left;cursor:pointer;
+}
+.contact-list-item:last-child{border-bottom:1px solid var(--line)}
+.contact-list-item:active,.contact-list-item[aria-pressed="true"]{background:rgba(139,224,194,.075)}
+.contact-list-item:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+.contact-avatar{display:grid;place-items:center;flex:0 0 46px;width:46px;height:46px;border-radius:50%;color:#fff;font-size:15px;font-weight:700;letter-spacing:.2px}
+.contact-list-details{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
+.contact-list-name{overflow:hidden;color:var(--text);font-size:14px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.contact-list-status{overflow:hidden;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.contact-list-last{flex:0 0 auto;align-self:flex-start;padding-top:4px;color:var(--muted);font-size:10px;white-space:nowrap}
+.contacts-list-empty{margin:auto;padding:18px 22px;color:var(--muted);font-size:12px;line-height:1.6;text-align:center}
+@media(max-width:520px){
+ .contacts-list-panel{height:50svh;min-height:190px}
+ .contact-list-item{padding-left:14px;padding-right:14px}
+ .contact-avatar{flex-basis:44px;width:44px;height:44px}
+}

@@ -1,14 +1,14 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=25";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
 import { verifyContactPackage } from "./contact-exchange.js?v=2";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=2";
 import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
+ contactList:$("contacts-list"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -366,6 +366,13 @@ async function onSecureReady(info){
  els.verify.classList.add("hidden");updateCallButtons();
  setStatus("Ключ собеседника подтверждён",info.trusted?"Сохранённый ключ совпадает. Запускаем голосовой канал.":"Первичная проверка пройдена. Запускаем голосовой канал.","wait");
  debug(info.trusted?"Сохраненная идентичность подтверждена.":"Новая идентичность собеседника сохранена.");
+ const peerId=state.secure?.peer||els.peer.value;
+ if(NtfySecureSignaling.validUserId(peerId)){
+  try{
+   await updateContact(peerId,{last_interaction_at:new Date().toISOString()});
+   await refreshContactOptions(peerId);
+  }catch(error){debug("Не удалось обновить время последнего взаимодействия: "+(error.message||String(error)))}
+ }
  if(state.role==="initiator")await startWebRtcOffer();
 }
 async function handleSignal(payload){
@@ -457,13 +464,62 @@ function handleRemoteHangup(){
  hangup({notifyPeer:false,remote:true});
 }
 
+function contactInitials(name){
+ const words=String(name||"").trim().split(/\s+/u).filter(Boolean);
+ return words.slice(0,2).map(word=>Array.from(word)[0]?.toLocaleUpperCase("ru-RU")||"").join("")||"?";
+}
+function contactAvatarColor(userId){
+ let hash=2166136261;
+ for(const char of String(userId||"")){hash^=char.charCodeAt(0);hash=Math.imul(hash,16777619)}
+ return "hsl("+((hash>>>0)%360)+" 58% 48%)";
+}
+function formatLastInteraction(value){
+ if(!value)return "Нет звонков";
+ const timestamp=Date.parse(value);
+ if(!Number.isFinite(timestamp))return "Нет звонков";
+ const elapsed=Math.max(0,Date.now()-timestamp);
+ if(elapsed<60000)return "сейчас";
+ if(elapsed<3600000)return Math.floor(elapsed/60000)+" мин";
+ if(elapsed<86400000)return Math.floor(elapsed/3600000)+" ч";
+ const days=Math.floor(elapsed/86400000);
+ if(days===1)return "вчера";
+ if(days<7)return days+" дн.";
+ return new Date(timestamp).toLocaleDateString("ru-RU",{day:"numeric",month:"short"});
+}
+function renderContactList(contacts){
+ els.contactList.replaceChildren();
+ els.contactsCount.textContent=String(contacts.length);
+ els.contactListEmpty.classList.toggle("hidden",contacts.length>0);
+ for(const contact of contacts){
+  const item=document.createElement("button");
+  item.type="button";item.className="contact-list-item";item.dataset.peer=contact.user_id;
+  item.setAttribute("role","listitem");
+  item.setAttribute("aria-pressed",String(els.peer.value===contact.user_id));
+  const avatar=document.createElement("span");
+  avatar.className="contact-avatar";avatar.textContent=contactInitials(contact.name);
+  avatar.style.backgroundColor=contactAvatarColor(contact.user_id);
+  const details=document.createElement("span");details.className="contact-list-details";
+  const name=document.createElement("span");name.className="contact-list-name";name.textContent=contact.name;
+  const status=document.createElement("span");status.className="contact-list-status";
+  status.textContent=contact.trusted===true?"Ключ подтверждён":"Проверка при первом звонке";
+  details.append(name,status);
+  const last=document.createElement("span");last.className="contact-list-last";last.textContent=formatLastInteraction(contact.last_interaction_at);
+  item.append(avatar,details,last);
+  els.contactList.append(item);
+ }
+}
 async function refreshContactOptions(selectUserId=""){
  const contacts=await listContacts();
+ contacts.sort((a,b)=>{
+  const aTime=Date.parse(a.last_interaction_at||"")||0,bTime=Date.parse(b.last_interaction_at||"")||0;
+  return bTime-aTime||a.name.localeCompare(b.name);
+ });
  trustedContactIds=new Set(contacts.filter(contact=>contact.trusted===true).map(contact=>contact.user_id));
  els.peer.replaceChildren(new Option("Выберите контакт",""));
  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
  els.peer.disabled=contacts.length===0;
  if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
+ renderContactList(contacts);
  els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
  originalEditContactName=els.editContactName.value.trim();
  updateReplyInviteStatus();
@@ -844,6 +900,12 @@ els.pilot.addEventListener("change",async()=>{
  try{localStorage.setItem("vl.simulateMicrophone.v1",els.pilot.checked?"1":"0")}catch(error){debug("Не удалось сохранить настройку симуляции микрофона: "+error.message)}
  debug("Симуляция микрофона "+(els.pilot.checked?"включена":"выключена")+". Настройка применяется при следующем подключении.");
  if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
+});
+els.contactList.addEventListener("click",event=>{
+ const item=event.target.closest(".contact-list-item[data-peer]");
+ if(!item||!els.contactList.contains(item))return;
+ els.peer.value=item.dataset.peer;
+ els.peer.dispatchEvent(new Event("change",{bubbles:true}));
 });
 els.peer.addEventListener("change",()=>{
  els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
