@@ -111,45 +111,41 @@
       </div>
     </section>
 
-    <section class="panel call-panel" aria-labelledby="call-title">
-      <div class="panel-heading">
-        <div>
-          <h2 id="call-title">Диагностика</h2>
-        </div>
-        <span id="connection-indicator" class="status-pill status-idle">Не подключено</span>
-      </div>
-
-      <div class="status-card">
-        <div class="status-icon" id="status-icon" aria-hidden="true">⌁</div>
-        <div class="status-copy">
-          <strong id="status-title">Ожидаем комнату</strong>
-          <span id="status-text">Создайте комнату или введите приглашение друга.</span>
-        </div>
-      </div>
-
-      <div class="transport-row">
-        <span>Транспорт</span>
-        <strong id="transport-label">Не выбран</strong>
-      </div>
-
-      <div class="actions">
-        <button id="tcp-fallback" class="button button-secondary hidden" type="button" disabled>TCP-аудио недоступно</button>
-      </div>
-      <audio id="remote-audio" autoplay playsinline></audio>
-      <p id="error-message" class="error-message hidden" role="alert"></p>
-
-      <details class="debug-panel">
-        <summary>Диагностика защищённого канала</summary>
-        <div class="debug-meta">Канал: <code id="debug-url">ntfy.sh</code></div>
-        <div class="debug-meta">Состояние: <strong id="debug-state">—</strong></div>
-        <pre id="debug-log" class="debug-log">Ожидаем подключения. Здесь появятся события защищённого канала.</pre>
-      </details>
-    </section>
-
     <details class="contact-tools settings-panel">
       <summary>Настройки</summary>
       <label class="diagnostic-toggle"><input id="diagnostic-pilot" type="checkbox"> <span><strong>Симуляция микрофона</strong><small>Вместо физического микрофона отправляется тестовый тон 997 Гц. Удобно, если на устройстве одновременно запущены два браузера и микрофон занят другим приложением.</small></span></label>
     </details>
+
+    <details class="panel call-panel diagnostic-panel">
+      <summary class="diagnostic-summary"><h2 id="call-title">Диагностика</h2><span id="connection-indicator" class="status-pill status-idle">Не подключено</span></summary>
+      <div class="diagnostic-content">
+        <div class="status-card">
+          <div class="status-icon" id="status-icon" aria-hidden="true">⌁</div>
+          <div class="status-copy">
+            <strong id="status-title">Ожидаем комнату</strong>
+            <span id="status-text">Создайте комнату или введите приглашение друга.</span>
+          </div>
+        </div>
+
+        <div class="transport-row">
+          <span>Транспорт</span>
+          <strong id="transport-label">Не выбран</strong>
+        </div>
+
+        <div class="actions">
+          <button id="tcp-fallback" class="button button-secondary hidden" type="button" disabled>TCP-аудио недоступно</button>
+        </div>
+        <audio id="remote-audio" autoplay playsinline></audio>
+        <p id="error-message" class="error-message hidden" role="alert"></p>
+      </div>
+    </details>
+
+    <section class="panel event-log-panel" aria-labelledby="event-log-title">
+      <div class="panel-heading"><h2 id="event-log-title">Журнал событий</h2></div>
+      <div class="debug-meta" hidden>Канал: <code id="debug-url">ntfy.sh</code></div>
+      <div class="debug-meta" hidden>Состояние: <strong id="debug-state">—</strong></div>
+      <pre id="debug-log" class="debug-log">Ожидаем подключения. Здесь появятся события защищённого канала.</pre>
+    </section>
 
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
