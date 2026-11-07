@@ -372,7 +372,7 @@ Agreed:
 
 - Added the user's OneSignal App ID to js/onesignal.js; this is a public application identifier, not a REST API secret.
 - Added OneSignal Web SDK v16 initialization and the root-scope OneSignalSDKWorker.js service worker.
-- OneSignal push permission is requested only after the user presses the explicit invitation-generation button. The app reads the current User.PushSubscription.id; no external user ID or username is assigned.
+- OneSignal push permission is requested only after the user presses “Поделиться приглашением”. Creating/sharing an invitation requires granted browser notification permission; if permission is denied or the user declines, no new invitation is created. If permission is already granted, the app reuses it without showing another prompt. The app reads the current User.PushSubscription.id; no external user ID or username is assigned.
 - Invitation export builds the exact v1 canonical field order (version, user_id, public_key, push_subscription_id), signs it with the existing non-extractable local identity key, and encodes the package in the URL fragment.
 - Added copy-link UI and local QR rendering using QRCode.js loaded from cdnjs. The invitation payload is rendered locally; it is not sent to the QR library host.
 - Existing incoming invitation verification remains unchanged.
@@ -406,3 +406,13 @@ Implemented initial end-to-end incoming-call push path:
 - Frontend entrypoint cache version was bumped.
 
 Not yet verified: Render deployment of this backend commit, actual OneSignal API acceptance from Render, and an incoming push on a second device. Existing browser-dashboard test push only verified the OneSignal-to-Firefox dashboard test path. The next validation is to confirm the Render deployment is Live, then place a call to a contact whose imported package contains a current OneSignal Subscription ID and check the recipient device.
+
+
+## Invitation and push permission UX — 2026-11-07
+
+- Use one action: “Поделиться приглашением”.
+- Pressing this button means the user agrees to receive incoming-call push notifications; no separate consent mode or invitation without a push Subscription ID is offered.
+- If browser permission is “default”, request it through OneSignal. If the user grants it, opt in, wait for a non-empty OneSignal Subscription ID, and create the signed invitation.
+- If the user denies permission, do not create a new invitation. Show a clear message that notification permission is required. If permission is already “denied”, do not repeatedly trigger the native prompt; instruct the user to enable notifications in the browser's site settings.
+- If permission is already “granted”, do not prompt again; opt in/synchronize OneSignal and create the invitation once the Subscription ID is available.
+- Existing contact-package format and signature remain unchanged; every newly created invitation contains a non-empty push_subscription_id.
