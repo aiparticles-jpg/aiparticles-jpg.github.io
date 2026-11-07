@@ -344,7 +344,8 @@ body.contact-screen-open{overflow:hidden}
  display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;
  border:0;border-radius:50%;background:transparent;color:var(--text);cursor:pointer;
 }
-.contact-screen-back{font-size:28px;font-weight:300}
+.contact-screen-back{padding:0;line-height:0;-webkit-tap-highlight-color:transparent}
+.contact-screen-back svg{display:block;width:22px;height:22px;flex:0 0 22px}
 .contact-screen-avatar{
  display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;
  border-radius:50%;color:white;font-size:14px;font-weight:700;
