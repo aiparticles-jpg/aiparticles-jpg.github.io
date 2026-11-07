@@ -49,7 +49,7 @@ The frontend submits signed push events to:
 POST /v1/push
 ```
 
-Allowed events: `incoming_call`, `call_cancelled`, `call_ignored`, and `call_ended`.
+Allowed events: `incoming_call`, `contact_request`, `call_cancelled`, `call_ignored`, and `call_ended`.
 
 Each request includes the sender's public P-256 key, its SHA-256 `user_id`, timestamp, random nonce, event, UUID call ID, recipient OneSignal Subscription ID, expiry, and ECDSA signature. The signature covers all request fields except the signature itself. The backend verifies the key fingerprint, signature, timestamp, nonce, event, and request limits before calling OneSignal.
 
@@ -60,3 +60,6 @@ The backend does not store contacts or call history. Replay protection, rate lim
 Set `ONESIGNAL_REST_API_KEY` as a private environment variable in Render. Never put it in this repository or frontend code. The OneSignal App ID is public and is embedded in the backend.
 
 The API accepts browser requests only from `https://aiparticles-jpg.github.io`. Do not log API keys, signatures, Subscription IDs, user IDs, request bodies, or OneSignal response bodies.
+
+
+The `contact_request` event is a OneSignal wake-up notification only. The signed contact package is published separately to the recipient's ntfy topic; it is not included in the push payload.
