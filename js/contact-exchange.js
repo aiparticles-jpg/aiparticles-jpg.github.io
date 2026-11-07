@@ -20,7 +20,8 @@ function canonicalPayload(contact) {
     version: contact.version,
     user_id: contact.user_id,
     public_key: contact.public_key,
-    push_subscription_id: contact.push_subscription_id
+    push_subscription_id: contact.push_subscription_id,
+    created_at: contact.created_at
   });
 }
 
@@ -61,6 +62,12 @@ export async function verifyContactPackage(input) {
       typeof contact.signature !== "string") {
     throw new Error("В пакете отсутствует публичный ключ, OneSignal Subscription ID или подпись.");
   }
+  if (contact.created_at !== undefined &&
+      (!Number.isFinite(Number(contact.created_at)) ||
+       Number(contact.created_at) <= 0 ||
+       Number(contact.created_at) > Date.now() + 5 * 60 * 1000)) {
+    throw new Error("Некорректная дата создания приглашения.");
+  }
 
   const publicBytes = fromBase64Url(contact.public_key);
   const fingerprint = toHex(await crypto.subtle.digest("SHA-256", publicBytes));
@@ -88,6 +95,7 @@ export async function verifyContactPackage(input) {
     version: 1,
     user_id: contact.user_id,
     public_key: contact.public_key,
-    push_subscription_id: contact.push_subscription_id
+    push_subscription_id: contact.push_subscription_id,
+    ...(contact.created_at !== undefined ? { created_at: Number(contact.created_at) } : {})
   };
 }
