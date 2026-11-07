@@ -198,5 +198,7 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 .contact-tools[open] .contact-paste-button{display:none}
 .contact-package-row{display:flex;align-items:stretch;gap:9px}
 .contact-package-row textarea{flex:1;min-width:0}
-.contact-paste-inline{flex:0 0 auto;align-self:stretch;margin-top:0!important;white-space:nowrap}
-@media(max-width:520px){.contact-package-row{flex-direction:column}.contact-paste-inline{width:100%}}
+.contact-package-actions{display:flex;align-items:stretch;gap:9px;flex:0 0 auto}
+.contact-package-actions .button{margin-top:0!important;white-space:nowrap}
+.contact-paste-inline{flex:0 0 auto;align-self:stretch}
+@media(max-width:520px){.contact-package-row{flex-direction:column}.contact-package-actions{width:100%}.contact-package-actions .button{flex:1}}
