@@ -24,7 +24,13 @@ body {
 }
 button, input, select { font: inherit; }
 .shell { width: min(100% - 36px, 680px); margin: 0 auto; padding: 26px 0 30px; }
-.topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:64px; }
+.topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:64px; position:relative; }
+.privacy-help { position:relative; }
+.privacy-help summary { list-style:none; cursor:pointer; }
+.privacy-help summary::-webkit-details-marker { display:none; }
+.privacy-help summary:focus-visible { outline:2px solid var(--accent); outline-offset:5px; border-radius:4px; }
+.privacy-help-content { position:absolute; z-index:10; top:calc(100% + 12px); right:0; width:min(340px,calc(100vw - 36px)); padding:14px 16px; border:1px solid var(--line); border-radius:12px; background:#172438; box-shadow:0 14px 36px rgba(0,0,0,.35); }
+.privacy-help-content p { margin:0; color:var(--muted); font-size:12px; line-height:1.6; }
 .brand { display:flex; align-items:center; gap:10px; color:var(--text); text-decoration:none; font:800 19px Manrope,sans-serif; letter-spacing:-.8px; }
 .brand-mark { display:grid; place-items:center; width:31px; height:31px; border-radius:10px; color:#0b1a1a; background:var(--accent); font-weight:800; }
 .brand-light { color:var(--accent); }
