@@ -560,7 +560,7 @@ async function deleteSelectedContact(){
   return;
  }
  const name=els.peer.selectedOptions[0]?.textContent||"контакт";
- if(!window.confirm("Удалить контакт «"+name+"» с этого устройства? Будут удалены его публичный ключ, OneSignal ID и статус доверия. Чтобы связаться снова, собеседник должен передать новую ссылку или QR-код."))return;
+ if(!window.confirm("Удалить контакт «"+name+"»? Чтобы снова связаться, вам придётся заново обменяться приглашениями."))return;
  els.deletePeer.disabled=true;
  try{
   await deleteContact(peer);
@@ -568,7 +568,7 @@ async function deleteSelectedContact(){
   await refreshContactOptions();
   clearError();
   debug("Контакт "+name+" и все его сохранённые данные удалены из локальной адресной книги.");
-  setStatus("Контакт удалён","Локальные данные контакта удалены. Чтобы добавить его снова, импортируйте новую ссылку или QR-код.","idle");
+  setStatus("Контакт удалён","Чтобы снова связаться, нужно будет заново обменяться приглашениями.","idle");
  }catch(error){
   showError("Не удалось удалить контакт: "+(error.message||String(error)));
  }finally{updateCallButtons()}
@@ -723,7 +723,7 @@ async function initializeApp(){
     try{
      await ensureQrCodeLibrary();
      new window.QRCode(els.inviteQr,{text:savedInvitation,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-     els.inviteStatus.textContent="Сохранённое приглашение восстановлено.";
+     els.inviteStatus.textContent="";
     }catch(qrError){
      els.inviteStatus.textContent="Ссылка-приглашение восстановлена; QR-код пока недоступен.";
     }
