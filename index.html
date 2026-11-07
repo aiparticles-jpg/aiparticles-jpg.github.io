@@ -53,12 +53,12 @@
         <button id="import-contact" class="button button-primary" type="button">Проверить и сохранить контакт</button>
         <p id="qr-status" class="hint" aria-live="polite"></p>
         <div class="invite-generator">
-          <button id="create-invite" class="button button-primary" type="button">Разрешить уведомления и создать моё приглашение</button>
+          <button id="create-invite" class="button button-primary" type="button">Поделиться приглашением</button>
           <label class="field-label" for="invite-url">Моя ссылка-приглашение</label>
-          <textarea id="invite-url" rows="3" readonly spellcheck="false" placeholder="Ссылка появится после включения уведомлений"></textarea>
+          <textarea id="invite-url" rows="3" readonly spellcheck="false" placeholder="Ссылка появится после разрешения уведомлений"></textarea>
           <button id="copy-invite" class="button button-secondary" type="button">Скопировать ссылку</button>
           <div id="invite-qr" class="invite-qr" aria-label="QR-код моего приглашения"></div>
-          <p class="hint">Subscription ID нужен для получения входящих вызовов. Ссылка содержит только публичный ключ, анонимный ID, Subscription ID и подпись. Приватный ключ не покидает устройство.</p>
+          <p class="hint">Для создания приглашения необходимо разрешить push-уведомления — так вы сможете получать оповещения о входящих вызовах. Ссылка содержит только публичный ключ, анонимный ID, OneSignal Subscription ID и подпись. Приватный ключ не покидает устройство.</p>
         </div>
       </details>
 
@@ -109,10 +109,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.07-35</span>
+      <span id="app-version">Версия 2026.11.07-36</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=45"></script>
+  <script type="module" src="./js/app.js?v=46"></script>
 </body>
 </html>
