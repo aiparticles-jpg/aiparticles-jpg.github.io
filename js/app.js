@@ -854,6 +854,22 @@ async function stopQrScan(){
  els.qrVideo.classList.add("hidden");
  els.scanQr.textContent="Сканировать QR-код";
 }
+async function configureQrScannerButton(){
+ let supported=false;
+ try{
+  if("BarcodeDetector" in window){
+   if(typeof BarcodeDetector.getSupportedFormats==="function"){
+    const formats=await BarcodeDetector.getSupportedFormats();
+    supported=formats.includes("qr_code");
+   }else{
+    new BarcodeDetector({formats:["qr_code"]});
+    supported=true;
+   }
+  }
+ }catch(error){supported=false}
+ els.scanQr.classList.toggle("hidden",!supported);
+}
+configureQrScannerButton();
 async function startQrScan(){
  if(qrScanActive){await stopQrScan();return}
  if(!("BarcodeDetector" in window)){
