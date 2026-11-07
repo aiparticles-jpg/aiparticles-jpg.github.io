@@ -10,10 +10,10 @@ const hex=b=>Array.from(bytes(b),x=>x.toString(16).padStart(2,"0")).join("");
 const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
 
 export class NtfySecureSignaling {
- constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError,onDebug,onIncoming,onCancelIncoming,onDialing}) {
-  this.me=me;this.peer=peer;this.peerName="";this.role=me<peer?"A":"B";
+ constructor({me,peer,onSignal,onStatus,onVerify,onReady,onError,onDebug,onIncoming,onCancelIncoming,onDialing,onRejectOutgoing}) {
+  this.me=me;this.peer=peer;this.peerName="";this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
-  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});
+  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onVerify=onVerify||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});
   this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.confirmed=false;this.sas=null;this.seen=new Set();this.pendingSignals=[];this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
@@ -146,13 +146,20 @@ export class NtfySecureSignaling {
   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
  }
  async inspectIncoming(n){
-  if(!this.peer||!n?.message||!n?.id)return;
+  if(!n?.message||!n?.id)return;
   let m;try{m=JSON.parse(n.message)}catch{return}
   if(m.v!==1||!m.payload)return;
   const p=m.payload;
-  if(m.type==="cancel"){await this.processCancel(m);return;}
-  const expectedType=this.role==="A"?"request":"hello";
-  if(m.type!==expectedType||p.from!==this.peer||p.to!==this.me||!p.identity)return;
+  if(m.type==="cancel"){if(this.peer&&p.from===this.peer)await this.processCancel(m);return;}
+  if(!["hello","request"].includes(m.type)||p.to!==this.me||!isUserId(p.from)||p.from===this.me||!p.identity)return;
+  if(this.active||this.ready||(this.incomingSid&&this.incomingSid!==p.sid)||this.outgoingRequest||this.hello)return;
+  let contact;
+  try{contact=await getPeerSignalingIdentity(p.from)}catch{return;}
+  const incomingRole=this.me<p.from?"A":"B";
+  const expectedType=incomingRole==="A"?"request":"hello";
+  if(m.type!==expectedType)return;
+  if(this.peer!==p.from){this.peer=p.from;this.peerName=contact.name;this.role=incomingRole;}
+  else if(!this.peerName)this.peerName=contact.name;
   const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
   if(!Number.isFinite(expiresAt)||Date.now()>expiresAt)return;
   if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись входящего вызова недействительна.");
@@ -162,7 +169,7 @@ export class NtfySecureSignaling {
   const pendingCancel=this.pendingCancels.get(p.sid);
   if(pendingCancel){this.pendingCancels.delete(p.sid);await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
   if(!pinned)this.onDebug("[incoming] ключ ещё не сопряжён: показываем запрос без звукового сигнала до проверки кода.");
-  this.onIncoming({peer:this.peerName||"контакт",sid:p.sid,expiresAt,trusted:pinned});
+  this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer,sid:p.sid,expiresAt,trusted:pinned});
  }
  async processCancel(m){
   const p=m?.payload;
@@ -201,6 +208,16 @@ export class NtfySecureSignaling {
   await this.publish(this.peer,await this.signed("request",request));
   this.onStatus("Запрос на звонок отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
   this.onDialing({peer:this.peerName||"контакт",expiresAt:request.expiresAt,callId:request.sid});
+ }
+ async rejectIncoming(){
+  const sid=this.incomingSid;
+  if(this.closed||!sid||!this.peer||!this.incomingIdentity)return false;
+  const payload={sid,from:this.me,to:this.peer,identity:this.identity.publicJwk,expiresAt:Date.now()+15000};
+  await this.publish(this.peer,await this.signed("reject",payload));
+  this.acceptedSids.add(sid);
+  this.onDebug("[signaling] подписанный отказ от входящего вызова отправлен через ntfy");
+  this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
+  return true;
  }
  async cancelCall(){
   const request=this.outgoingRequest||this.hello;
@@ -279,6 +296,15 @@ export class NtfySecureSignaling {
    if(!Number.isFinite(expiresAt)||Date.now()>expiresAt){this.onDebug("[signaling] просроченный hello пропущен");return}
   }
   if(m.type==="cancel"){await this.processCancel(m);return;}
+  if(m.type==="reject"){
+   const request=this.outgoingRequest||this.hello;
+   if(!request||p.sid!==request.sid||!p.identity||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
+   if(!await this.verify({type:"reject",payload:p},m.sig,p.identity))throw Error("Подпись отказа от вызова недействительна.");
+   await this.checkPinned(p.identity);
+   this.outgoingRequest=null;this.clearHelloRetry();
+   this.onRejectOutgoing({peer:this.peerName||"контакт",sid:p.sid});
+   return;
+  }
   if(m.type==="request"&&this.role==="A"){
    if(!p.identity||!p.sid||this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
    if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись входящего запроса недействительна.");
@@ -287,7 +313,7 @@ export class NtfySecureSignaling {
     this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=p.identity;
     const pendingCancel=this.pendingCancels.get(p.sid);
     if(pendingCancel){this.pendingCancels.delete(p.sid);await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
-    this.onIncoming({peer:this.peerName||"контакт",sid:p.sid,expiresAt:Number(p.expiresAt),trusted:pinned});
+    this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer,sid:p.sid,expiresAt:Number(p.expiresAt),trusted:pinned});
    }
    return;
   }
