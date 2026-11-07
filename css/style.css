@@ -96,6 +96,19 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 }
 
 
+.diagnostic-summary {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  cursor:pointer;
+  list-style:none;
+}
+.diagnostic-summary::-webkit-details-marker { display:none; }
+.diagnostic-summary h2 { margin:7px 0 0; }
+.diagnostic-content { margin-top:22px; }
+.event-log-panel .panel-heading { margin-bottom:0; }
+
 .debug-panel {
   margin-top: 18px;
   padding: 13px;
