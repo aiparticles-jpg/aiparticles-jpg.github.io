@@ -302,3 +302,48 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
  .contacts-search{width:min(52%,190px);gap:5px}
  .contacts-search input{height:32px;padding:6px 8px}
 }
+
+
+/* Full-screen contact view */
+body.contact-screen-open{overflow:hidden}
+.contact-screen{
+ position:fixed;inset:0;z-index:200;width:100%;height:100%;height:100dvh;
+ display:flex;flex-direction:column;background:var(--bg);
+}
+.contact-screen.hidden{display:none}
+.contact-screen-header{
+ display:flex;align-items:center;gap:12px;flex:0 0 auto;
+ min-height:64px;padding:8px 14px;
+ padding-top:max(8px,env(safe-area-inset-top));
+ border-bottom:1px solid var(--line);
+ background:rgba(11,18,32,.98);
+}
+.contact-screen-back,.contact-screen-call,.contact-screen-menu summary{
+ display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;
+ border:0;border-radius:50%;background:transparent;color:var(--text);cursor:pointer;
+}
+.contact-screen-back{font-size:28px;font-weight:300}
+.contact-screen-avatar{
+ display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;
+ border-radius:50%;color:white;font-size:14px;font-weight:700;
+}
+.contact-screen-name{
+ flex:1;min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ font:700 16px Manrope,sans-serif;
+}
+.contact-screen-call{color:var(--accent);background:rgba(139,224,194,.1)}
+.contact-screen-menu{position:relative;flex:0 0 40px}
+.contact-screen-menu summary{list-style:none;font-size:25px;line-height:1}
+.contact-screen-menu summary::-webkit-details-marker{display:none}
+.contact-screen-menu-empty{
+ position:absolute;right:0;top:calc(100% + 8px);width:180px;height:54px;
+ border:1px solid var(--line);border-radius:12px;background:#172438;
+ box-shadow:0 12px 32px rgba(0,0,0,.35);
+}
+.contact-screen-content{flex:1;min-height:0;overflow:auto}
+@media(max-width:520px){
+ .contact-screen-header{min-height:58px;gap:9px;padding-left:10px;padding-right:10px}
+ .contact-screen-back,.contact-screen-call,.contact-screen-menu summary{flex-basis:36px;width:36px;height:36px}
+ .contact-screen-avatar{flex-basis:38px;width:38px;height:38px}
+ .contact-screen-name{font-size:15px}
+}

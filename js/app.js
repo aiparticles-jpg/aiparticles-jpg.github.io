@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
+ contactList:$("contacts-list"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -912,11 +912,33 @@ document.addEventListener("pointerdown",event=>{
 document.addEventListener("keydown",event=>{
  if(event.key==="Escape"&&els.headerMenu.open){els.headerMenu.open=false;els.headerMenu.querySelector("summary").focus()}
 });
+function openContactScreen(item){
+ const peer=item.dataset.peer;
+ els.peer.value=peer;
+ els.peer.dispatchEvent(new Event("change",{bubbles:true}));
+ const avatar=item.querySelector(".contact-avatar");
+ const name=item.querySelector(".contact-list-name");
+ els.contactScreenAvatar.textContent=avatar?.textContent||"?";
+ els.contactScreenAvatar.style.backgroundColor=avatar?.style.backgroundColor||"var(--accent)";
+ els.contactScreenName.textContent=name?.textContent||"Контакт";
+ els.contactScreen.classList.remove("hidden");
+ document.body.classList.add("contact-screen-open");
+ els.contactScreenBack.focus();
+}
+function closeContactScreen(){
+ els.contactScreen.classList.add("hidden");
+ document.body.classList.remove("contact-screen-open");
+ els.contactScreenMenu.open=false;
+}
 els.contactList.addEventListener("click",event=>{
  const item=event.target.closest(".contact-list-item[data-peer]");
  if(!item||!els.contactList.contains(item))return;
- els.peer.value=item.dataset.peer;
- els.peer.dispatchEvent(new Event("change",{bubbles:true}));
+ openContactScreen(item);
+});
+els.contactScreenBack.addEventListener("click",closeContactScreen);
+els.contactScreenCall.addEventListener("click",()=>els.connect.click());
+document.addEventListener("keydown",event=>{
+ if(event.key==="Escape"&&!els.contactScreen.classList.contains("hidden"))closeContactScreen();
 });
 els.peer.addEventListener("change",()=>{
  els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";

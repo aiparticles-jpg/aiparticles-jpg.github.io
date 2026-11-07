@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=26">
+  <link rel="stylesheet" href="./css/style.css?v=27">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -51,6 +51,22 @@
         <div id="contacts-list-items" class="contacts-list-items" role="list"></div>
         <p id="contacts-list-empty" class="contacts-list-empty">Пока нет контактов. Добавьте контакт по QR-коду или ссылке ниже.</p>
       </div>
+    </section>
+
+    <section id="contact-screen" class="contact-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-screen-name">
+      <header class="contact-screen-header">
+        <button id="contact-screen-back" class="contact-screen-back" type="button" aria-label="Вернуться к контактам"><span aria-hidden="true">←</span></button>
+        <span id="contact-screen-avatar" class="contact-screen-avatar"></span>
+        <h2 id="contact-screen-name" class="contact-screen-name"></h2>
+        <button id="contact-screen-call" class="contact-screen-call" type="button" aria-label="Позвонить" title="Позвонить">
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z"/></svg>
+        </button>
+        <details id="contact-screen-menu" class="contact-screen-menu">
+          <summary aria-label="Дополнительные действия" title="Дополнительные действия">⋮</summary>
+          <div class="contact-screen-menu-empty"></div>
+        </details>
+      </header>
+      <div class="contact-screen-content"></div>
     </section>
 
     <section class="panel" aria-labelledby="room-title">
@@ -171,10 +187,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.07-63</span>
+      <span id="app-version">Версия 2026.11.08-64</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=75"></script>
+  <script type="module" src="./js/app.js?v=76"></script>
 </body>
 </html>
