@@ -516,9 +516,9 @@ function renderContactList(contacts){
   item.append(avatar,details,last);
   els.contactListItems.append(item);
  }
- if(!contactListInitialPositioned){
-  requestAnimationFrame(()=>{els.contactList.scrollTop=42;});
+ if(!contactListInitialPositioned&&contacts.length){
   contactListInitialPositioned=true;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo({top:42,behavior:"instant"})));
  }
 }
 async function refreshContactOptions(selectUserId=""){

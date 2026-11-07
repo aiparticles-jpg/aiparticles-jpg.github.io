@@ -441,3 +441,12 @@ body.contact-screen-open{overflow:hidden}
 /* Fill the available viewport with the contacts area above the fixed dock. */
 .shell{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
 .contacts-list-panel{flex:1 1 auto;height:auto;min-height:190px;max-height:none;margin-bottom:0}
+
+
+/* Let the contacts list grow naturally; the document, not an inner panel, scrolls. */
+.shell{display:block;min-height:0}
+.contacts-list-panel{display:block;flex:none;height:auto;min-height:0;max-height:none;overflow:visible;margin-bottom:0}
+.contacts-list{display:block;flex:none;height:auto;min-height:0;overflow:visible;overscroll-behavior:auto;scrollbar-width:auto}
+.contacts-list-items{min-height:0}
+.contacts-list-empty{min-height:70px}
+@media(max-width:520px){.topbar{min-height:58px}}
