@@ -31,7 +31,7 @@
 
     <section class="panel" aria-labelledby="room-title">
       <div class="panel-heading">
-        <div><h2 id="room-title">Защищённое соединение</h2></div>
+        <div><h2 id="room-title">Контакты</h2></div>
         <span class="lock-icon" aria-hidden="true">⌑</span>
       </div>
       <label class="field-label" for="peer-contact">Контакт</label>
@@ -114,7 +114,7 @@
     <section class="panel call-panel" aria-labelledby="call-title">
       <div class="panel-heading">
         <div>
-          <h2 id="call-title">Голосовой канал</h2>
+          <h2 id="call-title">Диагностика</h2>
         </div>
         <span id="connection-indicator" class="status-pill status-idle">Не подключено</span>
       </div>
@@ -135,11 +135,10 @@
       <div class="actions">
         <button id="tcp-fallback" class="button button-secondary hidden" type="button" disabled>TCP-аудио недоступно</button>
       </div>
-      <label class="diagnostic-toggle"><input id="diagnostic-pilot" type="checkbox"> <span><strong>Симуляция микрофона</strong><small>Вместо физического микрофона отправляется тестовый тон 997 Гц. Удобно, если на устройстве одновременно запущены два браузера и микрофон занят другим приложением.</small></span></label>
-      <audio id="remote-audio" autoplay playsinline></audio>
+            <audio id="remote-audio" autoplay playsinline></audio>
       <p id="error-message" class="error-message hidden" role="alert"></p>
 
-      <details class="debug-panel" open>
+      <details class="debug-panel">
         <summary>Диагностика защищённого канала</summary>
         <div class="debug-meta">Канал: <code id="debug-url">ntfy.sh</code></div>
         <div class="debug-meta">Состояние: <strong id="debug-state">—</strong></div>
@@ -147,7 +146,12 @@
       </details>
     </section>
 
-    <footer>
+        <details class="contact-tools settings-panel">
+      <summary>Настройки</summary>
+      <label class="diagnostic-toggle"><input id="diagnostic-pilot" type="checkbox"> <span><strong>Симуляция микрофона</strong><small>Вместо физического микрофона отправляется тестовый тон 997 Гц. Удобно, если на устройстве одновременно запущены два браузера и микрофон занят другим приложением.</small></span></label>
+    </details>
+
+<footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
       <span id="app-version">Версия 2026.11.07-60</span>
