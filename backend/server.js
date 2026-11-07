@@ -7,6 +7,7 @@ const APP_ID = "6eba7e51-55f4-4230-b78b-70c6dd293054";
 const ALLOWED_ORIGIN = "https://aiparticles-jpg.github.io";
 const ALLOWED_EVENTS = new Set([
   "incoming_call",
+  "contact_request",
   "call_cancelled",
   "call_ignored",
   "call_ended"
@@ -121,6 +122,7 @@ function validateAndVerify(body, now) {
 function notificationText(event) {
   switch (event) {
     case "incoming_call": return "Вам поступает входящий голосовой вызов.";
+    case "contact_request": return "Пользователь хочет добавить вас в контакты VoiceLink.";
     case "call_cancelled": return "Входящий вызов отменён.";
     case "call_ignored": return "Вызов отклонён.";
     case "call_ended": return "Звонок завершён.";
