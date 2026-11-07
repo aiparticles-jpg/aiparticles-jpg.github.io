@@ -52,9 +52,6 @@
         </div>
       </div>
 
-      <button id="reply-contact-invite" class="button button-secondary reset-peer" type="button" disabled>Ответить на приглашение</button>
-      <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
-
       <details id="contact-tools" class="contact-tools">
         <summary>Добавить контакт — QR-код или ссылка</summary>
         <p class="hint">Отсканируйте QR-код собеседника или вставьте его ссылку. Публичный ключ, fingerprint и подпись проверяются до сохранения. Имя контакта останется только на этом устройстве.</p>
@@ -66,6 +63,8 @@
         <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
         <button id="import-contact" class="button button-primary" type="button">Проверить и сохранить контакт</button>
         <p id="qr-status" class="hint" aria-live="polite"></p>
+        <button id="reply-contact-invite" class="button button-secondary" type="button" disabled>Ответить на приглашение</button>
+        <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
       </details>
 
       <details id="invite-tools" class="contact-tools invite-tools">
@@ -131,10 +130,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.07-39</span>
+      <span id="app-version">Версия 2026.11.07-40</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=49"></script>
+  <script type="module" src="./js/app.js?v=50"></script>
 </body>
 </html>
