@@ -401,3 +401,10 @@ body.contact-screen-open{overflow:hidden}
 .contact-delete-content .hint{max-width:440px;margin:0 auto 24px;line-height:1.6}
 .contact-delete-content .button{width:100%;max-width:360px}
 .contact-delete-actions{display:grid;gap:10px;justify-items:center}
+
+/* Call controls are shown inside the selected contact screen. */
+.call-internal-controls{display:none!important}
+.contact-call-content{max-width:640px;margin:0 auto;display:grid;gap:14px}
+.contact-call-actions{display:grid;gap:9px}
+.contact-call-actions .button{width:100%}
+.contact-call-content .transport-row{margin-top:0}

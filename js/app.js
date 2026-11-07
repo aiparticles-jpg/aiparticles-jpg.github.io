@@ -83,6 +83,9 @@ function updateCallButtons(){
  els.hangup.classList.toggle("hidden",!active);
  els.hangup.disabled=!active||state.hangingUp;
  els.dismissIncoming.disabled=state.connecting;
+ els.contactScreenCall.disabled=active||state.connecting;
+ els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":"Позвонить");
+ els.contactScreenCall.title=state.incomingCall?"Ответить на звонок":"Позвонить";
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
  els.contactEditTools.classList.toggle("hidden",!selectedPeer);
  els.openContactEdit.classList.toggle("hidden",!selectedPeer);
@@ -165,7 +168,10 @@ function showIncomingCall({peer,peerId,expiresAt,trusted=true}){
  }
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
- state.incomingCall=true;els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");updateCallButtons();
+ state.incomingCall=true;els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");
+ const incomingItem=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(item=>item.dataset.peer===els.peer.value);
+ if(incomingItem)openContactScreen(incomingItem,true);
+ updateCallButtons();
  const peerLabel=els.peer.selectedOptions[0]?.textContent||"сохранённый контакт";
  const description=trusted
   ?"Вам звонит "+peerLabel+". Нажмите «Ответить», «Отклонить» или «Скрыть вызов».":"Запрос от "+peerLabel+". Устройство ещё не сопряжено: после ответа обязательно сверьте проверочный код.";
@@ -457,7 +463,7 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;state.answeringCall=false;state.hangingUp=false;updateCallButtons();
  if(remote)setStatus("Собеседник завершил звонок","Удалённая сторона отправила P2P-сообщение HANGUP; звонок завершён.","idle");
  else if(failure)setStatus("Соединение потеряно","WebRTC не восстановил связь за отведённое время. Звонок завершён.","error");
- else setStatus("Звонок завершён","Подписка на ваше имя остаётся активной. Чтобы позвонить снова, нажмите «Подключиться».","idle");
+ else setStatus("Звонок завершён","Подписка на ваше имя остаётся активной. Чтобы позвонить снова, нажмите кнопку звонка в карточке контакта.","idle");
  scheduleIcePrewarm("hangup",true);
 }
 function handleRemoteHangup(){
@@ -925,10 +931,12 @@ document.addEventListener("pointerdown",event=>{
 document.addEventListener("keydown",event=>{
  if(event.key==="Escape"&&els.headerMenu.open){els.headerMenu.open=false;els.headerMenu.querySelector("summary").focus()}
 });
-function openContactScreen(item){
+function openContactScreen(item,preserveSelection=false){
  const peer=item.dataset.peer;
- els.peer.value=peer;
- els.peer.dispatchEvent(new Event("change",{bubbles:true}));
+ if(!preserveSelection){
+  els.peer.value=peer;
+  els.peer.dispatchEvent(new Event("change",{bubbles:true}));
+ }
  const avatar=item.querySelector(".contact-avatar");
  const name=item.querySelector(".contact-list-name");
  els.contactScreenAvatar.textContent=avatar?.textContent||"?";

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=31">
+  <link rel="stylesheet" href="./css/style.css?v=32">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -69,7 +69,36 @@
           </div>
         </details>
       </header>
-      <div class="contact-screen-content"></div>
+      <div class="contact-screen-content">
+        <div class="contact-call-content">
+          <div class="status-card">
+            <div class="status-icon" id="status-icon" aria-hidden="true">⌁</div>
+            <div class="status-copy">
+              <strong id="status-title">Ожидаем комнату</strong>
+              <span id="status-text">Выберите контакт и нажмите кнопку звонка.</span>
+            </div>
+          </div>
+          <div class="transport-row">
+            <span>Транспорт</span>
+            <strong id="transport-label">Не выбран</strong>
+          </div>
+          <div class="contact-call-actions">
+            <button id="reject-incoming" class="button button-danger hidden" type="button">Отклонить</button>
+            <button id="dismiss-incoming" class="button button-secondary hidden" type="button">Скрыть вызов</button>
+            <button id="hangup" class="button button-danger hidden" type="button" disabled>Завершить звонок</button>
+          </div>
+          <button id="reply-contact-invite" class="button button-secondary hidden reply-contact-invite" type="button">Послать ответное приглашение</button>
+          <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
+          <div id="verify-panel" class="invite-panel hidden">
+            <div class="invite-title">Проверка собеседника — только при первом подключении</div>
+            <div id="verify-code" class="verification-code">--------</div>
+            <p class="hint">Сверьте код с собеседником по телефону. Подтверждайте только если коды полностью совпадают.</p>
+            <button id="confirm-peer" class="button button-primary" type="button">Код совпадает — подтвердить</button>
+          </div>
+          <audio id="remote-audio" autoplay playsinline></audio>
+          <p id="error-message" class="error-message hidden" role="alert"></p>
+        </div>
+      </div>
     </section>
 
     <section id="contact-edit-screen" class="contact-edit-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-edit-screen-title">
@@ -109,16 +138,10 @@
         <div><h2 id="room-title">Вызов</h2></div>
         <span class="lock-icon" aria-hidden="true">⌑</span>
       </div>
-      <label class="field-label" for="peer-contact">Выбранный контакт</label>
-      <div class="join-row">
-        <select id="peer-contact" autocomplete="off" aria-label="Выберите локальный контакт"><option value="">Загрузка контактов…</option></select>
-        <button id="connect" class="button button-secondary" type="button">Подключиться</button>
-        <button id="reject-incoming" class="button button-danger hidden" type="button">Отклонить</button>
-        <button id="dismiss-incoming" class="button button-secondary hidden" type="button">Скрыть вызов</button>
-        <button id="hangup" class="button button-danger hidden" type="button" disabled>Завершить звонок</button>
+      <div class="call-internal-controls hidden" aria-hidden="true">
+        <select id="peer-contact" autocomplete="off" aria-label="Выбранный контакт"><option value="">Загрузка контактов…</option></select>
+        <button id="connect" class="button button-secondary" type="button" tabindex="-1">Подключиться</button>
       </div>
-      <button id="reply-contact-invite" class="button button-secondary hidden reply-contact-invite" type="button">Послать ответное приглашение</button>
-      <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
 
       <div id="contact-request-panel" class="invite-panel hidden">
         <div class="invite-title">Запрос на добавление в контакты</div>
@@ -173,35 +196,14 @@
         <p id="invite-status" class="hint" aria-live="polite"></p>
       </details>
 
-      <div id="verify-panel" class="invite-panel hidden">
-        <div class="invite-title">Проверка собеседника — только при первом подключении</div>
-        <div id="verify-code" class="verification-code">--------</div>
-        <p class="hint">Сверьте код с собеседником по телефону. Подтверждайте только если коды полностью совпадают.</p>
-        <button id="confirm-peer" class="button button-primary" type="button">Код совпадает — подтвердить</button>
-      </div>
     </section>
 
     <details class="panel call-panel diagnostic-panel">
       <summary class="diagnostic-summary"><h2 id="call-title">Диагностика</h2><span id="connection-indicator" class="status-pill status-idle">Не подключено</span></summary>
       <div class="diagnostic-content">
-        <div class="status-card">
-          <div class="status-icon" id="status-icon" aria-hidden="true">⌁</div>
-          <div class="status-copy">
-            <strong id="status-title">Ожидаем комнату</strong>
-            <span id="status-text">Создайте комнату или введите приглашение друга.</span>
-          </div>
-        </div>
-
-        <div class="transport-row">
-          <span>Транспорт</span>
-          <strong id="transport-label">Не выбран</strong>
-        </div>
-
         <div class="actions">
           <button id="tcp-fallback" class="button button-secondary hidden" type="button" disabled>TCP-аудио недоступно</button>
         </div>
-        <audio id="remote-audio" autoplay playsinline></audio>
-        <p id="error-message" class="error-message hidden" role="alert"></p>
 
         <section class="event-log-panel" aria-labelledby="event-log-title">
           <div class="panel-heading"><h2 id="event-log-title">Журнал событий</h2></div>
@@ -215,10 +217,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.08-68</span>
+      <span id="app-version">Версия 2026.11.08-69</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=80"></script>
+  <script type="module" src="./js/app.js?v=81"></script>
 </body>
 </html>
