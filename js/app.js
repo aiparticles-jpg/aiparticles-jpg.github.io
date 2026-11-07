@@ -576,6 +576,14 @@ function updateInvitationPanel(){
  els.invitePermission.classList.toggle("hidden",granted);
  els.inviteContent.classList.toggle("hidden",!granted);
  if(granted&&!els.inviteUrl.value&&!els.createInvite.disabled)createContactInvitation();
+ if(granted&&els.inviteUrl.value&&!els.inviteQr.childElementCount){
+  (async()=>{
+   try{
+    await ensureQrCodeLibrary();
+    if(!els.inviteQr.childElementCount)new window.QRCode(els.inviteQr,{text:els.inviteUrl.value,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
+   }catch(error){els.inviteStatus.textContent="Ссылка доступна, но QR-код пока не удалось восстановить."}
+  })();
+ }
  if(!granted&&"Notification" in window&&Notification.permission==="denied"){
   els.inviteStatus.textContent="Уведомления уже запрещены. Разрешите их для VoiceLink в настройках сайта вашего браузера, затем закройте и снова откройте этот раздел.";
  }
