@@ -41,6 +41,20 @@
       <button id="delete-peer" class="button button-danger reset-peer" type="button" disabled>Удалить контакт</button>
       <p class="hint">Имя контакта хранится только на этом устройстве. В сети используется его анонимный криптографический идентификатор.</p>
 
+      <div id="contact-request-panel" class="invite-panel hidden">
+        <div class="invite-title">Запрос на добавление в контакты</div>
+        <p id="contact-request-text" class="hint"></p>
+        <label class="field-label" for="contact-request-name">Имя контакта на этом устройстве</label>
+        <input id="contact-request-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Боб">
+        <div class="actions">
+          <button id="accept-contact-request" class="button button-primary" type="button">Добавить контакт</button>
+          <button id="decline-contact-request" class="button button-secondary" type="button">Отклонить</button>
+        </div>
+      </div>
+
+      <button id="reply-contact-invite" class="button button-secondary reset-peer" type="button" disabled>Ответить на приглашение</button>
+      <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
+
       <details id="contact-tools" class="contact-tools">
         <summary>Добавить контакт — QR-код или ссылка</summary>
         <p class="hint">Отсканируйте QR-код собеседника или вставьте его ссылку. Публичный ключ, fingerprint и подпись проверяются до сохранения. Имя контакта останется только на этом устройстве.</p>
@@ -117,10 +131,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.07-38</span>
+      <span id="app-version">Версия 2026.11.07-39</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=48"></script>
+  <script type="module" src="./js/app.js?v=49"></script>
 </body>
 </html>
