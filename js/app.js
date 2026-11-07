@@ -483,10 +483,10 @@ async function copyContactInvitation(){
 async function sendContactRequest(){
  const peer=els.peer.value;
  if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите контакт, от которого вы получили приглашение.");return;}
- const contact=await getContact(peer);
- if(!contact?.push_subscription_id){showError("У контакта отсутствует OneSignal ID. Попросите его обновить приглашение.");return;}
  els.replyInvite.disabled=true;els.replyInviteStatus.textContent="Подготавливаем подписанный запрос…";clearError();
  try{
+  const contact=await getContact(peer);
+  if(!contact?.push_subscription_id)throw Error("У контакта отсутствует OneSignal ID. Попросите его обновить приглашение.");
   const subscriptionId=await enableOneSignalPush();
   const identity=await getCurrentSignalingIdentity();
   const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId};
