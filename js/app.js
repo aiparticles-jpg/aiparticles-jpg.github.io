@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
+ contactList:$("contacts-list"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -490,6 +490,7 @@ function renderContactList(contacts){
  els.contactList.replaceChildren();
  els.contactsCount.textContent=String(contacts.length);
  els.contactListEmpty.classList.toggle("hidden",contacts.length>0);
+ els.privacyHelp.classList.toggle("hidden",contacts.length>0);
  for(const contact of contacts){
   const item=document.createElement("button");
   item.type="button";item.className="contact-list-item";item.dataset.peer=contact.user_id;
@@ -899,6 +900,12 @@ els.pilot.addEventListener("change",async()=>{
  try{localStorage.setItem("vl.simulateMicrophone.v1",els.pilot.checked?"1":"0")}catch(error){debug("Не удалось сохранить настройку симуляции микрофона: "+error.message)}
  debug("Симуляция микрофона "+(els.pilot.checked?"включена":"выключена")+". Настройка применяется при следующем подключении.");
  if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
+});
+document.addEventListener("pointerdown",event=>{
+ if(els.headerMenu.open&&!els.headerMenu.contains(event.target))els.headerMenu.open=false;
+});
+document.addEventListener("keydown",event=>{
+ if(event.key==="Escape"&&els.headerMenu.open){els.headerMenu.open=false;els.headerMenu.querySelector("summary").focus()}
 });
 els.contactList.addEventListener("click",event=>{
  const item=event.target.closest(".contact-list-item[data-peer]");
