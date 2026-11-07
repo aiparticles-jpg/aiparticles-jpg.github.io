@@ -347,3 +347,46 @@ body.contact-screen-open{overflow:hidden}
  .contact-screen-avatar{flex-basis:38px;width:38px;height:38px}
  .contact-screen-name{font-size:15px}
 }
+
+
+/* Contact editing is a second full-screen layer above the contact view */
+.contact-screen-menu-content{
+ position:absolute;right:0;top:calc(100% + 8px);width:210px;
+ padding:6px;border:1px solid var(--line);border-radius:12px;
+ background:#172438;box-shadow:0 12px 32px rgba(0,0,0,.35);
+}
+.contact-screen-menu-item{
+ display:block;width:100%;padding:12px;border:0;border-radius:8px;
+ color:var(--text);background:transparent;text-align:left;
+ font:600 13px 'DM Sans',system-ui,sans-serif;cursor:pointer;
+}
+.contact-screen-menu-item:hover{background:rgba(139,224,194,.1)}
+.contact-edit-screen{
+ position:fixed;inset:0;z-index:210;width:100%;height:100%;height:100dvh;
+ display:flex;flex-direction:column;background:var(--bg);
+}
+.contact-edit-screen.hidden{display:none}
+.contact-edit-screen-header{
+ display:flex;align-items:center;gap:12px;flex:0 0 auto;
+ min-height:64px;padding:8px 14px;
+ padding-top:max(8px,env(safe-area-inset-top));
+ border-bottom:1px solid var(--line);background:rgba(11,18,32,.98);
+}
+.contact-edit-screen-title{
+ flex:1;margin:0;font:700 16px Manrope,sans-serif;letter-spacing:-.3px;
+}
+.contact-edit-screen-content{flex:1;min-height:0;overflow:auto;padding:22px 18px}
+.contact-edit-tools{max-width:640px;margin:0 auto}
+.contact-edit-tools .field-label{display:block;margin:0 0 8px}
+.contact-edit-tools input{
+ display:block;width:100%;margin:0 0 16px;padding:13px;
+ color:var(--text);background:#0c1727;border:1px solid var(--line);
+ border-radius:10px;font:inherit;
+}
+.contact-edit-tools .button{margin-top:10px}
+.contact-edit-tools .button-danger{display:block;width:100%}
+@media(max-width:520px){
+ .contact-edit-screen-header{min-height:58px;gap:9px;padding-left:10px;padding-right:10px}
+ .contact-edit-screen-title{font-size:15px}
+ .contact-edit-screen-content{padding:18px 14px}
+}

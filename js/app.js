@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
+ contactList:$("contacts-list"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -85,6 +85,7 @@ function updateCallButtons(){
  els.dismissIncoming.disabled=state.connecting;
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
  els.contactEditTools.classList.toggle("hidden",!selectedPeer);
+ els.openContactEdit.classList.toggle("hidden",!selectedPeer);
  els.deletePeer.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
  els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim()||els.editContactName.value.trim()===originalEditContactName;
  const trustedPeer=selectedPeer&&trustedContactIds.has(els.peer.value);
@@ -748,6 +749,15 @@ async function saveSelectedContactName(){
   if(!contact)throw Error("Контакт не найден в локальной адресной книге.");
   await saveContact({...contact,name});
   await refreshContactOptions(peer);
+  els.contactScreenName.textContent=name;
+  const updatedItem=Array.from(els.contactList.querySelectorAll(".contact-list-item")).find(item=>item.dataset.peer===peer);
+  if(updatedItem){
+   const updatedAvatar=updatedItem.querySelector(".contact-avatar");
+   if(updatedAvatar){
+    els.contactScreenAvatar.textContent=updatedAvatar.textContent;
+    els.contactScreenAvatar.style.backgroundColor=updatedAvatar.style.backgroundColor||"var(--accent)";
+   }
+  }
   clearError();
   setStatus("Имя контакта сохранено","Новое имя хранится только на этом устройстве.","idle");
   debug("Локальное имя контакта изменено на: "+name+".");
@@ -774,6 +784,7 @@ async function deleteSelectedContact(){
   clearSentContactRequest(peer);
   if(state.secure?.peer===peer)state.secure.setPeer("");
   await refreshContactOptions();
+  closeContactScreen();
   clearError();
   debug("Контакт "+name+" и все его сохранённые данные удалены из локальной адресной книги.");
   setStatus("Контакт удалён","Чтобы снова связаться, нужно будет заново обменяться приглашениями.","idle");
@@ -925,7 +936,19 @@ function openContactScreen(item){
  document.body.classList.add("contact-screen-open");
  els.contactScreenBack.focus();
 }
+function closeContactEditScreen(){
+ els.contactEditScreen.classList.add("hidden");
+ els.contactScreenMenu.open=false;
+ els.contactScreenBack.focus();
+}
+function openContactEditScreen(){
+ if(els.openContactEdit.classList.contains("hidden"))return;
+ els.contactScreenMenu.open=false;
+ els.contactEditScreen.classList.remove("hidden");
+ els.editContactName.focus();
+}
 function closeContactScreen(){
+ if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
  els.contactScreen.classList.add("hidden");
  document.body.classList.remove("contact-screen-open");
  els.contactScreenMenu.open=false;
@@ -937,8 +960,12 @@ els.contactList.addEventListener("click",event=>{
 });
 els.contactScreenBack.addEventListener("click",closeContactScreen);
 els.contactScreenCall.addEventListener("click",()=>els.connect.click());
+els.openContactEdit.addEventListener("click",openContactEditScreen);
+els.contactEditScreenBack.addEventListener("click",closeContactEditScreen);
 document.addEventListener("keydown",event=>{
- if(event.key==="Escape"&&!els.contactScreen.classList.contains("hidden"))closeContactScreen();
+ if(event.key!=="Escape")return;
+ if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
+ else if(!els.contactScreen.classList.contains("hidden"))closeContactScreen();
 });
 els.peer.addEventListener("change",()=>{
  els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
