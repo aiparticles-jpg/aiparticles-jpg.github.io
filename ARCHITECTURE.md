@@ -449,3 +449,8 @@ The main screen will show the 10 most recent call attempts. Record every call at
 The user may clear the entire local call history. Individual call-history entries cannot be deleted separately. The history remains local in IndexedDB; clearing it removes the complete local call-history list. Before clearing, show a warning/confirmation dialog. Delete the complete history from IndexedDB only after the user explicitly confirms.
 
 - After the history is cleared, simply show the history list with no entries; do not add a separate empty-state message.
+
+
+## Invitation creation requires push permission
+
+The single “Поделиться приглашением” action also represents the user's consent to receive incoming-call push notifications. A signed invitation is created only after browser notification permission is granted and OneSignal provides a non-empty Subscription ID. If the user denies the permission, no new invitation is created. If permission is already denied, the app does not repeatedly request it; it directs the user to the browser's site settings. Existing invitation package fields and signature format remain unchanged.
