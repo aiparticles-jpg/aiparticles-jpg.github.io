@@ -40,6 +40,7 @@ function updateCallButtons(){
  els.hangup.disabled=!active||state.hangingUp;
  els.dismissIncoming.disabled=state.connecting;
  els.deletePeer.disabled=!NtfySecureSignaling.validUserId(els.peer.value)||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
+ els.replyInvite.disabled=!NtfySecureSignaling.validUserId(els.peer.value)||els.peer.value===state.me||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging(){
