@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=28">
+  <link rel="stylesheet" href="./css/style.css?v=29">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -64,7 +64,8 @@
         <details id="contact-screen-menu" class="contact-screen-menu">
           <summary aria-label="Дополнительные действия" title="Дополнительные действия">⋮</summary>
           <div class="contact-screen-menu-content">
-            <button id="open-contact-edit" class="contact-screen-menu-item" type="button">Редактировать контакт</button>
+            <button id="open-contact-delete" class="contact-screen-menu-item contact-screen-menu-item-danger" type="button"><span class="contact-menu-icon" aria-hidden="true">▤</span>Удалить контакт</button>
+            <button id="open-contact-edit" class="contact-screen-menu-item" type="button"><span class="contact-menu-icon" aria-hidden="true">✎</span>Редактировать контакт</button>
           </div>
         </details>
       </header>
@@ -81,7 +82,21 @@
           <label class="field-label" for="edit-contact-name">Имя контакта на этом устройстве</label>
           <input id="edit-contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Имя контакта">
           <button id="save-contact-name" class="button button-primary" type="button" disabled>Сохранить имя</button>
-          <button id="delete-peer" class="button button-danger" type="button" disabled>Удалить контакт</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact-delete-screen" class="contact-edit-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-delete-screen-title">
+      <header class="contact-edit-screen-header">
+        <button id="contact-delete-screen-back" class="contact-screen-back" type="button" aria-label="Назад"><span aria-hidden="true">←</span></button>
+        <h2 id="contact-delete-screen-title" class="contact-edit-screen-title">Удалить контакт</h2>
+      </header>
+      <div class="contact-edit-screen-content">
+        <div class="contact-delete-content">
+          <div class="contact-delete-icon" aria-hidden="true">▤</div>
+          <h3 id="contact-delete-name" class="contact-delete-name"></h3>
+          <p class="hint">Контакт и все сохранённые данные о нём будут удалены с этого устройства. Чтобы снова связаться, придётся заново обменяться приглашениями.</p>
+          <button id="confirm-delete-contact" class="button button-danger" type="button">Удалить контакт</button>
         </div>
       </div>
     </section>
@@ -197,10 +212,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.08-65</span>
+      <span id="app-version">Версия 2026.11.08-66</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=77"></script>
+  <script type="module" src="./js/app.js?v=78"></script>
 </body>
 </html>

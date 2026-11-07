@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
+ contactList:$("contacts-list"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -86,7 +86,8 @@ function updateCallButtons(){
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
  els.contactEditTools.classList.toggle("hidden",!selectedPeer);
  els.openContactEdit.classList.toggle("hidden",!selectedPeer);
- els.deletePeer.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
+ els.openContactDelete.classList.toggle("hidden",!selectedPeer);
+ els.confirmDeleteContact.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
  els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim()||els.editContactName.value.trim()===originalEditContactName;
  const trustedPeer=selectedPeer&&trustedContactIds.has(els.peer.value);
  const exchangeCompleted=selectedPeer&&completedContactRequests.has(els.peer.value);
@@ -777,8 +778,7 @@ async function deleteSelectedContact(){
   return;
  }
  const name=els.peer.selectedOptions[0]?.textContent||"контакт";
- if(!window.confirm("Удалить контакт «"+name+"»? Чтобы снова связаться, вам придётся заново обменяться приглашениями."))return;
- els.deletePeer.disabled=true;
+ els.confirmDeleteContact.disabled=true;
  try{
   await deleteContact(peer);
   clearSentContactRequest(peer);
@@ -790,6 +790,7 @@ async function deleteSelectedContact(){
   setStatus("Контакт удалён","Чтобы снова связаться, нужно будет заново обменяться приглашениями.","idle");
  }catch(error){
   showError("Не удалось удалить контакт: "+(error.message||String(error)));
+  closeContactDeleteScreen();
  }finally{updateCallButtons()}
 }
 
@@ -947,8 +948,21 @@ function openContactEditScreen(){
  els.contactEditScreen.classList.remove("hidden");
  els.editContactName.focus();
 }
+function closeContactDeleteScreen(){
+ els.contactDeleteScreen.classList.add("hidden");
+ els.contactScreenMenu.open=false;
+ els.contactScreenBack.focus();
+}
+function openContactDeleteScreen(){
+ if(els.openContactDelete.classList.contains("hidden"))return;
+ els.contactScreenMenu.open=false;
+ els.contactDeleteName.textContent=els.contactScreenName.textContent||"Контакт";
+ els.contactDeleteScreen.classList.remove("hidden");
+ els.contactDeleteScreenBack.focus();
+}
 function closeContactScreen(){
- if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
+ els.contactEditScreen.classList.add("hidden");
+ els.contactDeleteScreen.classList.add("hidden");
  els.contactScreen.classList.add("hidden");
  document.body.classList.remove("contact-screen-open");
  els.contactScreenMenu.open=false;
@@ -961,10 +975,13 @@ els.contactList.addEventListener("click",event=>{
 els.contactScreenBack.addEventListener("click",closeContactScreen);
 els.contactScreenCall.addEventListener("click",()=>els.connect.click());
 els.openContactEdit.addEventListener("click",openContactEditScreen);
+els.openContactDelete.addEventListener("click",openContactDeleteScreen);
 els.contactEditScreenBack.addEventListener("click",closeContactEditScreen);
+els.contactDeleteScreenBack.addEventListener("click",closeContactDeleteScreen);
 document.addEventListener("keydown",event=>{
  if(event.key!=="Escape")return;
- if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
+ if(!els.contactDeleteScreen.classList.contains("hidden"))closeContactDeleteScreen();
+ else if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
  else if(!els.contactScreen.classList.contains("hidden"))closeContactScreen();
 });
 els.peer.addEventListener("change",()=>{
@@ -992,7 +1009,7 @@ els.confirm.addEventListener("click",async()=>{
  catch(e){showError(e.message);els.confirm.disabled=false}
 });
 els.hangup.addEventListener("click",hangup);
-els.deletePeer.addEventListener("click",deleteSelectedContact);
+els.confirmDeleteContact.addEventListener("click",deleteSelectedContact);
 els.saveContactName.addEventListener("click",saveSelectedContactName);
 els.editContactName.addEventListener("input",updateCallButtons);
 els.tcp.classList.add("hidden");
