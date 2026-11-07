@@ -3,7 +3,7 @@ import { NtfySecureSignaling } from "./ntfy-signaling.js?v=21";
 import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
 import { verifyContactPackage } from "./contact-exchange.js";
-import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js";
+import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=2";
 import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
@@ -430,7 +430,8 @@ async function ensureQrCodeLibrary(){
 }
 async function createContactInvitation(){
  els.createInvite.disabled=true;
- els.qrStatus.textContent="Подключаем push-уведомления OneSignal…";
+ els.qrStatus.textContent="Проверяем разрешение на push-уведомления…";
+ clearError();
  try{
   const subscriptionId=await enableOneSignalPush();
   const identity=await getCurrentSignalingIdentity();
@@ -451,16 +452,17 @@ async function createContactInvitation(){
   try{
    await ensureQrCodeLibrary();
    new window.QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-   els.qrStatus.textContent="Приглашение создано и подписано. Передайте ссылку или QR-код собеседнику.";
+   els.qrStatus.textContent="Приглашение создано. Передайте ссылку или QR-код собеседнику.";
   }catch(qrError){
-   els.qrStatus.textContent="Ссылка создана и подписана. QR-код пока недоступен: "+(qrError.message||String(qrError));
+   els.qrStatus.textContent="Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError));
   }
   els.inviteUrl.focus();
   els.inviteUrl.select();
-  debug("Создано подписанное приглашение. OneSignal Subscription ID получен.");
+  debug("Создано подписанное приглашение с действующим OneSignal Subscription ID.");
  }catch(error){
-  els.qrStatus.textContent="Не удалось создать приглашение: "+(error.message||String(error));
-  showError(error.message||String(error));
+  const message=error.message||String(error);
+  els.qrStatus.textContent="Приглашение не создано. "+message;
+  showError(message);
  }finally{els.createInvite.disabled=false}
 }
 async function copyContactInvitation(){
