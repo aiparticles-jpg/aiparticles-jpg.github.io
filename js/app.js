@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=16";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=20";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=21";
 import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
 import { verifyContactPackage } from "./contact-exchange.js";
@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
+ peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),resetPeer:$("reset-peer"),verify:$("verify-panel"),
  verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
@@ -98,10 +98,11 @@ async function startRinging(kind){
 }
 function clearIncomingUi(){
  if(state.incomingTimer){clearTimeout(state.incomingTimer);state.incomingTimer=null}
- state.incomingCall=false;els.dismissIncoming.classList.add("hidden");updateCallButtons();
+ state.incomingCall=false;els.dismissIncoming.classList.add("hidden");els.rejectIncoming.classList.add("hidden");updateCallButtons();
 }
-function showIncomingCall({peer,expiresAt,trusted=true}){
+function showIncomingCall({peer,peerId,expiresAt,trusted=true}){
  if(state.connecting||state.callStarted||state.incomingCall)return;
+ if(peerId&&NtfySecureSignaling.validUserId(peerId))els.peer.value=peerId;
  if(state.outgoingCall){
   if(state.secure?.role!=="A"||state.secure?.hello)return;
   stopOutgoingCall();
@@ -109,10 +110,10 @@ function showIncomingCall({peer,expiresAt,trusted=true}){
  }
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
- state.incomingCall=true;els.dismissIncoming.classList.remove("hidden");updateCallButtons();
+ state.incomingCall=true;els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");updateCallButtons();
  const peerLabel=els.peer.selectedOptions[0]?.textContent||"сохранённый контакт";
  const description=trusted
-  ?"Вам звонит "+peerLabel+". Нажмите «Ответить» или «Скрыть вызов».":"Запрос от "+peerLabel+". Устройство ещё не сопряжено: после ответа обязательно сверьте проверочный код.";
+  ?"Вам звонит "+peerLabel+". Нажмите «Ответить», «Отклонить» или «Скрыть вызов».":"Запрос от "+peerLabel+". Устройство ещё не сопряжено: после ответа обязательно сверьте проверочный код.";
  setStatus(trusted?"Входящий вызов":"Новый запрос на сопряжение",description,"wait");
  debug((trusted?"Входящий вызов от подтверждённого устройства ":"Новый запрос от непроверенного устройства ")+peerLabel+".");
  if(trusted)startRinging("incoming");
@@ -130,6 +131,15 @@ function startOutgoingCall({peer,expiresAt}){
  startRinging("outgoing");
  state.callTimer=setTimeout(()=>finishNoAnswer(),remaining);
 }
+async function rejectIncoming(){
+ if(!state.incomingCall)return;
+ try{
+  await state.secure?.rejectIncoming();
+  clearIncomingUi();stopRinging();
+  setStatus("Вызов отклонён","Вызывающий получил подписанное уведомление об отказе.","idle");
+  debug("Входящий вызов явно отклонён; подписанное сообщение отправлено через ntfy.");
+ }catch(error){showError("Не удалось отправить отказ: "+(error.message||String(error)));}
+}
 async function dismissIncoming(timedOut=false){
  if(!state.incomingCall)return;
  clearIncomingUi();stopRinging();state.secure?.dismissIncoming();
@@ -140,6 +150,15 @@ async function dismissIncoming(timedOut=false){
   setStatus("Вызов скрыт","Вызывающий не уведомлён и продолжит ожидать до своего тайм-аута.","idle");
   debug("Пользователь скрыл входящий вызов локально; POST не отправлялся.");
  }
+}
+async function finishRejectedCall(info){
+ if(!state.outgoingCall)return;
+ stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
+ if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
+ els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";els.verify.classList.add("hidden");
+ state.callStarted=false;state.peerPresent=false;updateCallButtons();
+ setStatus("Вызов отклонён",(info.peer||"Контакт")+" отклонил входящий вызов.","idle");
+ debug("Получен подписанный отказ от вызова "+info.sid+".");
 }
 async function finishNoAnswer(){
  if(!state.outgoingCall)return;
@@ -198,6 +217,7 @@ function createSecureSignaling(me,peer=""){
   onCancelIncoming:info=>{
    if(state.incomingCall){clearIncomingUi();stopRinging();state.secure?.dismissIncoming();setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");}
   },
+  onRejectOutgoing:info=>{finishRejectedCall(info).catch(error=>showError(error.message||String(error)))},
   onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(els.peer.value,"incoming_call",info.callId,info.expiresAt).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
   onVerify:({sas,peer:name})=>{stopOutgoingCall();clearIncomingUi();stopRinging();els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+(els.peer.selectedOptions[0]?.textContent||"контактом")+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
   onReady:info=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady(info).catch(showError)},
@@ -526,6 +546,7 @@ els.scanQr.addEventListener("click",startQrScan);
 window.addEventListener("pagehide",()=>{if(qrStream)for(const track of qrStream.getTracks())track.stop()});
 els.connect.addEventListener("click",connect);
 els.dismissIncoming.addEventListener("click",()=>dismissIncoming(false));
+els.rejectIncoming.addEventListener("click",rejectIncoming);
 document.addEventListener("pointerdown",unlockRingingAudio,{passive:true});
 document.addEventListener("keydown",unlockRingingAudio);
 els.pilot.addEventListener("change",async()=>{
