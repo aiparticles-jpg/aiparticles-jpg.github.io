@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=16";
+import { WebRtcAudio } from "./webrtc.js?v=17";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=21";
 import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
@@ -550,7 +550,8 @@ els.rejectIncoming.addEventListener("click",rejectIncoming);
 document.addEventListener("pointerdown",unlockRingingAudio,{passive:true});
 document.addEventListener("keydown",unlockRingingAudio);
 els.pilot.addEventListener("change",async()=>{
- debug("Диагностический pilot-сигнал "+(els.pilot.checked?"включён":"выключен")+". Настройка применяется при следующем подключении.");
+ try{localStorage.setItem("vl.simulateMicrophone.v1",els.pilot.checked?"1":"0")}catch(error){debug("Не удалось сохранить настройку симуляции микрофона: "+error.message)}
+ debug("Симуляция микрофона "+(els.pilot.checked?"включена":"выключена")+". Настройка применяется при следующем подключении.");
  if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
 els.peer.addEventListener("change",()=>{
@@ -587,7 +588,7 @@ els.resetPeer.addEventListener("click",async()=>{
  setStatus("Сопряжение сброшено","Подключитесь заново и сравните проверочные коды на обоих устройствах.","idle");
 });
 els.tcp.classList.add("hidden");
-els.pilot.checked=false;
+try{els.pilot.checked=localStorage.getItem("vl.simulateMicrophone.v1")==="1"}catch{els.pilot.checked=false}
 els.dismissIncoming.classList.add("hidden");
 async function initializeApp(){
  try{
@@ -625,7 +626,7 @@ async function initializeApp(){
  }
 }
 els.tcp.classList.add("hidden");
-els.pilot.checked=false;
+try{els.pilot.checked=localStorage.getItem("vl.simulateMicrophone.v1")==="1"}catch{els.pilot.checked=false}
 els.dismissIncoming.classList.add("hidden");
 initializeApp();
 scheduleIcePrewarm();
