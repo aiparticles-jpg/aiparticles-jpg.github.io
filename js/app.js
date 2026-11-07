@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=23";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=24";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
 import { verifyContactPackage } from "./contact-exchange.js?v=2";
@@ -18,6 +18,23 @@ const els={
 };
 let qrStream=null,qrScanActive=false;
 const CONTACT_REQUESTS_KEY="vl.contactRequestsSent.v1";
+const CONTACT_REQUESTS_CONFIRMED_KEY="vl.contactRequestsConfirmed.v1";
+function loadConfirmedContactRequests(){
+ try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_CONFIRMED_KEY)||"[]");return Array.isArray(value)?value.filter(id=>NtfySecureSignaling.validUserId(id)):[]}
+ catch{return []}
+}
+const completedContactRequests=new Set(loadConfirmedContactRequests());
+function persistConfirmedContactRequests(){
+ try{localStorage.setItem(CONTACT_REQUESTS_CONFIRMED_KEY,JSON.stringify([...completedContactRequests]))}
+ catch(error){debug("Не удалось сохранить подтверждение обмена приглашениями: "+(error.message||String(error)))}
+}
+function markContactRequestReceived(userId){
+ if(!NtfySecureSignaling.validUserId(userId)||completedContactRequests.has(userId))return;
+ completedContactRequests.add(userId);
+ persistConfirmedContactRequests();
+ if(els.peer.value===userId)updateCallButtons();
+ debug("Получено корректно подписанное сообщение от контакта; обмен приглашениями подтверждён.");
+}
 function loadSentContactRequests(){
  try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_KEY)||"{}");return value&&typeof value==="object"&&!Array.isArray(value)?value:{}}
  catch{return {}}
@@ -33,9 +50,10 @@ function markContactRequestSent(userId){
  persistSentContactRequests();
 }
 function clearSentContactRequest(userId){
- if(!Object.prototype.hasOwnProperty.call(sentContactRequests,userId))return;
- delete sentContactRequests[userId];
- persistSentContactRequests();
+ let changed=false;
+ if(Object.prototype.hasOwnProperty.call(sentContactRequests,userId)){delete sentContactRequests[userId];changed=true}
+ if(completedContactRequests.delete(userId)){persistConfirmedContactRequests();changed=true}
+ if(changed)persistSentContactRequests();
 }
 function updateReplyInviteStatus(){
  const peer=els.peer.value;
@@ -69,7 +87,8 @@ function updateCallButtons(){
  els.deletePeer.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
  els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim();
  const trustedPeer=selectedPeer&&trustedContactIds.has(els.peer.value);
- els.replyInvite.classList.toggle("hidden",!selectedPeer||trustedPeer);
+ const exchangeCompleted=selectedPeer&&completedContactRequests.has(els.peer.value);
+ els.replyInvite.classList.toggle("hidden",!selectedPeer||trustedPeer||exchangeCompleted);
  els.replyInvite.textContent=sentContactRequests[els.peer.value]?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
  els.replyInvite.disabled=!selectedPeer||trustedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
 }
@@ -248,6 +267,7 @@ function createSecureSignaling(me,peer=""){
   onStatus:m=>{els.statusText.textContent=m;debug(m)},
   onIncoming:showIncomingCall,
   onContactRequest:handleIncomingContactRequest,
+  onPeerMessage:markContactRequestReceived,
   onCancelIncoming:info=>{
    if(state.incomingCall){clearIncomingUi();stopRinging();state.secure?.dismissIncoming();setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");}
   },
