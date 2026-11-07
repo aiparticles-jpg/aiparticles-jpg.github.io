@@ -783,6 +783,7 @@ els.pilot.addEventListener("change",async()=>{
  if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
 els.peer.addEventListener("change",()=>{
+ els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
  updateReplyInviteStatus();
  updateCallButtons();
  const peer=els.peer.value;
