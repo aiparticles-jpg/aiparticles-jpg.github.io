@@ -755,7 +755,6 @@ async function initializeApp(){
   }catch(error){debug("Не удалось очистить устаревшие локальные ключи: "+(error.message||String(error)));}
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
-  initializeOneSignal().then(()=>debug("OneSignal Web Push SDK инициализирован.")).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
   await refreshContactOptions();
   const savedInvitation=await getMyInvitation();
   if(savedInvitation){
@@ -776,6 +775,10 @@ async function initializeApp(){
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
   await subscribeForUser(state.me);
+  initializeOneSignal().then(async()=>{
+   debug("OneSignal Web Push SDK инициализирован.");
+   if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
+  }).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
  }catch(error){
   showError("Не удалось инициализировать приложение: "+(error.message||String(error)));
   setStatus("Ошибка локального хранилища","Проверьте поддержку IndexedDB и Web Crypto.","error");
