@@ -179,7 +179,7 @@ export class NtfySecureSignaling {
      typeof p.request_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.request_id)||!p.identity||!p.contact_package)return;
   const expiresAt=Number(p.expires_at);
   if(!Number.isFinite(expiresAt)||Date.now()>expiresAt||expiresAt>Date.now()+10*60*1000)return;
-  const contact=await verifyContactPackage(p.contact_package);
+  const contact=await verifyContactPackage(JSON.stringify(p.contact_package));
   if(contact.user_id!==p.from)throw Error("Идентификатор отправителя не совпадает с пакетом контакта.");
   const raw=un64(contact.public_key);
   const publicKey=await crypto.subtle.importKey("raw",raw,{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
