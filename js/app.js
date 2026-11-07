@@ -783,8 +783,9 @@ async function startQrScan(){
     const codes=await detector.detect(els.qrVideo);
     if(codes.length&&codes[0].rawValue){
      els.contactPackage.value=codes[0].rawValue;
+     els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
      await stopQrScan();
-     els.qrStatus.textContent="QR-код считан. Укажите локальное имя контакта и нажмите «Проверить и сохранить».";
+     els.qrStatus.textContent="QR-код считан. Приглашение добавлено в поле. Укажите имя контакта.";
      els.contactName.focus();
      return;
     }
