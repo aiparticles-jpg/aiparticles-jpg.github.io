@@ -66,6 +66,7 @@ input::placeholder { color:#60738d; }
 .invite-panel { margin-top:20px; padding:16px; border-radius:13px; border:1px solid rgba(139,224,194,.2); background:rgba(139,224,194,.045); }
 .invite-title { color:var(--accent); font-size:13px; font-weight:700; margin-bottom:12px; }
 .hint { color:var(--muted); font-size:11px; line-height:1.55; margin:12px 0 0; }
+.hint-error { color:#ffabb0; }
 .call-panel { margin-top:16px; }
 .status-pill { border-radius:30px; padding:6px 10px; font-size:10px; font-weight:700; white-space:nowrap; }
 .status-idle { color:#aab8cb; background:#26364d; }
