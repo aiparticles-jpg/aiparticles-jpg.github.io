@@ -28,7 +28,7 @@ export class WebRtcAudio {
           }
         }
       } catch (error) {
-        this.onState("AUDIO PILOT: AudioContext init error: " + error.message);
+        this.onState("MIC SIMULATION: AudioContext init error: " + error.message);
       }
     }
     this.pc = null;
@@ -52,23 +52,37 @@ export class WebRtcAudio {
 
   async ensureMedia() {
     if (!this.localStream) {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        },
-        video: false
-      });
+      if (this.diagnosticPilot) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) throw new Error("Web Audio API недоступен для симуляции микрофона.");
+        if (!this.audioContext) this.audioContext = new AudioContextClass({ latencyHint: "interactive" });
+        if (this.audioContextResumePromise) await this.audioContextResumePromise;
+        if (this.audioContext.state === "suspended") await this.audioContext.resume();
+        const destination = this.audioContext.createMediaStreamDestination();
+        const oscillator = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = 997;
+        gain.gain.value = 0.025;
+        oscillator.connect(gain);
+        gain.connect(destination);
+        oscillator.start();
+        this.pilotOscillator = oscillator;
+        this.localStream = destination.stream;
+        this.outgoingStream = this.localStream;
+        this.onState("Симуляция микрофона: генерируется тестовый тон 997 Hz; физический микрофон не используется.");
+      } else {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: false
+        });
+        this.onState("Физический микрофон: поток получен.");
+      }
       const track = this.localStream.getAudioTracks()[0];
       if (track) {
         // Caller stays muted until the answerer confirms acceptance over DataChannel.
         track.enabled = this.micEnabled;
-        const settings = track.getSettings ? track.getSettings() : {};
-        this.onState("Микрофон: readyState=" + track.readyState +
-          "; enabled=" + track.enabled +
-          "; muted=" + track.muted +
-          (settings.sampleRate ? "; sampleRate=" + settings.sampleRate : ""));
+        this.onState("Аудиотрек: readyState=" + track.readyState + "; enabled=" + track.enabled);
       }
     }
     return this.localStream;
@@ -90,48 +104,9 @@ export class WebRtcAudio {
   }
 
   async prepareOutgoingStream() {
-    const stream = await this.ensureMedia();
-    if (!this.diagnosticPilot) return stream;
-    if (this.outgoingStream) return this.outgoingStream;
-
-    try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) throw new Error("Web Audio API недоступен");
-      if (!this.audioContext) this.audioContext = new AudioContextClass({ latencyHint: "interactive" });
-      if (this.audioContextResumePromise) await this.audioContextResumePromise;
-      if (this.audioContext.state === "suspended") await this.audioContext.resume();
-
-      const destination = this.audioContext.createMediaStreamDestination();
-      const micSource = this.audioContext.createMediaStreamSource(stream);
-      const micGain = this.audioContext.createGain();
-      micGain.gain.value = 1;
-      micSource.connect(micGain);
-      micGain.connect(destination);
-
-      const oscillator = this.audioContext.createOscillator();
-      const pilotGain = this.audioContext.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.value = 997;
-      // A low-level but deliberately detectable pilot. It is audible in diagnostic mode.
-      pilotGain.gain.value = 0.025;
-      oscillator.connect(pilotGain);
-      pilotGain.connect(destination);
-      oscillator.start();
-
-      this.pilotOscillator = oscillator;
-      this.outgoingStream = destination.stream;
-      this.onState("AUDIO PILOT: добавлен тон 997 Hz; уровень −32 dBFS; исходный микрофон смешан без изменения усиления.");
-      return this.outgoingStream;
-    } catch (error) {
-      this.onState("AUDIO PILOT: не удалось создать тестовый тракт (" + error.message + "); используем исходный микрофон.");
-      this.diagnosticPilot = false;
-      if (this.audioContext) {
-        try { await this.audioContext.close(); } catch {}
-        this.audioContext = null;
-      }
-      this.outgoingStream = null;
-      return stream;
-    }
+    // In simulation mode ensureMedia already returns a generated audio stream.
+    // No physical microphone is opened and no additional track is mixed in.
+    return this.ensureMedia();
   }
 
   attachRemoteMonitor(stream) {
@@ -149,9 +124,9 @@ export class WebRtcAudio {
       source.connect(analyser);
       this.remoteAnalyser = analyser;
       this.remoteAnalyserBuffer = new Float32Array(analyser.frequencyBinCount);
-      this.onState("AUDIO PILOT: анализатор подключён к входящему аудиопотоку.");
+      this.onState("MIC SIMULATION: анализатор подключён к входящему аудиопотоку.");
     } catch (error) {
-      this.onState("AUDIO PILOT: ошибка анализатора: " + error.message);
+      this.onState("MIC SIMULATION: ошибка анализатора: " + error.message);
     }
   }
 
