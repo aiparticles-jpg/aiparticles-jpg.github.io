@@ -613,8 +613,13 @@ async function deleteSelectedContact(){
  }finally{updateCallButtons()}
 }
 
+let importingContact=false;
+function updateImportContactButton(){
+ els.importContact.disabled=importingContact||!els.contactPackage.value.trim()||!els.contactName.value.trim();
+}
 async function importContactFromInput(){
- els.importContact.disabled=true;
+ importingContact=true;
+ updateImportContactButton();
  try{
   const verified=await verifyContactPackage(els.contactPackage.value);
   const name=els.contactName.value.trim();
@@ -634,7 +639,7 @@ async function importContactFromInput(){
  }catch(error){
   showError(error.message||String(error));
   els.qrStatus.textContent="Не удалось импортировать контакт.";
- }finally{els.importContact.disabled=false}
+ }finally{importingContact=false;updateImportContactButton()}
 }
 async function stopQrScan(){
  qrScanActive=false;
@@ -679,7 +684,10 @@ async function startQrScan(){
  }
 }
 
+els.contactPackage.addEventListener("input",updateImportContactButton);
+els.contactName.addEventListener("input",updateImportContactButton);
 els.importContact.addEventListener("click",importContactFromInput);
+updateImportContactButton();
 els.replyInvite.addEventListener("click",sendContactRequest);
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
