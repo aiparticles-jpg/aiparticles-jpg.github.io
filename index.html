@@ -45,7 +45,7 @@
           <span id="contacts-count" class="contacts-count">0</span>
         </div>
         <div id="contacts-list-items" class="contacts-list-items" role="list"></div>
-        <p id="contacts-list-empty" class="contacts-list-empty">Пока нет контактов. Нажмите «+», чтобы добавить собеседника, или отправьте ему свой профиль, чтобы он мог добавить вас.</p>
+        <p id="contacts-list-empty" class="contacts-list-empty">Пока нет контактов. Нажмите «+», чтобы добавить собеседника, или отправьте ему приглашение из своего профиля, чтобы он мог добавить вас в контакты.</p>
       </div>
     </section>
     <section class="utility-dock" aria-label="Основные действия">
@@ -60,20 +60,20 @@
       </header>
       <div class="contact-edit-screen-content add-contact-screen-content">
       <div id="contact-tools" class="contact-tools">
-        <p class="hint">Вставьте приглашение или отсканируйте QR-код собеседника.</p>
+        <p class="hint">Попросите собеседника отправить вам приглашение из своего профиля или показать вам QR-код. Затем вставьте полученную ссылку или отсканируйте QR-код.</p>
         <video id="qr-video" class="qr-video hidden" playsinline muted></video>
-        <label class="field-label" for="contact-package">Ссылка или содержимое QR-кода</label>
+        <label class="field-label" for="contact-package">Вставьте ссылку-приглашение</label>
         <div class="contact-package-row">
-          <textarea id="contact-package" rows="3" autocomplete="off" spellcheck="false" placeholder="Вставьте ссылку вида https://…/#contact=… или содержимое QR-кода"></textarea>
+          <textarea id="contact-package" rows="3" autocomplete="off" spellcheck="false" placeholder="Вставьте ссылку-приглашение"></textarea>
           <div class="contact-package-actions">
             <button id="scan-qr" class="button button-secondary hidden" type="button">Сканировать QR-код</button>
           </div>
         </div>
-        <label class="field-label" for="contact-name">Имя контакта для отображения</label>
+        <label class="field-label" for="contact-name">Как назвать контакт?</label>
         <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
-        <p class="hint">Имя контакта хранится только на этом устройстве. В сети используется его анонимный криптографический идентификатор.</p>
-        <p class="hint">После проверки и сохранения VoiceLink автоматически отправит собеседнику ответное приглашение.</p>
-        <button id="import-contact" class="button button-primary" type="button">Проверить и сохранить контакт</button>
+        <p class="hint">Это имя будет видно только вам.</p>
+        <p class="hint">После добавления мы автоматически отправим собеседнику ответное приглашение.</p>
+        <button id="import-contact" class="button button-primary" type="button">Добавить контакт</button>
         <p id="qr-status" class="hint" aria-live="polite"></p>
       </div>
       </div>
@@ -237,6 +237,6 @@
     </section>
   </main>
 
-  <script type="module" src="./js/app.js?v=94"></script>
+  <script type="module" src="./js/app.js?v=95"></script>
 </body>
 </html>

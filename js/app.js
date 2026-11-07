@@ -503,7 +503,7 @@ function renderContactList(contacts){
  const visibleContacts=allContacts.filter(contact=>String(contact.name||"").toLowerCase().includes(query));
  els.contactListItems.replaceChildren();
  els.contactsCount.textContent=String(visibleContacts.length);
- els.contactListEmpty.textContent=query?"По вашему запросу ничего не найдено.":"Пока нет контактов. Нажмите «+», чтобы добавить собеседника, или отправьте ему свой профиль, чтобы он мог добавить вас.";
+ els.contactListEmpty.textContent=query?"По вашему запросу ничего не найдено.":"Пока нет контактов. Нажмите «+», чтобы добавить собеседника, или отправьте ему приглашение из своего профиля, чтобы он мог добавить вас в контакты.";
  els.contactListEmpty.classList.toggle("hidden",visibleContacts.length>0);
  els.privacyHelp.classList.toggle("hidden",allContacts.length>0);
  for(const contact of visibleContacts){
