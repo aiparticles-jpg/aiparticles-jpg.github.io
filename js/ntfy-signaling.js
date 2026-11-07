@@ -1,5 +1,5 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, markPeerSignalingIdentityTrusted, isUserId } from "./ntfy-identity.js";
-import { verifyContactPackage } from "./contact-exchange.js";
+import { verifyContactPackage } from "./contact-exchange.js?v=2";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -181,12 +181,15 @@ export class NtfySecureSignaling {
   if(!Number.isFinite(expiresAt)||Date.now()>expiresAt||expiresAt>Date.now()+10*60*1000)return;
   const contact=await verifyContactPackage(JSON.stringify(p.contact_package));
   if(contact.user_id!==p.from)throw Error("Идентификатор отправителя не совпадает с пакетом контакта.");
+  const invitationCreatedAt=Number(p.invitation_created_at);
+  if(!Number.isFinite(invitationCreatedAt)||invitationCreatedAt<=0||invitationCreatedAt>Date.now()+5*60*1000)throw Error("Некорректная дата исходного приглашения.");
+  if(contact.created_at!==invitationCreatedAt)throw Error("Дата исходного приглашения не совпадает с подписанным пакетом контакта.");
   const raw=un64(contact.public_key);
   const publicKey=await crypto.subtle.importKey("raw",raw,{name:"ECDSA",namedCurve:"P-256"},true,["verify"]);
   const packageJwk=await crypto.subtle.exportKey("jwk",publicKey);
   if(!samePublicKey(packageJwk,p.identity))throw Error("Ключ запроса не совпадает с подписанным пакетом контакта.");
   if(!await this.verify({type:"contact_request",payload:p},m.sig,p.identity))throw Error("Подпись запроса на добавление контакта недействительна.");
-  this.onContactRequest({requestId:p.request_id,contact,expiresAt});
+  this.onContactRequest({requestId:p.request_id,contact,expiresAt,invitationCreatedAt});
  }
  async processCancel(m){
   const p=m?.payload;
