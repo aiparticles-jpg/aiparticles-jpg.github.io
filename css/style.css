@@ -496,6 +496,3 @@ body.contact-screen-open{overflow:hidden}
  overscroll-behavior:contain;
 }
 
-
-/* Diagnostic shortcut in the contact details screen. */
-.contact-call-diagnostic{display:block;min-width:150px;margin:22px auto 14px}
