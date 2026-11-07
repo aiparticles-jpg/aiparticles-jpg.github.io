@@ -535,6 +535,7 @@ async function sendContactRequest(){
 
 function formatInvitationAge(timestamp){
  const elapsed=Math.max(0,Date.now()-Number(timestamp));
+ if(elapsed<30000)return "только что";
  const rtf=new Intl.RelativeTimeFormat("ru",{numeric:"always"});
  const minutes=elapsed/60000;
  if(minutes<60)return rtf.format(-Math.max(1,Math.round(minutes)),"minute");
@@ -550,8 +551,9 @@ function renderContactRequest(){
  const request=state.pendingContactRequests[0];
  els.contactRequestPanel.classList.toggle("hidden",!request);
  if(!request)return;
- const age=request.invitationCreatedAt?" Вы отправили приглашение "+formatInvitationAge(request.invitationCreatedAt)+".":" Это ответ на ранее отправленное вами приглашение.";
- els.contactRequestText.textContent="Ответ на ваше приглашение."+age;
+ els.contactRequestText.textContent=request.invitationCreatedAt
+  ?"Это ответ на ваше приглашение, отправленное "+formatInvitationAge(request.invitationCreatedAt)+"."
+  :"Это ответ на ранее отправленное вами приглашение.";
  if(!els.contactRequestName.value)els.contactRequestName.value="Новый контакт";
  els.acceptContactRequest.disabled=false;
 }
