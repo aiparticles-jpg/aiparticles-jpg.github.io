@@ -396,7 +396,7 @@ body.contact-screen-open{overflow:hidden}
 .contact-screen-menu-item-danger{color:#ff9292}
 .contact-screen-menu-item-danger:hover{background:rgba(255,110,110,.1)}
 .contact-delete-content{max-width:640px;margin:0 auto;text-align:center}
-.contact-delete-icon{display:grid;place-items:center;width:64px;height:64px;margin:10px auto 20px;border-radius:50%;color:#ff9292;background:rgba(255,110,110,.1);font-size:29px}
+.contact-delete-icon{display:grid;place-items:center;width:64px;height:64px;margin:10px auto 20px;border-radius:50%;color:#ff9292;background:rgba(255,110,110,.1)}
 .contact-delete-name{margin:0 0 12px;color:var(--text);font:700 19px Manrope,sans-serif}
 .contact-delete-content .hint{max-width:440px;margin:0 auto 24px;line-height:1.6}
 .contact-delete-content .button{width:100%;max-width:360px}

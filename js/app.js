@@ -762,6 +762,7 @@ async function saveSelectedContactName(){
   clearError();
   setStatus("Имя контакта сохранено","Новое имя хранится только на этом устройстве.","idle");
   debug("Локальное имя контакта изменено на: "+name+".");
+  closeContactEditScreen();
  }catch(error){
   showError("Не удалось сохранить имя контакта: "+(error.message||String(error)));
  }finally{updateCallButtons()}
