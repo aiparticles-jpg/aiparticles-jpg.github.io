@@ -624,7 +624,6 @@ async function copyContactInvitation(event){
 async function pasteContactInvitation(event){
  event?.preventDefault();
  event?.stopPropagation();
- els.contactTools.open=true;
  try{
   if(!navigator.clipboard?.readText)throw Error("Чтение буфера обмена не поддерживается этим браузером.");
   const value=await navigator.clipboard.readText();
