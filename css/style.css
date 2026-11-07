@@ -156,7 +156,13 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 .contact-tools,.invite-tools{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(5,13,24,.25)}
 .contact-tools summary,.invite-tools summary{color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
 .invite-tools{position:relative}
-.invite-copy-button{position:absolute;top:14px;right:14px;width:32px;height:30px;display:grid;place-items:center;padding:0;margin:0!important;z-index:1}
+.invite-summary{position:relative;padding-right:44px}
+.invite-copy-button{position:absolute;top:50%;right:0;transform:translateY(-50%);width:32px;height:30px;display:grid;place-items:center;padding:0;margin:0!important;z-index:1}
+.invite-tools[open] .invite-copy-button{display:none}
+.invite-url-row{display:flex;align-items:stretch;gap:9px}
+.invite-url-row textarea{flex:1;min-width:0}
+.invite-copy-inline{flex:0 0 auto;align-self:stretch;margin-top:0!important;white-space:nowrap}
+@media (max-width:520px){.invite-url-row{flex-direction:column}.invite-copy-inline{width:100%}}
 .contact-tools textarea,.invite-tools textarea{display:block;width:100%;min-height:76px;resize:vertical;padding:12px;color:var(--text);background:#0c1727;border:1px solid var(--line);border-radius:10px;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
 .contact-tools input,.invite-tools input{margin-bottom:12px}
 .contact-tools .button,.invite-tools .button{margin-top:10px}
