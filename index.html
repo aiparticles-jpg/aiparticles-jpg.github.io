@@ -78,6 +78,7 @@
         <label class="field-label" for="contact-name">Имя контакта на этом устройстве</label>
         <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
         <p class="hint">Имя контакта хранится только на этом устройстве. В сети используется его анонимный криптографический идентификатор.</p>
+        <p class="hint">После проверки и сохранения VoiceLink автоматически отправит собеседнику ответное приглашение.</p>
         <button id="import-contact" class="button button-primary" type="button">Проверить и сохранить контакт</button>
         <p id="qr-status" class="hint" aria-live="polite"></p>
       </details>
@@ -149,10 +150,10 @@
     <footer>
       <span>Voice Link · экспериментальный прототип</span>
       <span>WebRTC P2P · TCP fallback</span>
-      <span id="app-version">Версия 2026.11.07-59</span>
+      <span id="app-version">Версия 2026.11.07-60</span>
     </footer>
   </main>
 
-  <script type="module" src="./js/app.js?v=68"></script>
+  <script type="module" src="./js/app.js?v=69"></script>
 </body>
 </html>
