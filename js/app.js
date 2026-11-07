@@ -482,6 +482,7 @@ async function createContactInvitation(){
   const url=window.location.origin+window.location.pathname+"#contact="+encoded;
   await saveMyInvitation(url);
   els.inviteUrl.value=url;
+  updateInviteCopyButton();
   els.inviteQr.replaceChildren();
   try{
    await ensureQrCodeLibrary();
@@ -500,13 +501,20 @@ async function createContactInvitation(){
   showError(message);
  }finally{els.createInvite.disabled=false}
 }
+function updateInviteCopyButton(){
+ els.copyInvite.disabled=!els.inviteUrl.value.trim();
+}
 async function copyContactInvitation(){
- const value=els.inviteUrl.value;
+ const value=els.inviteUrl.value.trim();
  if(!value)return;
  try{
   await navigator.clipboard.writeText(value);
+  const originalLabel=els.copyInvite.textContent;
+  els.copyInvite.textContent="Скопировано";
+  window.setTimeout(()=>{els.copyInvite.textContent=originalLabel},1600);
   setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
  }catch{
+  els.inviteTools.open=true;
   els.inviteUrl.focus();els.inviteUrl.select();
   setInlineStatus(els.inviteStatus,"Выделите ссылку и скопируйте её вручную.");
  }
@@ -713,6 +721,7 @@ els.declineContactRequest.addEventListener("click",declineContactRequest);
 els.contactRequestName.addEventListener("focus",()=>{if(els.contactRequestName.value==="Новый контакт")els.contactRequestName.select()});
 els.createInvite.addEventListener("click",createContactInvitation);
 function updateInvitationPanel(){
+ updateInviteCopyButton();
  const granted="Notification" in window&&Notification.permission==="granted";
  els.invitePermission.classList.toggle("hidden",granted);
  els.inviteContent.classList.toggle("hidden",!granted);
@@ -786,6 +795,7 @@ async function initializeApp(){
   const savedInvitation=await getMyInvitation();
   if(savedInvitation){
    els.inviteUrl.value=savedInvitation;
+   updateInviteCopyButton();
    if("Notification" in window&&Notification.permission==="granted"){
     try{
      await ensureQrCodeLibrary();
