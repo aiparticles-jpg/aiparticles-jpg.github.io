@@ -738,9 +738,7 @@ function renderContactRequest(){
  const request=state.pendingContactRequests[0];
  els.contactRequestPanel.classList.toggle("hidden",!request);
  if(!request){closeContactRequestScreen();return;}
- els.contactRequestText.textContent=request.invitationCreatedAt
-  ?"Это ответ на ваше приглашение, отправленное "+formatInvitationAge(request.invitationCreatedAt)+"."
-  :"Это ответ на ранее отправленное вами приглашение.";
+ els.contactRequestText.textContent="Вы получили ответ на приглашение, отправленное "+formatInvitationAge(request.invitationCreatedAt)+".";
  if(!els.contactRequestName.value)els.contactRequestName.value="Новый контакт";
  els.acceptContactRequest.disabled=false;
  openContactRequestScreen();
