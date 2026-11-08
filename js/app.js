@@ -1119,13 +1119,13 @@ els.addContactFab.addEventListener("pointerdown",event=>{
  addContactLongPressTimer=window.setTimeout(()=>{
   addContactLongPressTimer=null;
   addContactLongPressTriggered=true;
-  openAddContactScreen(false);
+  openAddContactScreen(true);
  },550);
 });
 function cancelAddContactLongPress(){
  if(addContactLongPressTimer!==null){window.clearTimeout(addContactLongPressTimer);addContactLongPressTimer=null;}
 }
-els.addContactFab.addEventListener("pointerup",()=>{const wasLongPress=addContactLongPressTriggered;cancelAddContactLongPress();if(wasLongPress)pasteContactInvitation();});
+
 els.addContactFab.addEventListener("pointerleave",event=>{if(event.pointerType==="mouse")cancelAddContactLongPress();});
 els.addContactFab.addEventListener("pointercancel",cancelAddContactLongPress);
 els.addContactFab.addEventListener("click",event=>{
