@@ -14,7 +14,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestScreen:$("contact-request-screen"),contactRequestScreenBack:$("contact-request-screen-back"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
 function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,60)}
@@ -110,7 +110,7 @@ function updateReplyInviteStatus(){
  const peer=els.peer.value;
  setInlineStatus(els.replyInviteStatus,sentContactRequests[peer]?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],pendingContactRequests:[]};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -142,9 +142,16 @@ function updateCallButtons(){
  els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":"Позвонить");
  els.contactScreenCall.title=state.incomingCall?"Ответить на звонок":"Позвонить";
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
+ const selectedContact=allContacts.find(contact=>contact.user_id===els.peer.value);
+ const pendingRequest=selectedContact?.request_pending===true;
+ els.contactScreenCall.classList.toggle("hidden",pendingRequest);
+ els.contactRequestActions.classList.toggle("hidden",!pendingRequest);
+ els.contactRequestText.textContent=pendingRequest
+  ?"Этот человек отправил вам приглашение. Добавьте его в контакты, когда будете готовы."
+  :"";
  els.contactEditTools.classList.toggle("hidden",!selectedPeer);
  els.openContactEdit.classList.toggle("hidden",!selectedPeer);
- els.openContactDelete.classList.toggle("hidden",!selectedPeer);
+ els.openContactDelete.classList.toggle("hidden",!selectedPeer||pendingRequest);
  els.confirmDeleteContact.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
  els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim()||els.editContactName.value.trim()===originalEditContactName;
  const trustedPeer=selectedPeer&&trustedContactIds.has(els.peer.value);
@@ -563,15 +570,16 @@ function renderContactList(contacts){
  els.privacyHelp.classList.toggle("hidden",allContacts.length>0);
  for(const contact of visibleContacts){
   const item=document.createElement("button");
-  item.type="button";item.className="contact-list-item";item.dataset.peer=contact.user_id;item.setAttribute("role","listitem");
+  const isPendingRequest=contact.request_pending===true;
+  item.type="button";item.className="contact-list-item"+(isPendingRequest?" contact-list-item-pending":"");item.dataset.peer=contact.user_id;item.setAttribute("role","listitem");
   item.setAttribute("aria-pressed",String(els.peer.value===contact.user_id));
   const avatar=document.createElement("span");
   avatar.className="contact-avatar";avatar.textContent=contactInitials(contact.name);
-  avatar.style.backgroundColor=contactAvatarColor(contact.user_id);
+  avatar.style.backgroundColor=isPendingRequest?"#80602f":contactAvatarColor(contact.user_id);
   const details=document.createElement("span");details.className="contact-list-details";
   const name=document.createElement("span");name.className="contact-list-name";name.textContent=contact.name;
   const status=document.createElement("span");status.className="contact-list-status";
-  status.textContent=contact.trusted===true?"Ключ подтверждён":"Проверка при первом звонке";
+  status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):contact.trusted===true?"Ключ подтверждён":"Проверка при первом звонке";
   details.append(name,status);
   const last=document.createElement("span");last.className="contact-list-last";last.textContent=formatLastInteraction(contact.last_interaction_at);
   item.append(avatar,details,last);
@@ -585,6 +593,11 @@ function renderContactList(contacts){
 async function refreshContactOptions(selectUserId=""){
  const contacts=await listContacts();
  contacts.sort((a,b)=>{
+  const aRequestTime=Date.parse(a.request_received_at||"")||0;
+  const bRequestTime=Date.parse(b.request_received_at||"")||0;
+  if(aRequestTime&&bRequestTime)return bRequestTime-aRequestTime;
+  if(aRequestTime)return -1;
+  if(bRequestTime)return 1;
   const aTime=Date.parse(a.last_interaction_at||"")||0,bTime=Date.parse(b.last_interaction_at||"")||0;
   return bTime-aTime||a.name.localeCompare(b.name);
  });
@@ -778,61 +791,72 @@ function formatInvitationAge(timestamp){
  if(months<12)return rtf.format(-Math.max(1,Math.round(months)),"month");
  return rtf.format(-Math.max(1,Math.round(days/365.25)),"year");
 }
-let contactRequestReturnFocus=null;
-function openContactRequestScreen(){
- if(els.contactRequestScreen.classList.contains("hidden"))contactRequestReturnFocus=document.activeElement;
- els.contactRequestScreen.classList.remove("hidden");
- document.body.classList.add("contact-screen-open");
- els.contactRequestScreenBack.focus();
-}
-function closeContactRequestScreen(){
- els.contactRequestScreen.classList.add("hidden");
- const anotherScreenOpen=!!document.querySelector(".contact-screen:not(.hidden),.contact-edit-screen:not(.hidden),.add-contact-screen:not(.hidden),.diagnostic-screen:not(.hidden),#about-screen:not(.hidden),#settings-screen:not(.hidden)");
- if(!anotherScreenOpen)document.body.classList.remove("contact-screen-open");
- if(contactRequestReturnFocus?.isConnected&&!contactRequestReturnFocus.classList.contains("hidden"))contactRequestReturnFocus.focus();
- contactRequestReturnFocus=null;
-}
-function renderContactRequest(){
- const request=state.pendingContactRequests[0];
- els.contactRequestPanel.classList.toggle("hidden",!request);
- if(!request){closeContactRequestScreen();return;}
- const senderName=request.contact.display_name||"";
- els.contactRequestText.textContent=(senderName?"Ответное приглашение от «"+senderName+"». ":"")+"Вы получили ответ на приглашение, отправленное "+formatInvitationAge(request.invitationCreatedAt)+".";
- if(!els.contactRequestName.value)els.contactRequestName.value=senderName||"Новый контакт";
- els.acceptContactRequest.disabled=false;
- openContactRequestScreen();
-}
-
-function handleIncomingContactRequest(request){
- if(state.pendingContactRequests.some(item=>item.requestId===request.requestId))return;
- if(state.pendingContactRequests.some(item=>item.contact.user_id===request.contact.user_id))return;
- getContact(request.contact.user_id).then(existing=>{
-  if(existing){debug("Запрос контакта пропущен: отправитель уже сохранён в адресной книге.");return;}
-  state.pendingContactRequests.push(request);renderContactRequest();
-  debug("Получен подписанный запрос на добавление контакта через ntfy.");
- }).catch(error=>debug("Не удалось проверить запрос контакта: "+(error.message||String(error))));
+async function handleIncomingContactRequest(request){
+ const userId=request?.contact?.user_id;
+ if(!NtfySecureSignaling.validUserId(userId)||userId===state.me)return;
+ try{
+  const existing=await getContact(userId);
+  if(existing&&!existing.request_pending){
+   debug("Запрос контакта пропущен: отправитель уже сохранён в адресной книге.");
+   return;
+  }
+  const receivedAt=existing?.request_received_at||new Date().toISOString();
+  const name=existing?.name||request.contact.display_name||"Новый контакт";
+  await saveContact({
+   ...existing,
+   ...request.contact,
+   name,
+   trusted:existing?.trusted===true,
+   verified_at:existing?.verified_at||null,
+   request_pending:true,
+   request_received_at:receivedAt,
+   request_id:request.requestId,
+   invitation_created_at:request.invitationCreatedAt
+  });
+  await refreshContactOptions(els.peer.value);
+  debug("Получен и сохранён новый запрос на добавление контакта: "+name+".");
+ }catch(error){
+  debug("Не удалось сохранить запрос контакта: "+(error.message||String(error)));
+ }
 }
 
 async function acceptContactRequest(){
- const request=state.pendingContactRequests[0];if(!request)return;
- const name=els.contactRequestName.value.trim();
- if(!name){showError("Укажите имя контакта.");return;}
+ const peer=els.peer.value;
+ const contact=await getContact(peer);
+ if(!contact?.request_pending)return;
  els.acceptContactRequest.disabled=true;
  try{
-  const existing=await getContact(request.contact.user_id);
-  await saveContact({...existing,...request.contact,name:existing?.name||name,trusted:true,verified_at:new Date().toISOString()});
-  await refreshContactOptions(request.contact.user_id);
-  state.pendingContactRequests.shift();els.contactRequestName.value="";renderContactRequest();
+  await saveContact({...contact,request_pending:false,trusted:true,verified_at:new Date().toISOString()});
+  await refreshContactOptions(peer);
   setStatus("Контакт добавлен","Теперь можно звонить этому контакту.","idle");
-  debug("Подписанный запрос принят; контакт "+name+" сохранён только в IndexedDB.");
- }catch(error){showError("Не удалось сохранить контакт: "+(error.message||String(error)));els.acceptContactRequest.disabled=false}
+  debug("Запрос принят; контакт "+contact.name+" сохранён на прежнем месте в списке.");
+ }catch(error){
+  showError("Не удалось добавить контакт: "+(error.message||String(error)));
+ }finally{
+  els.acceptContactRequest.disabled=false;
+  updateCallButtons();
+ }
 }
 
-function declineContactRequest(){
- if(!state.pendingContactRequests.length)return;
- state.pendingContactRequests.shift();els.contactRequestName.value="";renderContactRequest();
- debug("Запрос на добавление контакта отклонён локально; отправитель не уведомляется.");
+async function declineContactRequest(){
+ const peer=els.peer.value;
+ const contact=await getContact(peer);
+ if(!contact?.request_pending)return;
+ els.declineContactRequest.disabled=true;
+ try{
+  await deleteContact(peer);
+  if(state.secure?.peer===peer)state.secure.setPeer("");
+  await refreshContactOptions();
+  closeContactScreen();
+  clearError();
+  debug("Запрос от "+contact.name+" отклонён и удалён из локального списка.");
+ }catch(error){
+  showError("Не удалось отклонить запрос: "+(error.message||String(error)));
+ }finally{
+  els.declineContactRequest.disabled=false;
+ }
 }
+
 async function saveSelectedContactName(){
  const peer=els.peer.value;
  const name=els.editContactName.value.trim();
@@ -1010,8 +1034,6 @@ updateImportContactButton();
 els.replyInvite.addEventListener("click",()=>{els.contactScreenMenu.open=false;sendContactRequest()});
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
-els.contactRequestScreenBack.addEventListener("click",declineContactRequest);
-els.contactRequestName.addEventListener("focus",()=>{if(els.contactRequestName.value==="Новый контакт")els.contactRequestName.select()});
 els.createInvite.addEventListener("click",createContactInvitation);
 function updateInvitationPanel(){
  updateInviteCopyButton();
@@ -1166,6 +1188,7 @@ function openContactScreen(item,preserveSelection=false){
  els.contactScreenAvatar.textContent=avatar?.textContent||"?";
  els.contactScreenAvatar.style.backgroundColor=avatar?.style.backgroundColor||"var(--accent)";
  els.contactScreenName.textContent=name?.textContent||"Контакт";
+ updateCallButtons();
  els.contactScreen.classList.remove("hidden");
  document.body.classList.add("contact-screen-open");
  els.contactScreenBack.focus();
@@ -1220,8 +1243,7 @@ els.contactDeleteScreenBack.addEventListener("click",closeContactDeleteScreen);
 els.cancelDeleteContact.addEventListener("click",closeContactDeleteScreen);
 document.addEventListener("keydown",event=>{
  if(event.key!=="Escape")return;
- if(!els.contactRequestScreen.classList.contains("hidden"))declineContactRequest();
- else if(!els.contactDeleteScreen.classList.contains("hidden"))closeContactDeleteScreen();
+ if(!els.contactDeleteScreen.classList.contains("hidden"))closeContactDeleteScreen();
  else if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
  else if(!els.profileScreen.classList.contains("hidden"))closeProfileScreen();
  else if(!els.aboutScreen.classList.contains("hidden"))closeAboutScreen();
