@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=26";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=27";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
 import { verifyContactPackage } from "./contact-exchange.js?v=4";
@@ -8,8 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),verify:$("verify-panel"),
- verifyCode:$("verify-code"),confirm:$("confirm-peer"),indicator:$("connection-indicator"),
+ contactList:$("contacts-list"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
@@ -91,7 +90,6 @@ function loadSentContactRequests(){
  catch{return {}}
 }
 const sentContactRequests=loadSentContactRequests();
-let trustedContactIds=new Set();
 function persistSentContactRequests(){
  try{localStorage.setItem(CONTACT_REQUESTS_KEY,JSON.stringify(sentContactRequests))}
  catch(error){debug("Не удалось сохранить историю отправки приглашения: "+(error.message||String(error)))}
@@ -160,11 +158,10 @@ function updateCallButtons(){
  els.openContactDelete.classList.toggle("hidden",!selectedPeer||pendingRequest);
  els.confirmDeleteContact.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
  els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim()||els.editContactName.value.trim()===originalEditContactName;
- const trustedPeer=selectedPeer&&trustedContactIds.has(els.peer.value);
  const exchangeCompleted=selectedPeer&&completedContactRequests.has(els.peer.value);
- els.replyInvite.classList.toggle("hidden",!selectedPeer||trustedPeer||exchangeCompleted);
+ els.replyInvite.classList.toggle("hidden",!selectedPeer||exchangeCompleted);
  els.replyInvite.querySelector(".contact-menu-label").textContent=sentContactRequests[els.peer.value]?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
- els.replyInvite.disabled=!selectedPeer||trustedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
+ els.replyInvite.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging(){
@@ -226,7 +223,7 @@ function clearIncomingUi(){
  if(state.incomingTimer){clearTimeout(state.incomingTimer);state.incomingTimer=null}
  state.incomingCall=false;els.dismissIncoming.classList.add("hidden");els.rejectIncoming.classList.add("hidden");updateCallButtons();
 }
-function showIncomingCall({peer,peerId,expiresAt,trusted=true}){
+function showIncomingCall({peer,peerId,expiresAt}){
  if(state.connecting||state.callStarted||state.incomingCall)return;
  if(peerId&&NtfySecureSignaling.validUserId(peerId))els.peer.value=peerId;
  if(state.outgoingCall){
@@ -240,12 +237,10 @@ function showIncomingCall({peer,peerId,expiresAt,trusted=true}){
  const incomingItem=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(item=>item.dataset.peer===els.peer.value);
  if(incomingItem)openContactScreen(incomingItem,true);
  updateCallButtons();
- const peerLabel=els.peer.selectedOptions[0]?.textContent||"сохранённый контакт";
- const description=trusted
-  ?"Вам звонит "+peerLabel+". Нажмите «Ответить», «Отклонить» или «Скрыть вызов».":"Запрос от "+peerLabel+". Устройство ещё не сопряжено: после ответа обязательно сверьте проверочный код.";
- setStatus(trusted?"Входящий вызов":"Новый запрос на сопряжение",description,"wait");
- debug((trusted?"Входящий вызов от подтверждённого устройства ":"Новый запрос от непроверенного устройства ")+peerLabel+".");
- if(trusted)startRinging("incoming");
+ const peerLabel=els.peer.selectedOptions[0]?.textContent||"контакт";
+ setStatus("Входящий вызов","Вам звонит "+peerLabel+". Нажмите «Ответить», «Отклонить» или «Скрыть вызов».","wait");
+ debug("Входящий вызов от "+peerLabel+".");
+ startRinging("incoming");
  state.incomingTimer=setTimeout(()=>dismissIncoming(true),remaining);
 }
 function stopOutgoingCall(){
@@ -284,7 +279,7 @@ async function finishRejectedCall(info){
  if(!state.outgoingCall)return;
  stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
- els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";els.verify.classList.add("hidden");
+ els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  state.callStarted=false;state.peerPresent=false;updateCallButtons();
  setStatus("Вызов отклонён",(info.peer||"Контакт")+" отклонил входящий вызов.","idle");
  debug("Получен подписанный отказ от вызова "+info.sid+".");
@@ -293,7 +288,7 @@ async function finishNoAnswer(){
  if(!state.outgoingCall)return;
  stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
- els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";els.verify.classList.add("hidden");
+ els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  state.callStarted=false;state.peerPresent=false;updateCallButtons();
  setStatus("Нет ответа","Время ожидания истекло. Вызов завершён только на этом устройстве; уведомление об отмене не отправлялось.","idle");
  debug("Исходящий вызов истёк через 45 секунд; отменяющий POST не отправлялся.");
@@ -350,8 +345,7 @@ function createSecureSignaling(me,peer=""){
   },
   onRejectOutgoing:info=>{finishRejectedCall(info).catch(error=>showError(error.message||String(error)))},
   onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(els.peer.value,"incoming_call",info.callId,info.expiresAt).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
-  onVerify:({sas,peer:name})=>{stopOutgoingCall();clearIncomingUi();stopRinging();els.verifyCode.textContent=sas;els.verify.classList.remove("hidden");els.confirm.disabled=false;setStatus("Нужно подтвердить собеседника","Сверьте короткий код с "+(els.peer.selectedOptions[0]?.textContent||"контактом")+" по независимому каналу.","wait");debug("Код проверки: "+sas)},
-  onReady:info=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady(info).catch(showError)},
+  onReady:()=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady().catch(showError)},
   onError:e=>showError(e.message||String(e)),
   onDebug:debug
  });
@@ -436,12 +430,12 @@ function scheduleIcePrewarm(reason="input",force=false){
   }
  },700);
 }
-async function onSecureReady(info){
+async function onSecureReady(){
  state.answeringCall=false;
  state.peerPresent=true;state.role=state.secure.role==="A"?"initiator":"receiver";
- els.verify.classList.add("hidden");updateCallButtons();
- setStatus("Ключ собеседника подтверждён",info.trusted?"Сохранённый ключ совпадает. Запускаем голосовой канал.":"Первичная проверка пройдена. Запускаем голосовой канал.","wait");
- debug(info.trusted?"Сохраненная идентичность подтверждена.":"Новая идентичность собеседника сохранена.");
+ updateCallButtons();
+ setStatus("Защищённый канал установлен","Запускаем голосовой канал.","wait");
+ debug("Защищённый канал установлен.");
  const peerId=state.secure?.peer||els.peer.value;
  if(NtfySecureSignaling.validUserId(peerId)){
   try{
@@ -468,7 +462,7 @@ async function connect(){
  const answering=state.incomingCall;
  state.answeringCall=answering;
  if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging()}
- clearError();els.verify.classList.add("hidden");setBusy(true);
+ clearError();setBusy(true);
  try{
   const me=state.me,peer=els.peer.value;
   if(state.prewarmPromise&&(state.prewarmTargetNames===me+"|"+peer||state.prewarmNames===me+"|"+peer)){try{await state.prewarmPromise}catch{}}
@@ -528,7 +522,7 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  els.audio.srcObject=null;els.pilot.disabled=false;els.transport.textContent="Не выбран";
- els.verify.classList.add("hidden");state.callStarted=false;state.peerPresent=false;state.answeringCall=false;state.hangingUp=false;updateCallButtons();
+ state.callStarted=false;state.peerPresent=false;state.answeringCall=false;state.hangingUp=false;updateCallButtons();
  if(remote)setStatus("Собеседник завершил звонок","Удалённая сторона отправила P2P-сообщение HANGUP; звонок завершён.","idle");
  else if(failure)setStatus("Соединение потеряно","WebRTC не восстановил связь за отведённое время. Звонок завершён.","error");
  else setStatus("Звонок завершён","Подписка на ваше имя остаётся активной. Чтобы позвонить снова, нажмите кнопку звонка в карточке контакта.","idle");
@@ -585,7 +579,7 @@ function renderContactList(contacts){
   const details=document.createElement("span");details.className="contact-list-details";
   const name=document.createElement("span");name.className="contact-list-name";name.textContent=contact.name;
   const status=document.createElement("span");status.className="contact-list-status";
-  status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):contact.trusted===true?"Ключ подтверждён":"Проверка при первом звонке";
+  status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):"В контактах";
   details.append(name,status);
   const last=document.createElement("span");last.className="contact-list-last";last.textContent=formatLastInteraction(contact.last_interaction_at);
   item.append(avatar,details,last);
@@ -607,7 +601,6 @@ async function refreshContactOptions(selectUserId=""){
   const aTime=Date.parse(a.last_interaction_at||"")||0,bTime=Date.parse(b.last_interaction_at||"")||0;
   return bTime-aTime||a.name.localeCompare(b.name);
  });
- trustedContactIds=new Set(contacts.filter(contact=>contact.trusted===true).map(contact=>contact.user_id));
  els.peer.replaceChildren(new Option("Выберите контакт",""));
  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
  els.peer.disabled=contacts.length===0;
@@ -813,8 +806,6 @@ async function handleIncomingContactRequest(request){
    ...existing,
    ...request.contact,
    name,
-   trusted:existing?.trusted===true,
-   verified_at:existing?.verified_at||null,
    request_pending:true,
    request_received_at:receivedAt,
    request_id:request.requestId,
@@ -833,7 +824,7 @@ async function acceptContactRequest(){
  if(!contact?.request_pending)return;
  els.acceptContactRequest.disabled=true;
  try{
-  await saveContact({...contact,request_pending:false,trusted:true,verified_at:new Date().toISOString()});
+  await saveContact({...contact,request_pending:false});
   await refreshContactOptions(peer);
   setStatus("Контакт добавлен","Теперь можно звонить этому контакту.","idle");
   debug("Запрос принят; контакт "+contact.name+" сохранён на прежнем месте в списке.");
@@ -938,7 +929,7 @@ async function importContactFromInput(){
   if(!name)throw Error("Укажите имя, под которым контакт будет сохранён только на этом устройстве.");
   const existing=await getContact(verified.user_id);
   if(existing&&!window.confirm("Этот контакт уже сохранён как «"+existing.name+"». Обновить его данные и локальное имя?"))return;
-  await saveContact({...verified,name,trusted:existing?.trusted===true,verified_at:existing?.verified_at||null});
+  await saveContact({...verified,name});
   await refreshContactOptions(verified.user_id);
   if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
   els.contactPackage.value="";
@@ -1302,11 +1293,6 @@ document.addEventListener("visibilitychange",()=>{
  if(!document.hidden)scheduleIcePrewarm("visibility",true);
 });
 window.addEventListener("online",()=>scheduleIcePrewarm("online",true));
-els.confirm.addEventListener("click",async()=>{
- els.confirm.disabled=true;
- try{await state.secure.confirmPeer();els.verify.classList.add("hidden");debug("Первичная проверка подтверждена пользователем.")}
- catch(e){showError(e.message);els.confirm.disabled=false}
-});
 els.hangup.addEventListener("click",hangup);
 els.confirmDeleteContact.addEventListener("click",deleteSelectedContact);
 els.saveContactName.addEventListener("click",saveSelectedContactName);

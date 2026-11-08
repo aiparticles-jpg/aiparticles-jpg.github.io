@@ -1,7 +1,6 @@
 import {
   getOrCreateIdentity,
-  getContact,
-  updateContact
+  getContact
 } from "./local-store.js";
 
 const encoder = new TextEncoder();
@@ -88,22 +87,10 @@ export async function getPeerSignalingIdentity(userId) {
     user_id: contact.user_id,
     public_key: contact.public_key,
     publicJwk,
-    name: contact.name,
-    trusted: contact.trusted === true
+    name: contact.name
   };
 }
 
-export async function markPeerSignalingIdentityTrusted(userId, expectedPublicKey) {
-  const contact = await getContact(userId);
-  if (!contact) throw new Error("The contact no longer exists.");
-  if (contact.public_key !== expectedPublicKey) {
-    throw new Error("The contact identity changed during verification. Verify the new identity again.");
-  }
-  return updateContact(userId, {
-    trusted: true,
-    verified_at: new Date().toISOString()
-  });
-}
 
 export function encodePublicKey(publicKeyBytes) {
   return toBase64Url(publicKeyBytes);

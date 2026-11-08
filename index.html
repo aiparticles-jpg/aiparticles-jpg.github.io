@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="./css/style.css?v=58">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
-.verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
 .join-row .button{width:190px;flex:0 0 190px}
 #connect,#hangup,#dismiss-incoming,#reject-incoming{width:145px;flex:0 0 145px}
 @media (max-width:520px){.join-row .button{width:100%;flex:0 0 auto}#connect,#hangup,#dismiss-incoming,#reject-incoming{width:100%;flex:0 0 auto}}
@@ -123,14 +122,7 @@
             <button id="accept-contact-request" class="button button-primary" type="button">Добавить контакт</button>
             <button id="decline-contact-request" class="button button-secondary" type="button">Отклонить</button>
           </div>
-          <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
-          <div id="verify-panel" class="invite-panel hidden">
-            <div class="invite-title">Проверка собеседника — только при первом подключении</div>
-            <div id="verify-code" class="verification-code">--------</div>
-            <p class="hint">Сверьте код с собеседником по телефону. Подтверждайте только если коды полностью совпадают.</p>
-            <button id="confirm-peer" class="button button-primary" type="button">Код совпадает — подтвердить</button>
-          </div>
-          <audio id="remote-audio" autoplay playsinline></audio>
+          <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>          <audio id="remote-audio" autoplay playsinline></audio>
           <p id="error-message" class="error-message hidden" role="alert"></p>
           <div id="contact-diagnostics-footer" class="contact-diagnostics-footer hidden">
             <div class="contact-diagnostics-grid">
@@ -259,6 +251,6 @@
     </section>
   </main>
 
-  <script type="module" src="./js/app.js?v=124"></script>
+  <script type="module" src="./js/app.js?v=125"></script>
 </body>
 </html>
