@@ -516,3 +516,16 @@ body.contact-screen-open{overflow:hidden}
  overscroll-behavior:contain;
 }
 
+
+
+/* Keep the diagnostic status at the bottom of the contact screen. */
+.contact-screen-content{display:flex;flex-direction:column}
+.contact-call-content{width:100%;min-height:100%;display:flex;flex-direction:column;gap:14px}
+.contact-diagnostics-footer{display:flex;flex-direction:column;gap:10px;margin-top:auto;padding:14px 0 calc(12px + env(safe-area-inset-bottom))}
+.contact-diagnostics-bottom{display:flex;align-items:center;gap:10px}
+.contact-diagnostics-bottom .transport-row{flex:1;min-width:0;padding:8px 2px;margin:0}
+.diagnostic-inline-action{flex:0 0 auto;min-width:0;flex-direction:row;gap:7px;padding:0 4px}
+.diagnostic-inline-action .dock-icon{width:34px;height:34px}
+.diagnostic-inline-action .dock-icon svg{width:20px;height:20px}
+.diagnostic-inline-action .dock-label{font-size:11px}
+@media(max-width:520px){.contact-diagnostics-footer{padding-bottom:calc(12px + env(safe-area-inset-bottom))}.contact-diagnostics-bottom{gap:6px}}
