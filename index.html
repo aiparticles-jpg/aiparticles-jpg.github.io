@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=51">
+  <link rel="stylesheet" href="./css/style.css?v=52">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -99,17 +99,19 @@
       <div class="contact-screen-content">
         <div class="contact-call-content">
           <div id="contact-diagnostics-footer" class="contact-diagnostics-footer hidden">
-            <div class="status-card">
-              <div class="status-icon" id="status-icon" aria-hidden="true">⌁</div>
-              <div class="status-copy">
-                <strong id="status-title">Ожидаем комнату</strong>
-                <span id="status-text">Выберите контакт и нажмите кнопку звонка.</span>
-              </div>
-            </div>
-            <div class="contact-diagnostics-bottom">
-              <div class="transport-row">
-                <span>Транспорт</span>
-                <strong id="transport-label">Не выбран</strong>
+            <div class="contact-diagnostics-grid">
+              <div class="contact-diagnostics-info">
+                <div class="status-card">
+                  <div class="status-icon" id="status-icon" aria-hidden="true">⌁</div>
+                  <div class="status-copy">
+                    <strong id="status-title">Ожидаем комнату</strong>
+                    <span id="status-text">Выберите контакт и нажмите кнопку звонка.</span>
+                  </div>
+                </div>
+                <div class="transport-row">
+                  <span>Транспорт</span>
+                  <strong id="transport-label">Не выбран</strong>
+                </div>
               </div>
               <button id="contact-diagnostic-button" class="dock-action diagnostic-inline-action" type="button" aria-label="Открыть диагностику" title="Диагностика"><span class="dock-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-6 4.6 12 2.2-6H21"/><path d="M4 4h16v16H4z" opacity=".35"/></svg></span><span class="dock-label">Диагностика</span></button>
             </div>
