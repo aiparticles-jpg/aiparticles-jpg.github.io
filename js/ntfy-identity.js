@@ -87,7 +87,8 @@ export async function getPeerSignalingIdentity(userId) {
     user_id: contact.user_id,
     public_key: contact.public_key,
     publicJwk,
-    name: contact.name
+    name: contact.name,
+    invitation_id: contact.invitation_id || null
   };
 }
 

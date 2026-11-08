@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=59">
+  <link rel="stylesheet" href="./css/style.css?v=60">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -199,6 +199,7 @@
         </div>
         <div id="invite-content" class="hidden">
           <p class="hint">Передайте собеседнику ссылку или QR-код, чтобы он мог добавить вас в контакты.</p>
+          <p class="hint invitation-one-use-warning">Важно: приглашение можно использовать только один раз. Кто первым воспользуется ссылкой, тот сможет добавить вас в контакты.</p>
           <label class="field-label" for="invite-url">Ваша ссылка-приглашение</label>
           <div class="invite-url-row">
             <textarea id="invite-url" rows="3" readonly spellcheck="false" placeholder="Создаём приглашение…"></textarea>
@@ -253,6 +254,6 @@
     </section>
   </main>
 
-  <script type="module" src="./js/app.js?v=125"></script>
+  <script type="module" src="./js/app.js?v=126"></script>
 </body>
 </html>

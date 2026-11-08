@@ -1,5 +1,5 @@
 const DB_NAME = "voicelink-local";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const HISTORY_LIMIT = 10;
 
 let databasePromise;
@@ -22,6 +22,7 @@ function openDatabase() {
         const history = db.createObjectStore("history", { keyPath: "id" });
         history.createIndex("created_at", "created_at");
       }
+      if (!db.objectStoreNames.contains("invitations")) db.createObjectStore("invitations", { keyPath: "id" });
     };
 
     request.onsuccess = () => {
@@ -43,6 +44,59 @@ function openDatabase() {
   });
 
   return databasePromise;
+}
+
+
+export async function createIssuedInvitation({ id, created_at = Date.now(), max_activations = 1 }) {
+  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id) ||
+      !Number.isFinite(Number(created_at)) || !Number.isInteger(max_activations) || max_activations < 1) {
+    throw new TypeError("A valid invitation ID, creation time, and activation limit are required.");
+  }
+  const db = await openDatabase();
+  const tx = db.transaction("invitations", "readwrite");
+  const done = transactionDone(tx);
+  tx.objectStore("invitations").add({ id, created_at: Number(created_at), max_activations, activations: [], revoked: false });
+  await done;
+}
+
+export async function consumeIssuedInvitation({ invitationId, userId, requestId }) {
+  if (typeof invitationId !== "string" || !/^[0-9a-f-]{36}$/i.test(invitationId) ||
+      typeof userId !== "string" || !/^[a-f0-9]{64}$/.test(userId) ||
+      typeof requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(requestId)) return { accepted: false, reason: "invalid" };
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("invitations", "readwrite");
+    const store = tx.objectStore("invitations");
+    let result = { accepted: false, reason: "unknown" };
+    const get = store.get(invitationId);
+    get.onsuccess = () => {
+      const invitation = get.result;
+      if (!invitation) { result = { accepted: false, reason: "unknown" }; return; }
+      if (invitation.revoked) { result = { accepted: false, reason: "revoked" }; return; }
+      const activations = Array.isArray(invitation.activations) ? invitation.activations : [];
+      const existing = activations.find(item => item.user_id === userId);
+      if (existing) { result = { accepted: true, duplicate: true, activation: existing }; return; }
+      if (activations.length >= Number(invitation.max_activations || 1)) { result = { accepted: false, reason: "used" }; return; }
+      const activation = { user_id: userId, request_id: requestId, activated_at: Date.now(), status: "pending" };
+      invitation.activations = [...activations, activation];
+      store.put(invitation);
+      result = { accepted: true, duplicate: false, activation };
+    };
+    tx.oncomplete = () => resolve(result);
+    tx.onabort = () => reject(tx.error || new Error("Invitation activation transaction aborted."));
+    tx.onerror = () => reject(tx.error || new Error("Invitation activation transaction failed."));
+  });
+}
+
+export async function hasActiveInvitationGrant(invitationId, userId) {
+  if (typeof invitationId !== "string" || typeof userId !== "string") return false;
+  const db = await openDatabase();
+  const tx = db.transaction("invitations", "readonly");
+  const done = transactionDone(tx);
+  const invitation = await requestValue(tx.objectStore("invitations").get(invitationId));
+  await done;
+  return !!invitation && !invitation.revoked && Array.isArray(invitation.activations) &&
+    invitation.activations.some(item => item.user_id === userId);
 }
 
 export async function saveMyInvitation(url) {

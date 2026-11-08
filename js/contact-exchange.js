@@ -24,6 +24,7 @@ function canonicalPayload(contact) {
     created_at: contact.created_at
   };
   // Optional display name was added to v1 later; omit it for older invitations.
+  if (Object.hasOwn(contact, "invitation_id")) payload.invitation_id = contact.invitation_id;
   if (Object.hasOwn(contact, "display_name")) payload.display_name = contact.display_name;
   return JSON.stringify(payload);
 }
@@ -71,6 +72,10 @@ export async function verifyContactPackage(input) {
        Number(contact.created_at) > Date.now() + 5 * 60 * 1000)) {
     throw new Error("Некорректная дата создания приглашения.");
   }
+  if (Object.hasOwn(contact, "invitation_id") &&
+      (typeof contact.invitation_id !== "string" || !/^[0-9a-f-]{36}$/i.test(contact.invitation_id))) {
+    throw new Error("Некорректный идентификатор приглашения.");
+  }
   if (Object.hasOwn(contact, "display_name") &&
       (typeof contact.display_name !== "string" ||
        contact.display_name.length > 60 ||
@@ -106,6 +111,7 @@ export async function verifyContactPackage(input) {
     public_key: contact.public_key,
     push_subscription_id: contact.push_subscription_id,
     ...(contact.created_at !== undefined ? { created_at: Number(contact.created_at) } : {}),
+    ...(Object.hasOwn(contact, "invitation_id") ? { invitation_id: contact.invitation_id } : {}),
     ...(Object.hasOwn(contact, "display_name") ? { display_name: contact.display_name } : {})
   };
 }

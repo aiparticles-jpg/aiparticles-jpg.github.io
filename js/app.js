@@ -1,8 +1,8 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=27";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=28";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
-import { verifyContactPackage } from "./contact-exchange.js?v=4";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation } from "./local-store.js?v=3";
+import { verifyContactPackage } from "./contact-exchange.js?v=5";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=2";
 import { sendPushEventToContact } from "./push-api.js";
 
@@ -679,8 +679,10 @@ async function createContactInvitation({focusResult=true,expectedRevision=null}=
    public_key:identity.public_key,
    push_subscription_id:subscriptionId,
    created_at:Date.now(),
+   invitation_id:crypto.randomUUID(),
    ...(displayName?{display_name:displayName}:{})
   };
+  await createIssuedInvitation({id:unsigned.invitation_id,created_at:unsigned.created_at,max_activations:1});
   const canonical=JSON.stringify(unsigned);
   const signature=await signWithIdentity(canonical);
   const contactPackage={...unsigned,signature};
@@ -782,11 +784,14 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   if(!contact?.push_subscription_id)throw Error("У контакта отсутствует OneSignal ID. Попросите его обновить приглашение.");
   const subscriptionId=await enableOneSignalPush();
   const identity=await getCurrentSignalingIdentity();
-  const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,created_at:Date.now(),...(senderDisplayName?{display_name:senderDisplayName}:{})};
-  const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
+  if(!contact.invitation_id)throw Error("У сохранённого контакта старое приглашение без идентификатора. Попросите его прислать новую ссылку и импортируйте её заново.");
   if(!Number.isFinite(Number(contact.created_at)))throw Error("У сохранённого контакта нет даты исходного приглашения. Удалите его и импортируйте заново по новой ссылке.");
+  const invitationId=crypto.randomUUID(),createdAt=Date.now();
+  const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,created_at:createdAt,invitation_id:invitationId,...(senderDisplayName?{display_name:senderDisplayName}:{})};
+  await createIssuedInvitation({id:invitationId,created_at:createdAt,max_activations:1});
+  const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
   const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER;
-  const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_created_at:Number(contact.created_at),identity:identity.publicJwk,contact_package:contactPackage};
+  const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_id:contact.invitation_id,invitation_created_at:Number(contact.created_at),identity:identity.publicJwk,contact_package:contactPackage};
   const message={v:1,type:"contact_request",payload,sig:await signWithIdentity({type:"contact_request",payload})};
   const topic=await getNtfyTopic(peer);
   const response=await fetch("https://ntfy.sh/"+topic,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message),cache:"no-store"});
@@ -825,6 +830,10 @@ async function handleIncomingContactRequest(request){
  if(!NtfySecureSignaling.validUserId(userId)||userId===state.me)return;
  try{
   const existing=await getContact(userId);
+  if(existing?.request_id===request.requestId){
+   debug("Повторная доставка уже обработанного запроса контакта пропущена.");
+   return;
+  }
   if(existing&&!existing.request_pending){
    debug("Запрос контакта пропущен: отправитель уже сохранён в адресной книге.");
    return;
@@ -838,10 +847,12 @@ async function handleIncomingContactRequest(request){
    request_pending:true,
    request_received_at:receivedAt,
    request_id:request.requestId,
-   invitation_created_at:request.invitationCreatedAt
+   invitation_created_at:request.invitationCreatedAt,
+   authorized_by_invitation_id:request.invitationId
   });
   await refreshContactOptions(els.peer.value);
   debug("Получен и сохранён новый запрос на добавление контакта: "+name+".");
+  await sendContactRequest(userId,els.replyInviteStatus);
  }catch(error){
   debug("Не удалось сохранить запрос контакта: "+(error.message||String(error)));
  }
