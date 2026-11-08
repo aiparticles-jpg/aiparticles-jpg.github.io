@@ -1109,30 +1109,7 @@ els.contactList.addEventListener("click",event=>{
  if(!item||!els.contactList.contains(item))return;
  openContactScreen(item);
 });
-let addContactLongPressTimer=null;
-let addContactLongPressTriggered=false;
-els.addContactFab.addEventListener("pointerdown",event=>{
- if(event.button!==undefined&&event.button!==0)return;
- try{els.addContactFab.setPointerCapture(event.pointerId)}catch{}
- addContactLongPressTriggered=false;
- cancelAddContactLongPress();
- addContactLongPressTimer=window.setTimeout(()=>{
-  addContactLongPressTimer=null;
-  addContactLongPressTriggered=true;
-  openAddContactScreen(true);
- },550);
-});
-function cancelAddContactLongPress(){
- if(addContactLongPressTimer!==null){window.clearTimeout(addContactLongPressTimer);addContactLongPressTimer=null;}
-}
-
-els.addContactFab.addEventListener("pointerup",cancelAddContactLongPress);
-els.addContactFab.addEventListener("pointerleave",event=>{if(event.pointerType==="mouse")cancelAddContactLongPress();});
-els.addContactFab.addEventListener("pointercancel",cancelAddContactLongPress);
-els.addContactFab.addEventListener("click",event=>{
- if(addContactLongPressTriggered){event.preventDefault();addContactLongPressTriggered=false;return;}
- openAddContactScreen(false);
-});
+els.addContactFab.addEventListener("click",()=>openAddContactScreen(false));
 els.addContactScreenBack.addEventListener("click",closeAddContactScreen);
 els.contactScreenBack.addEventListener("click",closeContactScreen);
 els.contactScreenCall.addEventListener("click",()=>els.connect.click());
