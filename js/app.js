@@ -1111,19 +1111,20 @@ let addContactLongPressTimer=null;
 let addContactLongPressTriggered=false;
 els.addContactFab.addEventListener("pointerdown",event=>{
  if(event.button!==undefined&&event.button!==0)return;
+ try{els.addContactFab.setPointerCapture(event.pointerId)}catch{}
  addContactLongPressTriggered=false;
  cancelAddContactLongPress();
  addContactLongPressTimer=window.setTimeout(()=>{
   addContactLongPressTimer=null;
   addContactLongPressTriggered=true;
-  openAddContactScreen(true);
+  openAddContactScreen(false);
  },550);
 });
 function cancelAddContactLongPress(){
  if(addContactLongPressTimer!==null){window.clearTimeout(addContactLongPressTimer);addContactLongPressTimer=null;}
 }
 els.addContactFab.addEventListener("pointerup",()=>{const wasLongPress=addContactLongPressTriggered;cancelAddContactLongPress();if(wasLongPress)pasteContactInvitation();});
-els.addContactFab.addEventListener("pointerleave",cancelAddContactLongPress);
+els.addContactFab.addEventListener("pointerleave",event=>{if(event.pointerType==="mouse")cancelAddContactLongPress();});
 els.addContactFab.addEventListener("pointercancel",cancelAddContactLongPress);
 els.addContactFab.addEventListener("click",event=>{
  if(addContactLongPressTriggered){event.preventDefault();addContactLongPressTriggered=false;return;}
