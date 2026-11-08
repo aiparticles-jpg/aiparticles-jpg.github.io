@@ -23,6 +23,50 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate application version
+        shell: bash
+        run: |
+          COMMIT_TIMESTAMP=$(git show -s --format=%ct HEAD)
+          VERSION_DATE=$(date -u -d "@${COMMIT_TIMESTAMP}" +%Y.%m.%d)
+          VERSION_DATE_ISO=$(date -u -d "@${COMMIT_TIMESTAMP}" +%Y-%m-%d)
+          COMMIT_COUNT=$(git rev-list --count --since="${VERSION_DATE_ISO} 00:00:00 +0000" --until="${VERSION_DATE_ISO} 23:59:59 +0000" HEAD)
+          APP_VERSION="${VERSION_DATE}-${COMMIT_COUNT}"
+          CACHE_VERSION=$(git rev-parse --short=12 HEAD)
+
+          python3 - "${APP_VERSION}" "${CACHE_VERSION}" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          version, cache_version = sys.argv[1:3]
+          path = Path("index.html")
+          html = path.read_text(encoding="utf-8")
+
+          html, version_count = re.subn(
+              r'(id="app-version"[^>]*>Версия )\d{4}\.\d{2}\.\d{2}-\d+',
+              lambda match: match.group(1) + version,
+              html,
+              count=1,
+          )
+          if version_count != 1:
+              raise SystemExit("Could not find the application version marker in index.html")
+
+          html, cache_count = re.subn(
+              r'(src="./js/app\.js\?v=)[^"]+',
+              lambda match: match.group(1) + cache_version,
+              html,
+              count=1,
+          )
+          if cache_count != 1:
+              raise SystemExit("Could not find the app.js cache-busting URL in index.html")
+
+          path.write_text(html, encoding="utf-8")
+          print(f"Application version: {version}")
+          print(f"JavaScript cache key: {cache_version}")
+          PY
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
