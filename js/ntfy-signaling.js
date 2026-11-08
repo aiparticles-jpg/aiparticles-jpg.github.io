@@ -1,6 +1,6 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js";
-import { verifyContactPackage } from "./contact-exchange.js?v=5";
-import { consumeIssuedInvitation, hasActiveInvitationGrant } from "./local-store.js?v=3";
+import { verifyContactPackage } from "./contact-exchange.js?v=6";
+import { consumeIssuedInvitation, hasActiveInvitationGrant } from "./local-store.js?v=4";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -189,8 +189,6 @@ export class NtfySecureSignaling {
   const contact=await verifyContactPackage(JSON.stringify(p.contact_package));
   if(contact.user_id!==p.from)throw Error("Идентификатор отправителя не совпадает с пакетом контакта.");
   if(!contact.invitation_id)throw Error("В ответном приглашении отсутствует идентификатор. Попросите собеседника обновить приложение и отправить приглашение заново.");
-  const invitationCreatedAt=Number(p.invitation_created_at);
-  if(!Number.isFinite(invitationCreatedAt)||invitationCreatedAt<=0||invitationCreatedAt>Date.now()+5*60*1000)throw Error("Некорректная дата исходного приглашения.");
   if(typeof p.invitation_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.invitation_id))throw Error("В запросе отсутствует корректный идентификатор приглашения.");
   const raw=un64(contact.public_key);
   const publicKey=await crypto.subtle.importKey("raw",raw,{name:"ECDSA",namedCurve:"P-256"},true,["verify"]);
@@ -203,7 +201,7 @@ export class NtfySecureSignaling {
    return;
   }
   this.onPeerMessage(this.peer);
-  this.onContactRequest({requestId:p.request_id,contact,expiresAt,invitationCreatedAt,invitationId:p.invitation_id});
+  this.onContactRequest({requestId:p.request_id,contact,expiresAt,invitationCreatedAt:activation.created_at,invitationId:p.invitation_id});
  }
  async processCancel(m){
   const p=m?.payload;

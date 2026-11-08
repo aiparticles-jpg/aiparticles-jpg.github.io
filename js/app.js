@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=29";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=30";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation } from "./local-store.js?v=3";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation } from "./local-store.js?v=4";
 import { verifyContactPackage } from "./contact-exchange.js?v=5";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=2";
 import { sendPushEventToContact } from "./push-api.js";
@@ -151,7 +151,7 @@ function updateCallButtons(){
  const invitationCreatedAt=Number(selectedContact?.invitation_created_at);
  const hasInvitationDate=pendingRequest&&Number.isFinite(invitationCreatedAt)&&invitationCreatedAt>0;
  els.contactRequestAge.textContent=hasInvitationDate
-  ?"Приглашение отправлено "+formatInvitationAge(invitationCreatedAt)+"."
+  ?"Приглашение создано "+formatInvitationAge(invitationCreatedAt)+"."
   :"";
  els.contactRequestAge.classList.toggle("hidden",!hasInvitationDate);
  els.contactEditTools.classList.toggle("hidden",!selectedPeer);
@@ -678,7 +678,6 @@ async function createContactInvitation({focusResult=true,expectedRevision=null}=
    user_id:identity.user_id,
    public_key:identity.public_key,
    push_subscription_id:subscriptionId,
-   created_at:Date.now(),
    invitation_id:crypto.randomUUID(),
    ...(displayName?{display_name:displayName}:{})
   };
@@ -785,13 +784,12 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   const subscriptionId=await enableOneSignalPush();
   const identity=await getCurrentSignalingIdentity();
   if(!contact.invitation_id)throw Error("У сохранённого контакта старое приглашение без идентификатора. Попросите его прислать новую ссылку и импортируйте её заново.");
-  if(!Number.isFinite(Number(contact.created_at)))throw Error("У сохранённого контакта нет даты исходного приглашения. Удалите его и импортируйте заново по новой ссылке.");
   const invitationId=crypto.randomUUID(),createdAt=Date.now();
-  const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,created_at:createdAt,invitation_id:invitationId,...(senderDisplayName?{display_name:senderDisplayName}:{})};
+  const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,invitation_id:invitationId,...(senderDisplayName?{display_name:senderDisplayName}:{})};
   await createIssuedInvitation({id:invitationId,created_at:createdAt,max_activations:1});
   const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
   const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER;
-  const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_id:contact.invitation_id,invitation_created_at:Number(contact.created_at),identity:identity.publicJwk,contact_package:contactPackage};
+  const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_id:contact.invitation_id,identity:identity.publicJwk,contact_package:contactPackage};
   const message={v:1,type:"contact_request",payload,sig:await signWithIdentity({type:"contact_request",payload})};
   const topic=await getNtfyTopic(peer);
   const response=await fetch("https://ntfy.sh/"+topic,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message),cache:"no-store"});

@@ -75,12 +75,12 @@ export async function consumeIssuedInvitation({ invitationId, userId, requestId 
       if (invitation.revoked) { result = { accepted: false, reason: "revoked" }; return; }
       const activations = Array.isArray(invitation.activations) ? invitation.activations : [];
       const existing = activations.find(item => item.user_id === userId);
-      if (existing) { result = { accepted: true, duplicate: true, activation: existing }; return; }
+      if (existing) { result = { accepted: true, duplicate: true, activation: existing, created_at: Number(invitation.created_at) }; return; }
       if (activations.length >= Number(invitation.max_activations || 1)) { result = { accepted: false, reason: "used" }; return; }
       const activation = { user_id: userId, request_id: requestId, activated_at: Date.now(), status: "pending" };
       invitation.activations = [...activations, activation];
       store.put(invitation);
-      result = { accepted: true, duplicate: false, activation };
+      result = { accepted: true, duplicate: false, activation, created_at: Number(invitation.created_at) };
     };
     tx.oncomplete = () => resolve(result);
     tx.onabort = () => reject(tx.error || new Error("Invitation activation transaction aborted."));
