@@ -936,7 +936,7 @@ updatePasteContactButton();
 els.contactName.addEventListener("input",updateImportContactButton);
 els.importContact.addEventListener("click",importContactFromInput);
 updateImportContactButton();
-els.replyInvite.addEventListener("click",()=>sendContactRequest());
+els.replyInvite.addEventListener("click",()=>{els.contactScreenMenu.open=false;sendContactRequest()});
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
 els.contactRequestScreenBack.addEventListener("click",declineContactRequest);
