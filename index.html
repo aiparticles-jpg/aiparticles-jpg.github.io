@@ -65,7 +65,6 @@
       <div id="contact-tools" class="contact-tools">
         <p class="hint">Попросите собеседника отправить вам приглашение из своего профиля или показать QR-код. Затем вставьте ссылку-приглашение, полученную от собеседника, или отсканируйте QR-код.</p>
         <video id="qr-video" class="qr-video hidden" playsinline muted></video>
-        <label class="field-label" for="contact-package">Вставьте ссылку-приглашение</label>
         <div class="contact-package-row">
           <textarea id="contact-package" rows="3" autocomplete="off" spellcheck="false" placeholder="Вставьте ссылку-приглашение"></textarea>
           <div class="contact-package-actions">
@@ -73,17 +72,16 @@
             <button id="scan-qr" class="button button-secondary hidden" type="button">Сканировать QR-код</button>
           </div>
         </div>
-        <label class="field-label" for="contact-name">Как назвать контакт?</label>
+        <label class="field-label" for="contact-name">Как назвать контакт в вашем списке?</label>
         <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
-        <p class="hint">Это имя будет видно только вам.</p>
         <p class="hint">После добавления мы автоматически отправим собеседнику ваше приглашение.</p>
         <div id="response-display-name-section" class="response-display-name-section hidden">
           <label class="field-label" for="response-display-name">Как вас увидит собеседник?</label>
           <input id="response-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Например, Алексей">
-          <p class="hint">Это имя будет указано в ответном приглашении. Указывать его необязательно.</p>
+          <p class="hint">Указывать необязательно, но так собеседнику будет проще понять, от кого приглашение.</p>
           <label class="response-display-name-save" for="save-response-display-name">
             <input id="save-response-display-name" type="checkbox" disabled>
-            <span>Сохранить это имя в профиле</span>
+            <span>Сохранить как имя вашего профиля</span>
           </label>
         </div>
         <button id="import-contact" class="button button-primary" type="button">Добавить контакт</button>
