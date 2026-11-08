@@ -114,10 +114,7 @@ export class NtfySecureSignaling {
   this.active=true;
   const pending=this.pendingEvents.splice(0);
   const pendingBatch=[];
-  for(const n of pending){
-   const age=Date.now()/1000-Number(n.time||0);
-   if(age>=-5)pendingBatch.push({data:JSON.stringify(n)});
-  }
+  for(const n of pending)pendingBatch.push({data:JSON.stringify(n)});
   if(pendingBatch.length)await this.enqueueMessages(pendingBatch);
   if(this.role==="A"){
    try{await this.sendHello()}catch(err){this.onError(err);if(err.retryable)this.scheduleHelloRetry(5000)}
@@ -180,7 +177,7 @@ export class NtfySecureSignaling {
   if(m?.v!==1||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||
      typeof p.request_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.request_id)||!p.identity||!p.contact_package)return;
   const expiresAt=Number(p.expires_at);
-  if(!Number.isFinite(expiresAt)||Date.now()>expiresAt||expiresAt>Date.now()+12*60*60*1000)return;
+  if(!Number.isFinite(expiresAt)||Date.now()>expiresAt)return;
   const contact=await verifyContactPackage(JSON.stringify(p.contact_package));
   if(contact.user_id!==p.from)throw Error("Идентификатор отправителя не совпадает с пакетом контакта.");
   const invitationCreatedAt=Number(p.invitation_created_at);
@@ -305,8 +302,7 @@ export class NtfySecureSignaling {
   if(!this.active){
    let queued;try{queued=JSON.parse(event.data)}catch{return}
    if(!queued.message||!queued.id||this.seen.has(queued.id))return;
-   const age=Date.now()/1000-Number(queued.time||0);
-   if(age>=-5&&!this.pendingEvents.some(item=>item.id===queued.id)){
+   if(!this.pendingEvents.some(item=>item.id===queued.id)){
     this.pendingEvents.push(queued);
     this.onDebug("[signaling] входящее сообщение сохранено до ответа пользователя");
     await this.inspectIncoming(queued);

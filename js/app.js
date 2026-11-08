@@ -782,7 +782,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,created_at:Date.now(),...(senderDisplayName?{display_name:senderDisplayName}:{})};
   const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
   if(!Number.isFinite(Number(contact.created_at)))throw Error("У сохранённого контакта нет даты исходного приглашения. Удалите его и импортируйте заново по новой ссылке.");
-  const requestId=crypto.randomUUID(),expiresAt=Date.now()+12*60*60*1000;
+  const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER;
   const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_created_at:Number(contact.created_at),identity:identity.publicJwk,contact_package:contactPackage};
   const message={v:1,type:"contact_request",payload,sig:await signWithIdentity({type:"contact_request",payload})};
   const topic=await getNtfyTopic(peer);

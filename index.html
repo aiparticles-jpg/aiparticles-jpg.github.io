@@ -72,9 +72,11 @@
             <button id="scan-qr" class="button button-secondary hidden" type="button">Сканировать QR-код</button>
           </div>
         </div>
-        <label class="field-label" for="contact-name">Как назвать контакт в вашем списке?</label>
-        <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
-        <p class="hint">После добавления мы автоматически отправим собеседнику ваше приглашение.</p>
+        <div class="contact-name-section">
+          <label class="field-label" for="contact-name">Как назвать контакт в вашем списке?</label>
+          <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
+          <p class="hint">После добавления мы автоматически отправим собеседнику ваше приглашение с данными для установки связи.</p>
+        </div>
         <div id="response-display-name-section" class="response-display-name-section hidden">
           <label class="field-label" for="response-display-name">Как вас увидит собеседник?</label>
           <input id="response-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Например, Алексей">
