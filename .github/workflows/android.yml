@@ -1,0 +1,92 @@
+
+name: Build FileBridge
+
+on:
+  push:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android SDK
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Restore signing key
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          printf '%s' "$SIGNING_KEY" | base64 --decode > android/app/filebridge.jks
+          test -s android/app/filebridge.jks
+
+      - name: Build APK
+        working-directory: android
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+        run: gradle assembleDebug
+
+      - name: Extract APK certificate fingerprints
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+
+          CERTS=$("$APKSIGNER" verify --print-certs "$APK")
+
+          SHA256=$(echo "$CERTS" \
+            | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2}')
+
+          SHA1=$(echo "$CERTS" \
+            | awk -F': ' '/Signer #1 certificate SHA-1 digest/ {print $2}')
+
+          format_fingerprint() {
+            echo "$1" \
+              | sed 's/../&:/g; s/:$//' \
+              | tr '[:lower:]' '[:upper:]'
+          }
+
+          SHA256_FORMATTED=$(format_fingerprint "$SHA256")
+          SHA1_FORMATTED=$(format_fingerprint "$SHA1")
+
+          echo "$SHA256_FORMATTED" > android/sha256-fingerprint.txt
+          echo "$SHA1_FORMATTED" > android/sha1-fingerprint.txt
+
+          echo "APK SHA-256: $SHA256_FORMATTED"
+          echo "APK SHA-1: $SHA1_FORMATTED"
+
+      - name: Upload APK and fingerprint
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileBridge
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/sha256-fingerprint.txt
+            android/sha1-fingerprint.txt
+          retention-days: 30
+

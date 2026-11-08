@@ -1,0 +1,432 @@
+# Voicelink — Project Session Checkpoint
+
+This file is a continuity checkpoint for future ChatGPT sessions. Treat the repository documents as the source of truth; do not rely on compressed chat context alone.
+
+Repository: https://github.com/aiparticles-jpg/aiparticles-jpg.github.io
+Main architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
+
+## Working rules
+- Before changing code, inspect the current repository state.
+- Discuss and agree architecture before implementation.
+- Never claim a GitHub write succeeded until the file has been fetched again and the saved content verified.
+- After each substantial new decision, update the relevant repository document and verify it by reading it back.
+- If a write fails, preserve the decision in a separate checkpoint/decision file or report the failure explicitly. Do not silently assume it was saved.
+
+## Project
+Anonymous peer-to-peer voice application.
+- Frontend: GitHub Pages.
+- OneSignal: push notifications.
+- ntfy: call signaling and WebRTC signaling.
+- WebRTC: direct audio transport.
+- Render: stateless HTTP backend to validate signed requests and send OneSignal pushes.
+- No database or persistent server-side user/contact data.
+- Cloudflare Workers are excluded due to connectivity problems with free workers.dev URLs in the user's environment and the cost of a custom domain.
+- Render Free may sleep; cold starts must be considered.
+
+## Agreed identity and contacts
+- No separate random UUID.
+- Generate ECDSA P-256 key pair on first use.
+- user_id is SHA-256 fingerprint of the public key.
+- Private key stays in the browser; public key can be shared.
+- Contact aliases are local only and are never sent over the network.
+- Local contact fields: name (alias), user_id, public_key, push_subscription_id (OneSignal Subscription ID).
+- Contact exchange supports both QR code and URL fragment (#contact=...). The fragment is read by frontend JavaScript and is not sent in the HTTP request.
+- Contact package includes user_id, public_key, push_subscription_id, version, and signature; never includes the private key.
+- ECDSA signature covers the package fields. Validate the fingerprint and signature on import. Initially mark imported contact unconfirmed; verify SAS on first connection before trusting it.
+- If OneSignal Subscription ID changes, share an updated contact package.
+- Contacts can be deleted locally. Deletion removes the complete contact record (public key, OneSignal Subscription ID, and trust state); call-history entries remain as non-credential historical records. Re-add a contact by importing a newly shared signed URL/QR package. There is no separate “reset pairing/trust” action.
+
+## Private-key storage decision
+- Generate the private key using Web Crypto API as non-extractable.
+- Store the CryptoKey object in IndexedDB.
+- Do not export private-key material to JWK or store it in localStorage.
+- Use the stored CryptoKey directly for signing contact packages and authenticated backend requests.
+- Public key remains exportable for sharing.
+- Implemented in `js/local-store.js`; browser compatibility and persistence behavior still require runtime testing.
+
+## Backend security baseline
+- ECDSA P-256 request signatures.
+- Validate user_id against SHA-256 fingerprint of supplied public key.
+- Timestamp with 60-second acceptance window.
+- Random nonce and temporary in-memory replay tracking.
+- Rate limits by IP and user_id.
+- Only explicitly allowed event types; no arbitrary client-supplied OneSignal message text or parameters.
+- No persistent user data on backend.
+- Example limits discussed (not finalized): nonce retention 2 minutes, 10 requests/minute per IP, 5 requests/minute per user_id.
+- In-memory state is lost on restart and not shared between instances; this is basic mitigation, not distributed rate limiting.
+
+## Push events and call UI
+Allowed push events:
+- incoming_call
+- call_cancelled
+- call_ignored
+- call_ended
+
+Push payload should contain minimal metadata (event, sender_id, call_id, expires_at). Do not send names, SDP, audio, private keys, or sensitive data through OneSignal.
+- Starting a call: send incoming_call through Render/OneSignal alongside ntfy signaling.
+- Caller cancels: send call_cancelled.
+- Recipient explicitly rejects: send call_ignored.
+- Either participant explicitly ends an established call: send call_ended through ntfy and submit the corresponding push through Render/OneSignal when available; the peer terminates the call and releases its resources.
+- Answer is delivered through ntfy; no separate push.
+- Hiding/dismissing the incoming-call UI is local only and must not notify the caller.
+
+Three distinct incoming-call actions are agreed:
+- Answer: accept.
+- Reject: explicitly reject; notify via Render/OneSignal and ntfy; caller stops waiting.
+- Hide: close UI locally; caller continues waiting.
+
+## Current implementation status / open questions
+- These are architecture decisions, not proof of implementation.
+- Reject button/event handling has not been implemented or verified.
+- Exact rate-limit values are not finalized.
+- Initial storage foundation is implemented in `js/local-store.js`: IndexedDB identity/contact/history stores, non-extractable ECDSA private CryptoKey, public-key fingerprint, local contact CRUD (including lookup and safe metadata updates without changing `user_id`), and 10-entry call-history CRUD.
+- Added `js/ntfy-identity.js` as a migration adapter. It derives the ntfy topic from the 64-character anonymous `user_id`, loads the local non-extractable identity and exports only its public key as JWK for the existing signaling message format, resolves a peer's public key from a locally saved contact while checking its fingerprint, and persists trust through IndexedDB only if the verified public key has not changed.
+- The adapter is not yet wired into `js/ntfy-signaling.js` or the UI. The legacy signaling class still creates an extractable ECDSA key and stores its private JWK in `localStorage`; do not treat the migration as complete. Next step: integrate the adapter into signaling while preserving the current call flow, then switch the UI's peer selection from typed usernames to locally saved contacts. Browser runtime tests remain pending.
+
+## Identity recovery after private-key loss
+
+If the browser's IndexedDB data is cleared, the browser is reinstalled, or the user moves to another device without transferring the existing key, the non-extractable private key may be permanently lost. In that case:
+
+- The application generates a new ECDSA P-256 key pair and derives a new `user_id` from the new public key.
+- The previous identity cannot be recovered.
+- The user must share the new contact package (QR code or URL) with contacts again.
+- Contacts must verify and trust the new identity; the old identity must not be silently treated as the new one.
+- No private-key backup, export, password-encrypted recovery file, or device-to-device key transfer is provided in this design.
+
+This is an intentional trade-off: simpler recovery behavior and preservation of the non-extractable private-key design, at the cost of losing the old identity when its key is lost.
+
+## Handling stale contacts after identity loss
+
+When a user loses their private key and creates a new cryptographic identity:
+
+- Existing contact records are not deleted automatically.
+- The old contact identity is marked as `Identity outdated`.
+- The old `user_id` and public key are retained as historical contact data, but must not be used to establish a new connection as though they represented the user's current identity.
+- The user shares the new contact package (QR code or URL) with their contacts.
+- The recipient imports the new package and verifies the new identity before trusting it.
+- The application must not automatically link the old and new identities: without the old private key, cryptographic proof of continuity is unavailable.
+- After the recipient has independently verified the new identity, the UI may offer to replace the outdated identity in the existing local contact record while preserving that contact's locally assigned name. This replacement is an explicit user action, not an automatic merge.
+
+## SAS verification for a re-imported contact
+
+When a contact imports a user's new contact package after that user has lost their previous private key and created a new identity, the same Short Authentication String (SAS) verification mechanism agreed for first-time contact verification is used. Both users compare the SAS through an independent communication channel and confirm that it matches before marking the new identity as trusted. The new identity is not automatically linked to the old one; replacing an outdated local contact identity remains an explicit user action after successful verification.
+
+
+## Startup behavior and local-only data
+
+On application startup:
+
+- Check IndexedDB for the locally stored non-extractable private key.
+- If present, load and use the existing cryptographic identity.
+- If absent, generate a new ECDSA P-256 key pair and derive a new `user_id` from its public key.
+- Retain and use locally stored contacts if they are still available.
+- If browser data was cleared and the local address book is also absent, the user must import contacts again.
+
+There is no cloud synchronization or cloud backup for identity or contacts, and no cross-device synchronization is included in the agreed architecture.
+
+
+## Local storage decision: IndexedDB
+
+Use IndexedDB as the local storage mechanism for identity and contacts. Store:
+
+- The non-extractable private `CryptoKey` object.
+- The public key and derived `user_id`.
+- Contact records: local alias, `user_id`, public key, and OneSignal Subscription ID.
+- Contact trust status and SAS-verification status.
+
+Do not store identity or contact data in `localStorage`. Keep this data local to the device; do not add cloud synchronization or a persistent backend address book.
+
+
+## Local contact-data encryption decision
+
+Do not add application-level encryption for contact records stored in IndexedDB; keep this storage simple. The private key remains a non-extractable Web Crypto `CryptoKey` stored in IndexedDB. IndexedDB itself must not be described as encrypting the contact records.
+
+
+## Inactive OneSignal Subscription ID
+
+Keep contacts when their OneSignal Subscription ID becomes inactive, invalid, or stops receiving notifications. Do not automatically delete the contact or its local name/trust record. Allow the user to refresh the contact's push details by exchanging an updated QR code or URL when available. An inactive Subscription ID alone is not grounds for deleting the contact.
+
+
+## OneSignal Subscription ID rotation
+
+When OneSignal assigns the user a new Subscription ID, update the user's own value in IndexedDB and generate a newly signed contact package with the current `push_subscription_id`. Make it available for sharing through the existing QR-code or URL flow. Contacts on other devices are not updated automatically; they must import the refreshed package. A Subscription ID change alone does not create a new cryptographic identity.
+
+
+## Browser notification permission denied
+
+When browser notification permission is denied or blocked, show an in-app warning that push notifications are unavailable and incoming-call alerts may not arrive while the app is inactive. Offer instructions for enabling notifications in browser site settings. Do not repeatedly prompt or bypass the user's choice. Keep other Voicelink functionality available where technically possible; lack of push permission alone must not block app use.
+
+
+## Notification permission request timing
+
+Do not request notification permission automatically on first page load. Explain the purpose first and request permission only after the user explicitly presses an `Enable notifications` button. If permission is denied or blocked, show the warning and guidance already agreed.
+
+## Render backend wake-up / keep-alive
+
+Render may put the backend to sleep after approximately 15 minutes of inactivity. The frontend should:
+
+- Send a lightweight backend request on application startup to wake it if necessary.
+- Send a lightweight ping approximately every 14 minutes while the application is active.
+- Stop periodic pings when the application is closed or no longer running.
+- Send a fresh request immediately when the user returns after an absence.
+
+Mobile browsers and operating systems can throttle or suspend background timers, so this is best-effort and does not guarantee continuous backend availability. Handle cold-start delays and temporary unavailability gracefully. The ping must not create persistent user records or store contact data.
+
+
+## Backend cold-start UI and retries
+
+If Render is waking from sleep and does not respond immediately:
+
+- Keep the rest of the app usable; do not block the whole interface.
+- Show a status such as `Connecting to server`.
+- Allow for cold-start delays of tens of seconds; do not treat the first timeout or temporary failure as permanent.
+- Retry transient failures automatically using bounded retries and backoff, not rapid repeated requests.
+- On success, update the status and continue the still-valid operation.
+- If retries are exhausted, show a temporary-unavailability message and allow another attempt.
+
+Do not display the backend as ready until a successful response is received.
+
+
+## Calls when Render is unavailable
+
+Do not block or cancel a call solely because the Render backend is unavailable. Render is used for OneSignal push delivery; ntfy signaling and WebRTC audio are separate paths. Continue the call through ntfy/WebRTC where available, while showing a non-blocking warning that the push notification could not be sent and the recipient may not see an incoming-call alert while the app is inactive. Do not claim the recipient was notified without confirmation. The caller may continue waiting for the normal ntfy response or cancel the call.
+
+## OneSignal unavailable while Render is available
+
+Agreed behavior:
+
+- If OneSignal is temporarily unavailable or returns a transient error, Render makes a bounded number of retries with short delays/backoff; never retry indefinitely.
+- If retries fail, return a push-submission failure so the frontend can show a non-blocking warning.
+- The call itself continues through ntfy signaling and WebRTC where available. Push failure must not block or cancel it.
+- Do not say the recipient was notified unless OneSignal confirms acceptance. API acceptance does not guarantee that the notification was displayed on the device.
+- The caller can keep waiting for the normal ntfy response or cancel the call.
+- Exact retry count and delay values remain implementation details to be selected during implementation.
+
+## Push delivery acknowledgment — deferred
+
+Decision: Do not implement a separate end-device delivery acknowledgment/confirmation mechanism for push notifications for now. A successful OneSignal API response means the push submission was accepted; it does not prove the recipient's device received or displayed the notification. Keep the call flow independent: ntfy signaling and WebRTC continue to handle signaling and audio.
+
+## OneSignal retry error classification
+
+Decision:
+- Retry transient OneSignal failures, including HTTP 429 and HTTP 5xx, subject to the already agreed bounded retry policy.
+- Do not retry permanent client/request errors such as HTTP 400, including an invalid or malformed Subscription ID/request.
+- Never retry indefinitely.
+- If push submission ultimately fails, show a non-blocking warning; the ntfy/WebRTC call continues independently.
+- Exact retry count and delay values remain implementation details for a later decision.
+
+## OneSignal HTTP 401/403 handling
+
+Decision:
+- HTTP 401 and HTTP 403 from OneSignal are non-retryable configuration/authorization errors.
+- Do not automatically retry these responses.
+- Keep diagnostic details in backend logs only; never expose API keys or secrets to the frontend.
+- Return a generic push-configuration failure for a non-blocking frontend warning.
+- Do not interrupt the call; ntfy signaling and WebRTC continue independently where available.
+
+## OneSignal error logging — privacy limits
+
+Decision: Keep only minimal technical diagnostics for OneSignal push failures: timestamp, HTTP status code (if available), event type (incoming_call, call_cancelled, call_ignored, call_ended), and a coarse internal error category.
+
+Never log push payloads or notification contents, API keys, authorization headers, private keys, Subscription IDs, user_id values, or other user/contact identifiers. Do not expose secrets or raw sensitive provider responses to the frontend. Logs are for troubleshooting only and must not become a user-data store.
+
+## Backend log retention
+
+Decision: Use Render's standard log retention for the deployed service/plan. Do not build a separate persistent log store, database table, or custom log archive. The agreed restrictions on logged fields and sensitive data apply throughout Render's retention period.
+
+## Push request idempotency
+
+Decision: Use (call_id, event type) as the idempotency key. Reprocessing the same logical event for the same call must not send a duplicate push. Deduplication state is temporary/in-memory only; do not add persistent storage or a database for it. The retention window and implementation details will be decided during implementation.
+
+## Different events with the same call_id
+
+Decision: Because the idempotency key is (call_id, event type), different event types for one call are separate events and must not suppress one another. For example, allow incoming_call and then call_cancelled for the same call_id, so cancellation can be delivered. Deduplicate only repeated submissions of the same event type for the same call_id. Backend event validity/call-state validation remains a separate concern.
+
+## Call ID generation and lifetime
+
+Decision: Generate a new cryptographically random UUID for every newly initiated call. Reuse that call_id for all events belonging to that call (incoming_call, call_cancelled, call_ignored, call_ended, etc.). A new call gets a new UUID, even if it is to the same contact. call_id identifies only a call instance, not a persistent user identity.
+
+## Incoming call timeout and Render wake-up
+
+Decision:
+- For the normal path, start the 60-second incoming-call response window only after Render successfully responds to the wake-up/request; do not count Render cold-start time against the recipient's response window.
+- Start ntfy signaling and WebRTC in parallel with the Render wake-up request; neither waits for Render.
+- If Render remains unavailable, continue through ntfy/WebRTC without waiting for it and use a separate response timeout for this path.
+- The duration of the separate timeout when Render is unavailable remains undecided.
+
+## Render-unavailable call response timeout
+
+Decision: If Render does not become available, use a separate 60-second response timeout measured from the moment the caller presses the call button. This is distinct from the normal-path 60-second response window, which starts only after Render successfully responds to the wake-up request.
+
+## Automatic call termination after 60-second timeout
+
+Decision: If the applicable 60-second response timeout expires without an answer:
+- send call_cancelled through ntfy;
+- if Render is available, also submit call_cancelled through Render/OneSignal;
+- show "No answer" to the caller;
+- release call-related resources.
+
+The call ends locally regardless of push success. Push delivery is best-effort; ntfy is the primary cancellation signaling path.
+
+## Call timeout race condition
+
+The call lifecycle uses a first-terminal-event-wins rule. The recipient's answer is accepted only if it is processed before timeout/cancellation is committed. Once the caller's timeout has been committed and the call cancellation has been issued, any late answer is ignored. A completed or cancelled call cannot be reopened; a new call requires a new call_id.
+
+## Recipient incoming-call UI timeout behavior
+
+When the incoming-call response window expires, the recipient's incoming-call UI is automatically closed. The recipient sees a local message such as "Call ended — no answer". This is a UI consequence of the already-processed call timeout/cancellation; it does not generate an additional call event.
+
+## Delayed incoming-call notification handling
+
+Before displaying an incoming-call UI triggered by a delayed push/notification, the client must validate the current call state for that call_id. If the call has already been cancelled or expired, the incoming-call UI must not be shown. The implementation must use the existing call/signaling architecture and must not assume that the stateless Render backend stores persistent call state; the concrete status-check mechanism remains to be specified.
+
+## Deferred edge-case policy
+
+To keep development focused on delivering a working application, complex edge cases and unresolved exceptional flows should be documented as deferred work rather than fully designed before the core flow is implemented. The primary happy path takes priority. Deferred items must remain visible in the architecture/checkpoint documentation and be revisited before release or when implementation makes them necessary.
+
+For delayed incoming-call notifications specifically, the detailed current-call-state verification mechanism is deferred. Do not expand the current implementation scope to solve this edge case now; retain the note for later review. Basic expiration handling using the existing expires_at value may be implemented where already supported, without introducing new persistent call-state storage or a new status service.
+
+## Accepted response stops incoming-call timer
+
+When the caller receives the recipient's `accepted` confirmation through ntfy, the 60-second incoming-call response timer stops immediately. WebRTC connection establishment is a separate subsequent stage with its own error handling; the response timer must not continue running during WebRTC setup.
+
+## WebRTC connection setup failure
+
+If WebRTC connection establishment fails after the recipient has accepted the call, both users are shown a clear failure message such as "Could not establish connection". The call is terminated and its resources are released. The exact WebRTC setup timeout and the signaling detail for notifying the peer of setup failure remain to be decided during the core implementation; do not add a new push event solely for this case without a separate decision.
+
+## WebRTC connection setup timeout
+
+After the recipient accepts the call, WebRTC has up to 30 seconds to establish the connection. If the connection is not established within 30 seconds, the call is terminated, both users are shown a connection-failure message, and call resources are released.
+
+## WebRTC connection status
+
+While WebRTC is being established, both users see the status "Connecting…". Once the WebRTC connection is successfully established, the status changes to "Connected".
+
+## Established WebRTC connection loss
+
+If an established WebRTC connection is unexpectedly lost, the call is automatically terminated, call resources are released, and both users are shown the message "Connection lost".
+
+## Post-call navigation
+
+After a call ends for any reason, both participants return to the application's main screen. The application does not automatically initiate another call.
+
+## Post-call result messages
+
+After a call ends, show a brief result message explaining the reason:
+- "Call ended"
+- "No answer"
+- "Connection lost"
+- "Could not establish connection"
+- "Call rejected"
+
+The message is displayed after returning to the main screen and disappears automatically after 3 seconds.
+
+
+## Local call history
+
+Agreed:
+- Show the 10 most recent call attempts on the main screen.
+- Record every call attempt, including answered calls, missed/unanswered calls, rejected calls, and calls cancelled by the caller.
+- Each attempt is a separate history entry, including repeated calls from the same contact.
+- Each entry includes the locally resolved contact name/alias, date, time, and outcome.
+- Persist history only in IndexedDB on the user's device.
+- Never transmit call history, local contact names/aliases, or history identifiers to Render, OneSignal, ntfy, or another server.
+- History is a local activity list, not a backend call log.
+- Exact UI presentation and additional history-management actions are deferred to implementation.
+- MVP scope: implement only essential functionality for a simple working app. Document minor details, edge cases, and non-essential enhancements as deferred; do not let them block core implementation.
+
+
+### Call-history deletion
+
+- Allow clearing the entire local call history.
+- Do not provide deletion of individual entries.
+- Clearing history removes the complete local history from IndexedDB.
+- Show a warning/confirmation dialog before clearing the entire history; delete it only after explicit user confirmation.
+- After clearing, show no entries; do not add a separate empty-state message.
+
+
+## Anonymous identity and local-contact signaling integration — 2026-11-06
+
+- Integrated `js/ntfy-identity.js` into `js/ntfy-signaling.js`. The signaling class now loads the current ECDSA identity from IndexedDB, validates its `user_id`, and uses the anonymous-ID-derived ntfy topic for both subscription and publishing.
+- Removed the legacy signaling code path that generated an extractable ECDSA key and stored its private JWK in `localStorage`.
+- Peer identity lookup and trust checks now resolve the selected peer from the local IndexedDB contacts. A received signaling public key must match the saved contact public key; successful SAS confirmation marks that contact trusted in IndexedDB.
+- The UI now creates/loads the local anonymous identity automatically and selects a peer from the locally stored contacts. Local contact aliases are used for visible call status; network addressing uses only anonymous `user_id` values.
+- Existing ntfy message types, signature envelope, role selection, call request/hello/answer flow, cancellation handling, and WebRTC signal transport were retained.
+- The contact selector currently displays contacts already present in IndexedDB. A user-facing contact import/add flow (QR / URL package) is not yet implemented in this UI; until then, a fresh browser with an empty address book cannot initiate a call. This is the next required functional step, not a reason to reintroduce manual usernames.
+- Browser runtime testing of two devices is still required. In particular, verify cross-device topic agreement, signature verification, first-time SAS confirmation, trusted reconnect, incoming-call handling with a selected contact, and WebRTC establishment. The old and new identity namespaces are intentionally not interoperable: existing legacy username identities will not be migrated automatically.
+
+- On migration startup, the app removes obsolete `vl.identity.v1.*` and `vl.peer.v1.*` entries from `localStorage`; active identity and trust are now stored in IndexedDB. The local contact selector has matching form styling.
+
+## Signed contact import via QR and URL — 2026-11-06
+
+- Added `js/contact-exchange.js` to decode a v1 contact package from raw JSON, base64url package text, a full invitation URL, or a URL fragment of the form `#contact=<base64url-json>`.
+- Import validates the package version, required OneSignal Subscription ID, public-key fingerprint (`SHA-256(raw P-256 public key)` equals `user_id`), and ECDSA P-256/SHA-256 signature before saving anything.
+- The v1 signature input is deterministic JSON with fields in this exact order: `version`, `user_id`, `public_key`, `push_subscription_id`. The signature field itself is excluded.
+- Added a local contact-import panel. The user supplies a local-only alias; verified contact details are saved to IndexedDB as untrusted until the first-call SAS check. Re-importing an existing ID requires confirmation and resets its local trust status.
+- Added QR camera scanning using the browser's built-in `BarcodeDetector` API where available. Camera access requires HTTPS and browser support; when unavailable, users can paste the QR payload or invitation URL.
+- Opening the app with `#contact=...` automatically opens the import panel and fills the package field. URL fragments are read by frontend JavaScript and are not sent in the HTTP request.
+- At the time this checkpoint section was first written, outgoing invitation generation was deferred pending OneSignal integration. It has since been implemented in the OneSignal section below.
+
+
+## OneSignal Web Push and signed invitation export — 2026-11-06
+
+- Added the user's OneSignal App ID to js/onesignal.js; this is a public application identifier, not a REST API secret.
+- Added OneSignal Web SDK v16 initialization and the root-scope OneSignalSDKWorker.js service worker.
+- OneSignal push permission is requested only after the user presses “Поделиться приглашением”. Creating/sharing an invitation requires granted browser notification permission; if permission is denied or the user declines, no new invitation is created. If permission is already granted, the app reuses it without showing another prompt. The app reads the current User.PushSubscription.id; no external user ID or username is assigned.
+- Invitation export builds the exact v1 canonical field order (version, user_id, public_key, push_subscription_id), signs it with the existing non-extractable local identity key, and encodes the package in the URL fragment.
+- Added copy-link UI and local QR rendering using QRCode.js loaded from cdnjs. The invitation payload is rendered locally; it is not sent to the QR library host.
+- Existing incoming invitation verification remains unchanged.
+- Not yet browser-tested: OneSignal dashboard platform/site configuration, actual permission prompt, Subscription ID availability, service-worker registration, QR rendering, and cross-device push delivery. The OneSignal app must be configured for Web Push with the site's origin https://aiparticles-jpg.github.io.
+
+## Backend scaffold — 2026-11-06
+
+Created the initial backend inside the existing repository under `backend/`; no separate repository was created.
+
+- `backend/package.json`: private Node.js package, Node.js >=20, Express 4, `npm start`.
+- `backend/server.js`: minimal Express server; listens on Render's `PORT` and binds to `0.0.0.0`; exposes `GET /health`.
+- `backend/README.md`: local run instructions and Render Web Service settings (Root Directory: `backend`, Build Command: `npm install`, Start Command: `npm start`, Health Check Path: `/health`).
+- No OneSignal REST API key or other secret is stored in the repository.
+- This is only the initial scaffold. Request authentication, signature/nonce validation, rate limiting, and OneSignal push submission remain unimplemented.
+
+Render deployment and runtime health check have not yet been performed.
+
+
+## Signed OneSignal push API — 2026-11-07
+
+Implemented initial end-to-end incoming-call push path:
+
+- `backend/server.js` now exposes `POST /v1/push` in addition to `GET /health`.
+- The backend verifies ECDSA P-256 signatures, checks that SHA-256 of the raw public key equals `user_id`, enforces a 60-second timestamp window, validates random nonces, restricts event types, validates UUID call IDs and Subscription IDs, and applies in-memory replay protection, idempotency, and rate limits.
+- OneSignal REST API requests are made server-side using the private Render environment variable `ONESIGNAL_REST_API_KEY`; the OneSignal App ID remains public.
+- Push payload data contains only event, sender_id, call_id, and expires_at. No contact names, SDP, audio, or call history are sent.
+- `js/push-api.js` signs requests with the existing local non-extractable ECDSA identity and sends them to the Render backend.
+- `js/ntfy-signaling.js` now uses UUID values for call SIDs and passes the call ID to the dialing callback.
+- `js/app.js` submits `incoming_call` to Render/OneSignal when the ntfy outgoing-call request is sent. A push failure is logged as non-blocking; ntfy/WebRTC call flow continues.
+- `backend/README.md` documents the endpoint and security model.
+- Frontend entrypoint cache version was bumped.
+
+Not yet verified: Render deployment of this backend commit, actual OneSignal API acceptance from Render, and an incoming push on a second device. Existing browser-dashboard test push only verified the OneSignal-to-Firefox dashboard test path. The next validation is to confirm the Render deployment is Live, then place a call to a contact whose imported package contains a current OneSignal Subscription ID and check the recipient device.
+
+
+## Invitation and push permission UX — 2026-11-07
+
+- Use one action: “Поделиться приглашением”.
+- Pressing this button means the user agrees to receive incoming-call push notifications; no separate consent mode or invitation without a push Subscription ID is offered.
+- If browser permission is “default”, request it through OneSignal. If the user grants it, opt in, wait for a non-empty OneSignal Subscription ID, and create the signed invitation.
+- If the user denies permission, do not create a new invitation. Show a clear message that notification permission is required. If permission is already “denied”, do not repeatedly trigger the native prompt; instruct the user to enable notifications in the browser's site settings.
+- If permission is already “granted”, do not prompt again; opt in/synchronize OneSignal and create the invitation once the Subscription ID is available.
+- Existing contact-package format and signature remain unchanged; every newly created invitation contains a non-empty push_subscription_id.
+
+
+## Contact request reply flow — 2026-11-07
+
+- Bob imports Alice's signed invitation, selects her contact, and presses “Ответить на приглашение”.
+- The action obtains Bob's current OneSignal Subscription ID (requesting browser permission if needed), builds the existing v1 signed contact package, and wraps it in a second ECDSA-signed `contact_request` envelope addressed to Alice's anonymous user ID.
+- The signed request envelope is published to Alice's existing ntfy topic. The package contains only Bob's public key, anonymous user ID, OneSignal Subscription ID, and signature; it is not an encrypted message. The signature and recipient binding protect authenticity and integrity. The ntfy topic is derived from Alice's public ID and is not treated as a confidentiality boundary.
+- After ntfy accepts the message, the frontend submits a `contact_request` event to the existing Render `/v1/push` endpoint. Render sends a OneSignal notification: “Пользователь хочет добавить вас в контакты VoiceLink.” The push contains only event metadata; it does not carry the contact package.
+- Alice's existing startup ntfy subscription validates the contact package, fingerprint, outer signature, recipient ID, and expiry. The UI shows a pending request and lets Alice enter a local alias and accept or decline it.
+- Accepting saves Bob's verified package in Alice's IndexedDB as an untrusted contact. Bob already has Alice saved from importing her invitation. First-call SAS verification remains unchanged.
+- Declining removes the request from the local UI only; no decline notification is sent.
+- Contact requests expire after two minutes. The existing ntfy subscription replays messages from the last 120 seconds, matching this request lifetime.
+- OneSignal is best-effort. If push submission fails after ntfy publication, the request remains published and the sender sees a warning; no contact data is placed in the push payload.
+- Browser testing on two independent devices, including delayed push/open behavior, remains required.
