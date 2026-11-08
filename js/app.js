@@ -14,7 +14,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
 function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,60)}
@@ -748,8 +748,9 @@ async function pasteContactInvitation(event){
  }
 }
 
-async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus){
+async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus,displayNameOverride=undefined){
  const peer=peerOverride;
+ const senderDisplayName=displayNameOverride===undefined?getProfileDisplayName():String(displayNameOverride||"").trim().slice(0,60);
  if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите контакт, от которого вы получили приглашение.");return false;}
  markContactRequestSent(peer);
  updateCallButtons();
@@ -759,7 +760,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   if(!contact?.push_subscription_id)throw Error("У контакта отсутствует OneSignal ID. Попросите его обновить приглашение.");
   const subscriptionId=await enableOneSignalPush();
   const identity=await getCurrentSignalingIdentity();
-  const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,created_at:Date.now(),...(getProfileDisplayName()?{display_name:getProfileDisplayName()}:{})};
+  const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,created_at:Date.now(),...(senderDisplayName?{display_name:senderDisplayName}:{})};
   const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
   if(!Number.isFinite(Number(contact.created_at)))throw Error("У сохранённого контакта нет даты исходного приглашения. Удалите его и импортируйте заново по новой ссылке.");
   const requestId=crypto.randomUUID(),expiresAt=Date.now()+120000;
@@ -931,6 +932,9 @@ async function importContactFromInput(){
  try{
   const verified=await verifyContactPackage(els.contactPackage.value);
   const name=els.contactName.value.trim();
+  const profileName=getProfileDisplayName();
+  const senderDisplayName=profileName||String(els.responseDisplayName.value||"").trim().slice(0,60);
+  const saveSenderName=!profileName&&!!senderDisplayName&&els.saveResponseDisplayName.checked;
   if(!name)throw Error("Укажите имя, под которым контакт будет сохранён только на этом устройстве.");
   const existing=await getContact(verified.user_id);
   if(existing&&!window.confirm("Этот контакт уже сохранён как «"+existing.name+"». Обновить его данные и локальное имя?"))return;
@@ -948,7 +952,12 @@ async function importContactFromInput(){
   if(!existing){
    setInlineStatus(els.qrStatus,"Контакт сохранён. Отправляем ответное приглашение…");
    debug("Автоматически отправляем ответное приглашение новому контакту.");
-   await sendContactRequest(verified.user_id,els.qrStatus);
+   await sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
+   if(saveSenderName){
+    els.profileDisplayName.value=senderDisplayName;
+    handleProfileDisplayNameInput();
+    debug("Имя отправителя сохранено в профиле по выбору пользователя.");
+   }
   }
  }catch(error){
   showError(error.message||String(error));
@@ -1035,6 +1044,7 @@ els.pasteContact.addEventListener("click",pasteContactInvitation);
 updatePasteContactButton();
 
 els.contactName.addEventListener("input",updateImportContactButton);
+els.responseDisplayName.addEventListener("input",()=>{els.saveResponseDisplayName.disabled=!els.responseDisplayName.value.trim();if(!els.responseDisplayName.value.trim())els.saveResponseDisplayName.checked=false;});
 els.importContact.addEventListener("click",importContactFromInput);
 updateImportContactButton();
 els.replyInvite.addEventListener("click",()=>{els.contactScreenMenu.open=false;sendContactRequest()});
@@ -1158,13 +1168,25 @@ document.addEventListener("pointerdown",event=>{
 document.addEventListener("keydown",event=>{
  if(event.key==="Escape"&&els.headerMenu.open){els.headerMenu.open=false;els.headerMenu.querySelector("summary").focus()}
 });
+function updateResponseDisplayNameSection(){
+ const profileName=getProfileDisplayName();
+ els.responseDisplayNameSection.classList.toggle("hidden",!!profileName);
+ els.saveResponseDisplayName.disabled=!els.responseDisplayName.value.trim();
+ if(profileName){
+  els.responseDisplayName.value="";
+  els.saveResponseDisplayName.checked=false;
+ }
+}
 function openAddContactScreen(pasteFromClipboard=false,{preserveInput=false}={}){
  clearInlineStatus(els.qrStatus);clearError();
  if(!preserveInput){
   els.contactPackage.value="";
   els.contactName.value="";
+  els.responseDisplayName.value="";
+  els.saveResponseDisplayName.checked=false;
   els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
  }
+ updateResponseDisplayNameSection();
  els.addContactScreen.classList.remove("hidden");
  document.body.classList.add("contact-screen-open");
  els.contactTools.open=true;
@@ -1175,6 +1197,8 @@ function closeAddContactScreen(){
  if(qrScanActive)stopQrScan();
  els.contactPackage.value="";
  els.contactName.value="";
+ els.responseDisplayName.value="";
+ els.saveResponseDisplayName.checked=false;
  els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
  clearInlineStatus(els.qrStatus);
  els.addContactScreen.classList.add("hidden");

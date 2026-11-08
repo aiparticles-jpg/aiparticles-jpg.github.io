@@ -73,7 +73,16 @@
         <label class="field-label" for="contact-name">Как назвать контакт?</label>
         <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
         <p class="hint">Это имя будет видно только вам.</p>
-        <p class="hint">После добавления мы автоматически отправим собеседнику ответное приглашение.</p>
+        <p class="hint">После добавления мы автоматически отправим собеседнику ваше приглашение.</p>
+        <div id="response-display-name-section" class="response-display-name-section hidden">
+          <label class="field-label" for="response-display-name">Как вас увидит собеседник?</label>
+          <input id="response-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Например, Алексей">
+          <p class="hint">Это имя будет указано в ответном приглашении. Указывать его необязательно.</p>
+          <label class="response-display-name-save" for="save-response-display-name">
+            <input id="save-response-display-name" type="checkbox" disabled>
+            <span>Сохранить это имя в профиле</span>
+          </label>
+        </div>
         <button id="import-contact" class="button button-primary" type="button">Добавить контакт</button>
         <p id="qr-status" class="hint" aria-live="polite"></p>
       </div>
@@ -246,6 +255,6 @@
     </section>
   </main>
 
-  <script type="module" src="./js/app.js?v=122"></script>
+  <script type="module" src="./js/app.js?v=123"></script>
 </body>
 </html>

@@ -546,3 +546,11 @@ body.contact-screen-open{overflow:hidden}
 .contact-request-actions{display:grid;gap:10px;margin-top:18px;padding:16px;border:1px solid rgba(225,171,82,.35);border-radius:13px;background:rgba(225,171,82,.06)}
 .contact-request-actions .hint{margin:0 0 4px;line-height:1.55}
 .contact-request-actions .button{width:100%}
+
+/* Optional sender name when replying to a newly imported invitation. */
+.response-display-name-section{margin:18px 0 16px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(5,13,24,.24)}
+.response-display-name-section .field-label{display:block;margin:0 0 8px}
+.response-display-name-section input[type="text"]{display:block;width:100%;margin:0;padding:13px;color:var(--text);background:#0c1727;border:1px solid var(--line);border-radius:10px;font:inherit}
+.response-display-name-section .hint{margin:8px 0 12px}
+.response-display-name-save{display:flex;align-items:center;gap:9px;color:var(--text);font-size:13px;line-height:1.4}
+.response-display-name-save input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
