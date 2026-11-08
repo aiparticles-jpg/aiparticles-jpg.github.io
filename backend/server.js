@@ -88,7 +88,7 @@ function validateAndVerify(body, now) {
   if (!isUuid(call_id)) return null;
   if (typeof recipient_subscription_id !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(recipient_subscription_id)) return null;
-  if (!Number.isSafeInteger(expires_at) || expires_at < now - WINDOW_MS || expires_at > now + 10 * 60_000) return null;
+  if (!Number.isSafeInteger(expires_at) || expires_at < now - WINDOW_MS || expires_at > now + 12 * 60 * 60_000) return null;
 
   const rawPublicKey = decodeBase64Url(public_key);
   const sig = decodeBase64Url(signature);

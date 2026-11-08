@@ -351,8 +351,17 @@ function createSecureSignaling(me,peer=""){
  });
 }
 async function subscribeForUser(me){
- if(!NtfySecureSignaling.validUserId(me))return;
- if(state.secure&&state.secure.me===me&&state.secure.es)return;
+ if(!NtfySecureSignaling.validUserId(me))return false;
+ if(state.secure&&state.secure.me===me){
+  try{
+   await state.secure.subscribe();
+   debug("Фоновая подписка активна для локальной анонимной идентичности. POST hello пока не отправлялся.");
+   return true;
+  }catch(error){
+   if(state.secure){showError(error.message||String(error));setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");}
+   return false;
+  }
+ }
  if(state.secure){state.secure.close();state.secure=null}
  const peer=els.peer.value;
  const subscription=createSecureSignaling(me,NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
@@ -362,12 +371,21 @@ async function subscribeForUser(me){
  try{
   await subscription.subscribe();
   debug("Фоновая подписка активна для локальной анонимной идентичности. POST hello пока не отправлялся.");
+  return true;
  }catch(error){
-  if(state.secure===subscription){
-   showError(error.message||String(error));
-   setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");
-  }
+  if(state.secure===subscription){showError(error.message||String(error));setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");}
+  return false;
  }
+}
+if("serviceWorker" in navigator){
+ navigator.serviceWorker.addEventListener("message",event=>{
+  if(event.data?.type!=="VL_PUSH_RECEIVED")return;
+  debug("Service Worker получил фоновый push. Проверяем канал входящих сообщений.");
+  const subscription=state.secure;
+  if(subscription&&!subscription.closed&&(!subscription.es||subscription.es.readyState===EventSource.CLOSED)){
+   subscription.subscribe().then(()=>debug("Подписка ntfy восстановлена после фонового push.")).catch(error=>debug("Не удалось восстановить ntfy после push: "+(error.message||String(error))));
+  }
+ });
 }
 function scheduleIcePrewarm(reason="input",force=false){
  if(state.prewarmTimer)clearTimeout(state.prewarmTimer);
@@ -756,7 +774,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,created_at:Date.now(),...(senderDisplayName?{display_name:senderDisplayName}:{})};
   const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
   if(!Number.isFinite(Number(contact.created_at)))throw Error("У сохранённого контакта нет даты исходного приглашения. Удалите его и импортируйте заново по новой ссылке.");
-  const requestId=crypto.randomUUID(),expiresAt=Date.now()+120000;
+  const requestId=crypto.randomUUID(),expiresAt=Date.now()+12*60*60*1000;
   const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_created_at:Number(contact.created_at),identity:identity.publicJwk,contact_package:contactPackage};
   const message={v:1,type:"contact_request",payload,sig:await signWithIdentity({type:"contact_request",payload})};
   const topic=await getNtfyTopic(peer);
@@ -1326,16 +1344,27 @@ async function initializeApp(){
     }
    }
   }
-  initializeOneSignal().then(async()=>{
+  const oneSignalReady=initializeOneSignal().then(async()=>{
    debug("OneSignal Web Push SDK инициализирован.");
    if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
-  }).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
+   return true;
+  }).catch(error=>{
+   debug("OneSignal пока недоступен: "+(error.message||String(error)));
+   return false;
+  });
   const fragment=new URLSearchParams(window.location.hash.slice(1));
   if(fragment.has("contact")){els.contactPackage.value=window.location.hash;updatePasteContactButton();suggestContactNameFromInvitation(window.location.hash);openAddContactScreen(false,{preserveInput:true});els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
-  await subscribeForUser(state.me);
+  const subscribed=await subscribeForUser(state.me);
+  if(subscribed)oneSignalReady.then(async ready=>{
+   if(!ready)return;
+   try{
+    const registration=await navigator.serviceWorker.getRegistration();
+    registration?.active?.postMessage({type:"VL_CLEAR_PUSH_EVENTS"});
+   }catch(error){debug("Не удалось подтвердить обработку фоновых push: "+(error.message||String(error)));}
+  });
  }catch(error){
   showError("Не удалось инициализировать приложение: "+(error.message||String(error)));
   setStatus("Ошибка локального хранилища","Проверьте поддержку IndexedDB и Web Crypto.","error");

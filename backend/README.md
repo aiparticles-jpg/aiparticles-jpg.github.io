@@ -62,4 +62,4 @@ Set `ONESIGNAL_REST_API_KEY` as a private environment variable in Render. Never 
 The API accepts browser requests only from `https://aiparticles-jpg.github.io`. Do not log API keys, signatures, Subscription IDs, user IDs, request bodies, or OneSignal response bodies.
 
 
-The `contact_request` event is a OneSignal wake-up notification only. The signed contact package is published separately to the recipient's ntfy topic; it is not included in the push payload.
+The `contact_request` event is a OneSignal wake-up notification only and remains valid for up to 12 hours, matching ntfy.sh's default message cache window. The signed contact package is published separately to the recipient's ntfy topic; it is not included in the push payload. The OneSignal service worker stores received push envelopes locally and notifies an open VoiceLink tab; the page then relies on the signed ntfy message for actual event validation and processing.
