@@ -14,7 +14,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 let qrStream=null,qrScanActive=false;
 let originalEditContactName="";
@@ -914,8 +914,10 @@ async function startQrScan(){
  }
 }
 
-els.contactPackage.addEventListener("input",updateImportContactButton);
-
+function updatePasteContactButton(){els.pasteContact.textContent=els.contactPackage.value.trim()?"Заменить":"Вставить";}
+els.contactPackage.addEventListener("input",()=>{updateImportContactButton();updatePasteContactButton();});
+els.pasteContact.addEventListener("click",pasteContactInvitation);
+updatePasteContactButton();
 
 els.contactName.addEventListener("input",updateImportContactButton);
 els.importContact.addEventListener("click",importContactFromInput);
