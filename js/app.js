@@ -639,35 +639,43 @@ async function copyContactInvitation(event){
  }
 }
 
+async function applyContactInvitationValue(value){
+ if(!value.trim()){
+  setInlineStatus(els.qrStatus,"Буфер обмена пуст.");
+  return;
+ }
+ const clipboardValue=value.trim();
+ try{
+  const pastedContact=await verifyContactPackage(clipboardValue);
+  const ownIdentity=await getCurrentSignalingIdentity();
+  if(pastedContact.user_id===ownIdentity.user_id){
+   setInlineStatus(els.qrStatus,"Это ваше собственное приглашение. Его нельзя добавить как контакт.",true);
+   return;
+  }
+ }catch{
+  // Некорректные или неподдерживаемые данные останутся на обычной проверке при сохранении.
+ }
+ els.contactPackage.value=clipboardValue;
+ els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
+ setInlineStatus(els.qrStatus,"Содержимое буфера вставлено. Укажите имя контакта.");
+ els.contactName.focus();
+}
+
+function showContactClipboardReadError(error){
+ setInlineStatus(els.qrStatus,"Не удалось прочитать буфер обмена. Разрешите доступ браузеру или вставьте ссылку в поле вручную.",true);
+ els.contactPackage.focus();
+ debug("Не удалось вставить приглашение из буфера обмена: "+(error?.message||String(error)));
+}
+
 async function pasteContactInvitation(event){
  event?.preventDefault();
  event?.stopPropagation();
  try{
   if(!navigator.clipboard?.readText)throw Error("Чтение буфера обмена не поддерживается этим браузером.");
   const value=await navigator.clipboard.readText();
-  if(!value.trim()){
-   setInlineStatus(els.qrStatus,"Буфер обмена пуст.");
-   return;
-  }
-  const clipboardValue=value.trim();
-  try{
-   const pastedContact=await verifyContactPackage(clipboardValue);
-   const ownIdentity=await getCurrentSignalingIdentity();
-   if(pastedContact.user_id===ownIdentity.user_id){
-    setInlineStatus(els.qrStatus,"Это ваше собственное приглашение. Его нельзя добавить как контакт.",true);
-    return;
-   }
-  }catch{
-   // Некорректные или неподдерживаемые данные останутся на обычной проверке при сохранении.
-  }
-  els.contactPackage.value=clipboardValue;
-  els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
-  setInlineStatus(els.qrStatus,"Содержимое буфера вставлено. Укажите имя контакта.");
-  els.contactName.focus();
+  await applyContactInvitationValue(value);
  }catch(error){
-  setInlineStatus(els.qrStatus,"Не удалось прочитать буфер обмена. Разрешите доступ браузеру или вставьте ссылку в поле вручную.",true);
-  els.contactPackage.focus();
-  debug("Не удалось вставить приглашение из буфера обмена: "+(error.message||String(error)));
+  showContactClipboardReadError(error);
  }
 }
 
@@ -1110,15 +1118,36 @@ els.contactList.addEventListener("click",event=>{
 });
 let addContactLongPressTimer=null;
 let addContactLongPressTriggered=false;
+let addContactClipboardAttempt=null;
 els.addContactFab.addEventListener("pointerdown",event=>{
  if(event.button!==undefined&&event.button!==0)return;
  try{els.addContactFab.setPointerCapture(event.pointerId)}catch{}
  addContactLongPressTriggered=false;
  cancelAddContactLongPress();
+ const attempt={longPress:false,value:undefined,error:null};
+ addContactClipboardAttempt=attempt;
+ // Эксперимент: запускаем чтение синхронно в настоящем pointerdown,
+ // пока браузер ещё видит пользовательское касание.
+ try{
+  if(!navigator.clipboard?.readText)throw Error("Чтение буфера обмена не поддерживается этим браузером.");
+  attempt.readPromise=navigator.clipboard.readText();
+  attempt.readPromise.then(value=>{
+   attempt.value=value;
+   if(attempt.longPress&&!els.addContactScreen.classList.contains("hidden"))void applyContactInvitationValue(value);
+  }).catch(error=>{
+   attempt.error=error;
+   if(attempt.longPress&&!els.addContactScreen.classList.contains("hidden"))showContactClipboardReadError(error);
+  });
+ }catch(error){
+  attempt.error=error;
+ }
  addContactLongPressTimer=window.setTimeout(()=>{
   addContactLongPressTimer=null;
+  attempt.longPress=true;
   addContactLongPressTriggered=true;
   openAddContactScreen(false);
+  if(attempt.value!==undefined)void applyContactInvitationValue(attempt.value);
+  else if(attempt.error)showContactClipboardReadError(attempt.error);
  },550);
 });
 function cancelAddContactLongPress(){
