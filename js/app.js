@@ -1083,8 +1083,13 @@ document.addEventListener("pointerdown",event=>{
 document.addEventListener("keydown",event=>{
  if(event.key==="Escape"&&els.headerMenu.open){els.headerMenu.open=false;els.headerMenu.querySelector("summary").focus()}
 });
-function openAddContactScreen(pasteFromClipboard=false){
+function openAddContactScreen(pasteFromClipboard=false,{preserveInput=false}={}){
  clearInlineStatus(els.qrStatus);clearError();
+ if(!preserveInput){
+  els.contactPackage.value="";
+  els.contactName.value="";
+  els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
+ }
  els.addContactScreen.classList.remove("hidden");
  document.body.classList.add("contact-screen-open");
  els.contactTools.open=true;
@@ -1093,6 +1098,9 @@ function openAddContactScreen(pasteFromClipboard=false){
 }
 function closeAddContactScreen(){
  if(qrScanActive)stopQrScan();
+ els.contactPackage.value="";
+ els.contactName.value="";
+ els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
  clearInlineStatus(els.qrStatus);
  els.addContactScreen.classList.add("hidden");
  document.body.classList.remove("contact-screen-open");
@@ -1237,7 +1245,7 @@ async function initializeApp(){
    if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
   }).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
   const fragment=new URLSearchParams(window.location.hash.slice(1));
-  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;updatePasteContactButton();suggestContactNameFromInvitation(window.location.hash);openAddContactScreen(false);els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
+  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;updatePasteContactButton();suggestContactNameFromInvitation(window.location.hash);openAddContactScreen(false,{preserveInput:true});els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
