@@ -959,7 +959,7 @@ els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
 els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
 els.profileScreenBack.addEventListener("click",closeProfileScreen);
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
-els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;completeProfileLongPress();},550);});
+els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;},550);});
 async function completeProfileLongPress(){
  if(!els.inviteUrl.value.trim()){openProfileScreen();setInlineStatus(els.inviteStatus,"Ссылка появится после разрешения push-уведомлений.");return;}
  try{
@@ -974,7 +974,7 @@ async function completeProfileLongPress(){
  }
 }
 function cancelProfileLongPress(){if(profileLongPressTimer!==null){window.clearTimeout(profileLongPressTimer);profileLongPressTimer=null;}}
-els.profileDockButton.addEventListener("pointerup",cancelProfileLongPress);
+els.profileDockButton.addEventListener("pointerup",()=>{const wasLongPress=profileLongPressTriggered;cancelProfileLongPress();if(wasLongPress)completeProfileLongPress();});
 els.profileDockButton.addEventListener("pointerleave",cancelProfileLongPress);
 els.profileDockButton.addEventListener("pointercancel",cancelProfileLongPress);
 els.copyInvite.addEventListener("click",copyContactInvitation);
@@ -1122,7 +1122,7 @@ els.addContactFab.addEventListener("pointerdown",event=>{
 function cancelAddContactLongPress(){
  if(addContactLongPressTimer!==null){window.clearTimeout(addContactLongPressTimer);addContactLongPressTimer=null;}
 }
-els.addContactFab.addEventListener("pointerup",cancelAddContactLongPress);
+els.addContactFab.addEventListener("pointerup",()=>{const wasLongPress=addContactLongPressTriggered;cancelAddContactLongPress();if(wasLongPress)pasteContactInvitation();});
 els.addContactFab.addEventListener("pointerleave",cancelAddContactLongPress);
 els.addContactFab.addEventListener("pointercancel",cancelAddContactLongPress);
 els.addContactFab.addEventListener("click",event=>{
