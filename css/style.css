@@ -525,7 +525,7 @@ body.contact-screen-open{overflow:hidden}
 .contact-diagnostics-grid{display:grid;grid-template-columns:minmax(0,1fr) 76px;align-items:center;gap:12px;padding:13px;border:1px solid var(--line);border-radius:13px;background:rgba(5,13,24,.34)}
 .contact-diagnostics-info{display:flex;flex-direction:column;gap:10px;min-width:0}
 .contact-diagnostics-info .status-card{padding:0;border:0;border-radius:0;background:transparent}
-.contact-diagnostics-info .transport-row{margin:0;padding:8px 2px 0;border-top:1px solid var(--line)}
+.contact-diagnostics-info .transport-row{justify-content:flex-start;gap:8px;margin:0;padding:8px 2px 0;border-top:1px solid var(--line)}
 .diagnostic-inline-action{width:76px;min-width:0;flex-direction:column;gap:6px;padding:0;justify-self:center}
 .diagnostic-inline-action .dock-icon{width:46px;height:46px}
 .diagnostic-inline-action .dock-icon svg{width:23px;height:23px}
