@@ -15,7 +15,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
  async sign(payload){return b64u(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},this.identity.privateKey,enc.encode(stable(payload))))}
@@ -99,7 +99,7 @@ export class NtfySecureSignaling {
     if(!settled){settled=true;clearTimeout(timeout);reject(Error("Не удалось подключиться к ntfy"))}
     this.onDebug(`[SSE ${this.debugId}] ERROR #${this.sseErrorCount} handler завершён; readyState(after)=${es.readyState} (${stateName()})`);
    };
-   es.onmessage=e=>this.handle(e).catch(err=>this.onError(err));
+   es.onmessage=e=>this.enqueueMessages([e]);
   });
   this.sseReadyPromise=ready;
   try{await ready}
@@ -113,10 +113,12 @@ export class NtfySecureSignaling {
   await this.subscribe();
   this.active=true;
   const pending=this.pendingEvents.splice(0);
+  const pendingBatch=[];
   for(const n of pending){
    const age=Date.now()/1000-Number(n.time||0);
-   if(age>=-5&&age<=120)await this.handle({data:JSON.stringify(n)});
+   if(age>=-5&&age<=120)pendingBatch.push({data:JSON.stringify(n)});
   }
+  if(pendingBatch.length)await this.enqueueMessages(pendingBatch);
   if(this.role==="A"){
    try{await this.sendHello()}catch(err){this.onError(err);if(err.retryable)this.scheduleHelloRetry(5000)}
   } else if(!this.ready){
@@ -293,6 +295,11 @@ export class NtfySecureSignaling {
     if(err.retryable)this.scheduleAnswerRetry(10000);
    }
   },delay);
+ }
+ enqueueMessages(events){
+  const task=this.messageQueue.then(async()=>{for(const event of events)await this.handle(event)});
+  this.messageQueue=task.catch(error=>this.onError(error));
+  return this.messageQueue;
  }
  async handle(event){
   if(!this.active){
