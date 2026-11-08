@@ -31,8 +31,7 @@ jobs:
         run: |
           COMMIT_TIMESTAMP=$(git show -s --format=%ct HEAD)
           VERSION_DATE=$(date -u -d "@${COMMIT_TIMESTAMP}" +%Y.%m.%d)
-          VERSION_DATE_ISO=$(date -u -d "@${COMMIT_TIMESTAMP}" +%Y-%m-%d)
-          COMMIT_COUNT=$(git rev-list --count --since="${VERSION_DATE_ISO} 00:00:00 +0000" --until="${VERSION_DATE_ISO} 23:59:59 +0000" HEAD)
+          COMMIT_COUNT=$(git rev-list --count HEAD)
           APP_VERSION="${VERSION_DATE}-${COMMIT_COUNT}"
           CACHE_VERSION=$(git rev-parse --short=12 HEAD)
 
