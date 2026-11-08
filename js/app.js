@@ -836,6 +836,7 @@ async function importContactFromInput(){
   await refreshContactOptions(verified.user_id);
   if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
   els.contactPackage.value="";
+  updatePasteContactButton();
   els.contactName.value="";
   closeAddContactScreen();
   setInlineStatus(els.qrStatus,"Контакт «"+name+"» успешно проверен и сохранён локально.");
@@ -914,7 +915,7 @@ async function startQrScan(){
  }
 }
 
-function updatePasteContactButton(){els.pasteContact.textContent=els.contactPackage.value.trim()?"Заменить":"Вставить";}
+function updatePasteContactButton(){els.pasteContact.textContent="Вставить";els.pasteContact.disabled=els.contactPackage.value.length>0;}
 els.contactPackage.addEventListener("input",()=>{updateImportContactButton();updatePasteContactButton();});
 els.pasteContact.addEventListener("click",pasteContactInvitation);
 updatePasteContactButton();
@@ -1212,7 +1213,7 @@ async function initializeApp(){
    if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
   }).catch(error=>debug("OneSignal пока недоступен: "+(error.message||String(error))));
   const fragment=new URLSearchParams(window.location.hash.slice(1));
-  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;openAddContactScreen(false);els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
+  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;updatePasteContactButton();openAddContactScreen(false);els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
