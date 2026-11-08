@@ -74,7 +74,12 @@ function setStatus(title,text,kind="idle"){
 }
 function showError(message){els.error.textContent=message;els.error.classList.remove("hidden");debug("ОШИБКА: "+message)}
 function clearError(){els.error.textContent="";els.error.classList.add("hidden")}
-function setInlineStatus(element,message,isError=false){element.textContent=message;element.classList.toggle("hint-error",isError)}
+function clearInlineStatus(element){element.textContent="";element.classList.remove("hint-error")}
+function setInlineStatus(element,message,isError=false){
+ const screen=element.closest('[role="dialog"]');
+ if(screen?.classList.contains("hidden"))return;
+ element.textContent=message;element.classList.toggle("hint-error",isError);
+}
 function updateCallButtons(){
  const active=!!(state.peerPresent||state.outgoingCall||state.secure?.active);
  els.connect.classList.toggle("hidden",active);
@@ -605,7 +610,7 @@ async function createContactInvitation(){
  }catch(error){
   const message=error.message||String(error);
   setInlineStatus(els.inviteStatus,"Приглашение не создано. "+message,true);
-  showError(message);
+  
  }finally{els.createInvite.disabled=false}
 }
 function updateInviteCopyButton(){
@@ -941,8 +946,8 @@ function updateInvitationPanel(){
 els.inviteTools.addEventListener("toggle",()=>{
  if(els.inviteTools.open)updateInvitationPanel();
 });
-function openProfileScreen(){els.profileScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.inviteTools.open=true;updateInvitationPanel();els.profileScreenBack.focus();}
-function closeProfileScreen(){els.profileScreen.classList.add("hidden");document.body.classList.remove("contact-screen-open");els.profileDockButton.focus();}
+function openProfileScreen(){clearInlineStatus(els.inviteStatus);clearError();els.profileScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.inviteTools.open=true;updateInvitationPanel();els.profileScreenBack.focus();}
+function closeProfileScreen(){clearInlineStatus(els.inviteStatus);els.profileScreen.classList.add("hidden");document.body.classList.remove("contact-screen-open");els.profileDockButton.focus();}
 let diagnosticReturnFocus=null;
 function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.diagnosticScreenBack.focus();}
 function closeDiagnosticScreen(){els.diagnosticScreen.classList.add("hidden");document.body.classList.remove("contact-screen-open");if(diagnosticReturnFocus?.isConnected&&!diagnosticReturnFocus.classList.contains("hidden"))diagnosticReturnFocus.focus();else els.privacyHelp.focus();diagnosticReturnFocus=null;}
@@ -1034,6 +1039,7 @@ document.addEventListener("keydown",event=>{
  if(event.key==="Escape"&&els.headerMenu.open){els.headerMenu.open=false;els.headerMenu.querySelector("summary").focus()}
 });
 function openAddContactScreen(pasteFromClipboard=false){
+ clearInlineStatus(els.qrStatus);clearError();
  els.addContactScreen.classList.remove("hidden");
  document.body.classList.add("contact-screen-open");
  els.contactTools.open=true;
@@ -1042,11 +1048,13 @@ function openAddContactScreen(pasteFromClipboard=false){
 }
 function closeAddContactScreen(){
  if(qrScanActive)stopQrScan();
+ clearInlineStatus(els.qrStatus);
  els.addContactScreen.classList.add("hidden");
  document.body.classList.remove("contact-screen-open");
  els.addContactFab.focus();
 }
 function openContactScreen(item,preserveSelection=false){
+ clearError();
  applyDebugMode();
  const peer=item.dataset.peer;
  if(!preserveSelection){
@@ -1063,12 +1071,14 @@ function openContactScreen(item,preserveSelection=false){
  els.contactScreenBack.focus();
 }
 function closeContactEditScreen(){
+ clearError();
  els.contactEditScreen.classList.add("hidden");
  els.contactScreenMenu.open=false;
  els.contactScreenBack.focus();
 }
 function openContactEditScreen(){
  if(els.openContactEdit.classList.contains("hidden"))return;
+ clearError();
  els.contactScreenMenu.open=false;
  els.contactEditScreen.classList.remove("hidden");
  els.editContactName.focus();
@@ -1080,12 +1090,14 @@ function closeContactDeleteScreen(){
 }
 function openContactDeleteScreen(){
  if(els.openContactDelete.classList.contains("hidden"))return;
+ clearError();
  els.contactScreenMenu.open=false;
  els.contactDeleteName.textContent=els.contactScreenName.textContent||"Контакт";
  els.contactDeleteScreen.classList.remove("hidden");
  els.contactDeleteScreenBack.focus();
 }
 function closeContactScreen(){
+ clearError();
  els.contactEditScreen.classList.add("hidden");
  els.contactDeleteScreen.classList.add("hidden");
  els.contactScreen.classList.add("hidden");
