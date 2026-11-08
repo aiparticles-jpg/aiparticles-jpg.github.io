@@ -1126,6 +1126,7 @@ function cancelAddContactLongPress(){
  if(addContactLongPressTimer!==null){window.clearTimeout(addContactLongPressTimer);addContactLongPressTimer=null;}
 }
 
+els.addContactFab.addEventListener("pointerup",cancelAddContactLongPress);
 els.addContactFab.addEventListener("pointerleave",event=>{if(event.pointerType==="mouse")cancelAddContactLongPress();});
 els.addContactFab.addEventListener("pointercancel",cancelAddContactLongPress);
 els.addContactFab.addEventListener("click",event=>{
