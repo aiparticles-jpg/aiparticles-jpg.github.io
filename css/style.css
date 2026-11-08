@@ -474,6 +474,10 @@ body.contact-screen-open{overflow:hidden}
 .dock-label{font-size:11px;line-height:1.2;color:var(--muted)}
 .dock-action:active .dock-icon{transform:scale(.96);background:#243b50}
 .dock-action:focus-visible{outline:2px solid var(--accent);outline-offset:5px;border-radius:12px}
+.profile-display-name{max-width:640px;margin:0 auto 18px}
+.profile-display-name .field-label{margin:0 0 8px}
+.profile-display-name input{display:block;width:100%;margin:0}
+.profile-display-name .hint{margin-top:8px}
 .profile-screen-content #invite-tools{display:block;max-width:640px;margin:0 auto;border:0;background:transparent}
 .profile-screen-content #invite-tools>summary{display:none}
 .diagnostic-screen-content .diagnostic-content,.diagnostic-screen-content .event-log-panel{margin-top:0}

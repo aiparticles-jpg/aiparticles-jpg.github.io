@@ -1,5 +1,5 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, markPeerSignalingIdentityTrusted, isUserId } from "./ntfy-identity.js";
-import { verifyContactPackage } from "./contact-exchange.js?v=2";
+import { verifyContactPackage } from "./contact-exchange.js?v=3";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
