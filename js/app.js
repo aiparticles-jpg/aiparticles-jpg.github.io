@@ -18,6 +18,47 @@ const els={
 };
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
 function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,60)}
+let profileInviteRefreshTimer=null;
+let profileInviteRevision=0;
+let profileInviteDirty=false;
+let profileInviteRefreshPromise=null;
+async function refreshProfileInvitationIfNeeded(){
+ if(!profileInviteDirty)return true;
+ if(profileInviteRefreshTimer!==null){clearTimeout(profileInviteRefreshTimer);profileInviteRefreshTimer=null;}
+ const revision=profileInviteRevision;
+ if(profileInviteRefreshPromise){
+  await profileInviteRefreshPromise;
+  if(!profileInviteDirty)return true;
+  if(revision!==profileInviteRevision)return refreshProfileInvitationIfNeeded();
+ }
+ if(!("Notification" in window)||Notification.permission!=="granted"){
+  setInlineStatus(els.inviteStatus,"Чтобы обновить приглашение с новым именем, разрешите push-уведомления.",true);
+  return false;
+ }
+ const displayName=getProfileDisplayName();
+ const promise=createContactInvitation({focusResult:false,expectedRevision:revision}).then(updated=>{
+  if(updated&&revision===profileInviteRevision&&displayName===getProfileDisplayName()){
+   profileInviteDirty=false;
+   setInlineStatus(els.inviteStatus,displayName?"Имя сохранено. Ссылка и QR-код приглашения обновлены.":"Имя удалено. Ссылка и QR-код приглашения обновлены.");
+   return true;
+  }
+  return false;
+ }).finally(()=>{if(profileInviteRefreshPromise===promise)profileInviteRefreshPromise=null;});
+ profileInviteRefreshPromise=promise;
+ const updated=await promise;
+ if(!updated&&profileInviteDirty&&revision!==profileInviteRevision)return refreshProfileInvitationIfNeeded();
+ return updated;
+}
+function handleProfileDisplayNameInput(){
+ persistProfileDisplayName();
+ profileInviteRevision++;
+ profileInviteDirty=true;
+ if(profileInviteRefreshTimer!==null)clearTimeout(profileInviteRefreshTimer);
+ profileInviteRefreshTimer=null;
+ if("Notification" in window&&Notification.permission==="granted"){
+  profileInviteRefreshTimer=window.setTimeout(()=>{profileInviteRefreshTimer=null;refreshProfileInvitationIfNeeded();},500);
+ }
+}
 function persistProfileDisplayName(){
  const value=getProfileDisplayName();
  try{if(value)localStorage.setItem(PROFILE_DISPLAY_NAME_KEY,value);else localStorage.removeItem(PROFILE_DISPLAY_NAME_KEY)}
@@ -582,7 +623,9 @@ async function ensureQrCodeLibrary(){
  });
  if(!window.QRCode)throw new Error("Библиотека QR-кодов не инициализировалась.");
 }
-async function createContactInvitation({focusResult=true}={}){
+async function createContactInvitation({focusResult=true,expectedRevision=null}={}){
+ const profileRevision=profileInviteRevision;
+ const displayName=getProfileDisplayName();
  els.createInvite.disabled=true;
  setInlineStatus(els.inviteStatus,"Проверяем разрешение на push-уведомления…");
  clearError();
@@ -595,13 +638,15 @@ async function createContactInvitation({focusResult=true}={}){
    public_key:identity.public_key,
    push_subscription_id:subscriptionId,
    created_at:Date.now(),
-   ...(getProfileDisplayName()?{display_name:getProfileDisplayName()}:{})
+   ...(displayName?{display_name:displayName}:{})
   };
   const canonical=JSON.stringify(unsigned);
   const signature=await signWithIdentity(canonical);
   const contactPackage={...unsigned,signature};
   const encoded=toBase64UrlBytes(new TextEncoder().encode(JSON.stringify(contactPackage)));
   const url=window.location.origin+window.location.pathname+"#contact="+encoded;
+  if(profileRevision!==profileInviteRevision||displayName!==getProfileDisplayName()||
+     (expectedRevision!==null&&expectedRevision!==profileInviteRevision))return false;
   await saveMyInvitation(url);
   els.inviteUrl.value=url;
   updateInviteCopyButton();
@@ -615,6 +660,7 @@ async function createContactInvitation({focusResult=true}={}){
   }
   if(focusResult){els.inviteUrl.focus();els.inviteUrl.select()}
   debug("Создано подписанное приглашение с действующим OneSignal Subscription ID.");
+  if(profileRevision===profileInviteRevision&&displayName===getProfileDisplayName())profileInviteDirty=false;
   updateInvitationPanel();
   return true;
   }catch(error){
@@ -631,6 +677,7 @@ function updateInviteCopyButton(){
 async function copyContactInvitation(event){
  event?.preventDefault();
  event?.stopPropagation();
+ if(!await refreshProfileInvitationIfNeeded())return;
  const value=els.inviteUrl.value.trim();
  if(!value)return;
  try{
@@ -941,16 +988,19 @@ async function startQrScan(){
  }
 }
 
+let contactInvitationLookupRevision=0;
 async function suggestContactNameFromInvitation(value){
- if(els.contactName.value.trim())return;
+ const revision=++contactInvitationLookupRevision;
+ const invitation=String(value||"").trim();
+ if(!invitation||els.contactName.value.trim())return;
  try{
-  const contact=await verifyContactPackage(value);
+  const contact=await verifyContactPackage(invitation);
+  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value.trim()||els.contactName.value.trim())return;
   if(contact.display_name){els.contactName.value=contact.display_name;updateImportContactButton();}
  }catch{}
 }
 function updatePasteContactButton(){els.pasteContact.textContent="Вставить";els.pasteContact.disabled=els.contactPackage.value.length>0;}
-els.contactPackage.addEventListener("input",()=>{updateImportContactButton();updatePasteContactButton();});
-els.contactPackage.addEventListener("change",()=>suggestContactNameFromInvitation(els.contactPackage.value));
+els.contactPackage.addEventListener("input",()=>{updateImportContactButton();updatePasteContactButton();suggestContactNameFromInvitation(els.contactPackage.value);});
 els.pasteContact.addEventListener("click",pasteContactInvitation);
 updatePasteContactButton();
 
@@ -994,18 +1044,15 @@ els.profileDockButton.addEventListener("click",event=>{if(profileLongPressTrigge
 els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
 els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
 els.profileScreenBack.addEventListener("click",closeProfileScreen);
-els.profileDisplayName.addEventListener("input",persistProfileDisplayName);
-els.profileDisplayName.addEventListener("change",()=>{
- const displayName=persistProfileDisplayName();
- if(els.inviteUrl.value.trim()&&"Notification" in window&&Notification.permission==="granted"){
-  createContactInvitation({focusResult:false}).then(updated=>{
-   if(updated)setInlineStatus(els.inviteStatus,displayName?"Имя сохранено. Ссылка и QR-код приглашения обновлены.":"Имя удалено. Ссылка и QR-код приглашения обновлены.");
-  });
- }
-});
+els.profileDisplayName.addEventListener("input",handleProfileDisplayNameInput);
+els.inviteUrl.addEventListener("focus",()=>{if(profileInviteDirty)refreshProfileInvitationIfNeeded();});
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
 els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;try{els.profileDockButton.setPointerCapture(event.pointerId)}catch{}profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;els.profileDockLabel.textContent="Отпустите";},550);});
 async function completeProfileLongPress(){
+ if(els.inviteUrl.value.trim()&&!await refreshProfileInvitationIfNeeded()){
+  openProfileScreen();
+  return;
+ }
  if(!els.inviteUrl.value.trim()){els.profileDockLabel.textContent="Профиль";openProfileScreen();setInlineStatus(els.inviteStatus,"Ссылка появится после разрешения push-уведомлений.");return;}
  try{
   await navigator.clipboard.writeText(els.inviteUrl.value.trim());
