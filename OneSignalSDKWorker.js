@@ -42,8 +42,26 @@ self.addEventListener("push",event=>{
   }catch{}
  })());
 });
+async function vlReadPushes(){
+ const db=await vlOpenPushDb();
+ try{
+  return await new Promise((resolve,reject)=>{
+   const tx=db.transaction("events","readonly");
+   const request=tx.objectStore("events").getAll();
+   request.onsuccess=()=>resolve(request.result||[]);
+   request.onerror=()=>reject(request.error||new Error("IndexedDB read failed"));
+  });
+ }finally{db.close()}
+}
 self.addEventListener("message",event=>{
- if(event.data?.type!=="VL_CLEAR_PUSH_EVENTS")return;
- event.waitUntil(vlClearPushes().catch(()=>{}));
+ if(event.data?.type==="VL_CLEAR_PUSH_EVENTS"){
+  event.waitUntil(vlClearPushes().catch(()=>{}));
+  return;
+ }
+ if(event.data?.type==="VL_GET_PUSH_EVENTS"){
+  event.waitUntil(vlReadPushes().then(events=>{
+   event.source?.postMessage({type:"VL_PUSH_EVENTS",events});
+  }).catch(()=>event.source?.postMessage({type:"VL_PUSH_EVENTS",events:[]})));
+ }
 });
 importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");

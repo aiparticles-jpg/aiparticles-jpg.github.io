@@ -352,7 +352,7 @@ function createSecureSignaling(me,peer=""){
 }
 async function subscribeForUser(me){
  if(!NtfySecureSignaling.validUserId(me))return false;
- if(state.secure&&state.secure.me===me){
+ if(state.secure&&state.secure.me===me&&!state.secure.closed){
   try{
    await state.secure.subscribe();
    debug("Фоновая подписка активна для локальной анонимной идентичности. POST hello пока не отправлялся.");
@@ -379,6 +379,14 @@ async function subscribeForUser(me){
 }
 if("serviceWorker" in navigator){
  navigator.serviceWorker.addEventListener("message",event=>{
+  if(event.data?.type==="VL_PUSH_EVENTS"){
+   const pending=Array.isArray(event.data.events)?event.data.events:[];
+   debug("VoiceLink получил из Service Worker "+pending.length+" сохранённых push-событий; сверяемся с очередью ntfy.");
+   subscribeForUser(state.me).then(connected=>{
+    if(connected)event.source?.postMessage({type:"VL_CLEAR_PUSH_EVENTS"});
+   });
+   return;
+  }
   if(event.data?.type!=="VL_PUSH_RECEIVED")return;
   debug("Service Worker получил фоновый push. Проверяем канал входящих сообщений.");
   const subscription=state.secure;
@@ -1362,7 +1370,7 @@ async function initializeApp(){
    if(!ready)return;
    try{
     const registration=await navigator.serviceWorker.getRegistration();
-    registration?.active?.postMessage({type:"VL_CLEAR_PUSH_EVENTS"});
+    registration?.active?.postMessage({type:"VL_GET_PUSH_EVENTS"});
    }catch(error){debug("Не удалось подтвердить обработку фоновых push: "+(error.message||String(error)));}
   });
  }catch(error){
