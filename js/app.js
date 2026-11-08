@@ -100,7 +100,7 @@ function updateCallButtons(){
  const trustedPeer=selectedPeer&&trustedContactIds.has(els.peer.value);
  const exchangeCompleted=selectedPeer&&completedContactRequests.has(els.peer.value);
  els.replyInvite.classList.toggle("hidden",!selectedPeer||trustedPeer||exchangeCompleted);
- els.replyInvite.textContent=sentContactRequests[els.peer.value]?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
+ els.replyInvite.querySelector(".contact-menu-label").textContent=sentContactRequests[els.peer.value]?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
  els.replyInvite.disabled=!selectedPeer||trustedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
