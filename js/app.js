@@ -959,7 +959,7 @@ els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
 els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
 els.profileScreenBack.addEventListener("click",closeProfileScreen);
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
-els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;profileLongPressTriggered=false;profileLongPressTimer=window.setTimeout(()=>{profileLongPressTriggered=true;},550);});
+els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;completeProfileLongPress();},550);});
 async function completeProfileLongPress(){
  if(!els.inviteUrl.value.trim()){openProfileScreen();setInlineStatus(els.inviteStatus,"Ссылка появится после разрешения push-уведомлений.");return;}
  try{
@@ -974,11 +974,7 @@ async function completeProfileLongPress(){
  }
 }
 function cancelProfileLongPress(){if(profileLongPressTimer!==null){window.clearTimeout(profileLongPressTimer);profileLongPressTimer=null;}}
-els.profileDockButton.addEventListener("pointerup",()=>{
- const wasLongPress=profileLongPressTriggered;
- cancelProfileLongPress();
- if(wasLongPress)completeProfileLongPress();
-});
+els.profileDockButton.addEventListener("pointerup",cancelProfileLongPress);
 els.profileDockButton.addEventListener("pointerleave",cancelProfileLongPress);
 els.profileDockButton.addEventListener("pointercancel",cancelProfileLongPress);
 els.copyInvite.addEventListener("click",copyContactInvitation);
@@ -1116,7 +1112,12 @@ let addContactLongPressTriggered=false;
 els.addContactFab.addEventListener("pointerdown",event=>{
  if(event.button!==undefined&&event.button!==0)return;
  addContactLongPressTriggered=false;
- addContactLongPressTimer=window.setTimeout(()=>{addContactLongPressTriggered=true;openAddContactScreen(true);},550);
+ cancelAddContactLongPress();
+ addContactLongPressTimer=window.setTimeout(()=>{
+  addContactLongPressTimer=null;
+  addContactLongPressTriggered=true;
+  openAddContactScreen(true);
+ },550);
 });
 function cancelAddContactLongPress(){
  if(addContactLongPressTimer!==null){window.clearTimeout(addContactLongPressTimer);addContactLongPressTimer=null;}
