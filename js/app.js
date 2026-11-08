@@ -2,7 +2,7 @@ import { WebRtcAudio } from "./webrtc.js?v=17";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=26";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation } from "./local-store.js?v=2";
-import { verifyContactPackage } from "./contact-exchange.js?v=3";
+import { verifyContactPackage } from "./contact-exchange.js?v=4";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=2";
 import { sendPushEventToContact } from "./push-api.js";
 

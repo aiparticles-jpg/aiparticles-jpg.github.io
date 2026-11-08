@@ -16,13 +16,16 @@ function toHex(value) {
 
 function canonicalPayload(contact) {
   // Field order is part of the signed v1 package format.
-  return JSON.stringify({
+  const payload = {
     version: contact.version,
     user_id: contact.user_id,
     public_key: contact.public_key,
     push_subscription_id: contact.push_subscription_id,
     created_at: contact.created_at
-  });
+  };
+  // Optional display name was added to v1 later; omit it for older invitations.
+  if (Object.hasOwn(contact, "display_name")) payload.display_name = contact.display_name;
+  return JSON.stringify(payload);
 }
 
 function decodeInput(input) {
@@ -68,6 +71,12 @@ export async function verifyContactPackage(input) {
        Number(contact.created_at) > Date.now() + 5 * 60 * 1000)) {
     throw new Error("Некорректная дата создания приглашения.");
   }
+  if (Object.hasOwn(contact, "display_name") &&
+      (typeof contact.display_name !== "string" ||
+       contact.display_name.length > 60 ||
+       contact.display_name.trim() !== contact.display_name)) {
+    throw new Error("Некорректное имя в приглашении.");
+  }
 
   const publicBytes = fromBase64Url(contact.public_key);
   const fingerprint = toHex(await crypto.subtle.digest("SHA-256", publicBytes));
@@ -96,6 +105,7 @@ export async function verifyContactPackage(input) {
     user_id: contact.user_id,
     public_key: contact.public_key,
     push_subscription_id: contact.push_subscription_id,
-    ...(contact.created_at !== undefined ? { created_at: Number(contact.created_at) } : {})
+    ...(contact.created_at !== undefined ? { created_at: Number(contact.created_at) } : {}),
+    ...(Object.hasOwn(contact, "display_name") ? { display_name: contact.display_name } : {})
   };
 }
