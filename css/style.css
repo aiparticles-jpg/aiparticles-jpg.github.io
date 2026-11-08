@@ -531,3 +531,5 @@ body.contact-screen-open{overflow:hidden}
 .diagnostic-inline-action .dock-icon svg{width:23px;height:23px}
 .diagnostic-inline-action .dock-label{font-size:11px;text-align:center}
 @media(max-width:520px){.contact-diagnostics-grid{grid-template-columns:minmax(0,1fr) 68px;gap:8px;padding:11px}.diagnostic-inline-action{width:68px}}
+
+.contact-menu-icon svg{display:block;width:18px;height:18px;}
