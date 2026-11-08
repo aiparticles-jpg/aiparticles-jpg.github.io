@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
+ contactList:$("contacts-list"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
@@ -135,6 +135,7 @@ function updateCallButtons(){
  els.connect.textContent=state.connecting?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";
  els.hangup.classList.toggle("hidden",!active);
  els.hangup.disabled=!active||state.hangingUp;
+ els.answerIncoming.disabled=state.connecting;
  els.dismissIncoming.disabled=state.connecting;
  els.contactScreenCall.disabled=active||state.connecting;
  els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":"Позвонить");
@@ -221,7 +222,7 @@ async function startRinging(kind){
 }
 function clearIncomingUi(){
  if(state.incomingTimer){clearTimeout(state.incomingTimer);state.incomingTimer=null}
- state.incomingCall=false;els.dismissIncoming.classList.add("hidden");els.rejectIncoming.classList.add("hidden");updateCallButtons();
+ state.incomingCall=false;els.answerIncoming.classList.add("hidden");els.dismissIncoming.classList.add("hidden");els.rejectIncoming.classList.add("hidden");updateCallButtons();
 }
 function showIncomingCall({peer,peerId,expiresAt}){
  if(state.connecting||state.callStarted||state.incomingCall)return;
@@ -233,7 +234,7 @@ function showIncomingCall({peer,peerId,expiresAt}){
  }
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
- state.incomingCall=true;els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");
+ state.incomingCall=true;els.answerIncoming.classList.remove("hidden");els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");
  const incomingItem=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(item=>item.dataset.peer===els.peer.value);
  if(incomingItem)openContactScreen(incomingItem,true);
  updateCallButtons();
@@ -583,6 +584,7 @@ function formatLastInteraction(value){
  return new Date(timestamp).toLocaleDateString("ru-RU",{day:"numeric",month:"short"});
 }
 let contactListInitialPositioned=false;
+let contactsLoaded=false;
 let allContacts=[];
 function renderContactList(contacts){
  allContacts=contacts;
@@ -592,7 +594,7 @@ function renderContactList(contacts){
  els.contactListItems.replaceChildren();
  els.contactsCount.textContent=String(visibleContacts.length);
  els.contactListEmpty.textContent=query?"По вашему запросу ничего не найдено.":"Пока нет контактов. Нажмите «+», чтобы добавить собеседника, или отправьте ему приглашение из своего профиля, чтобы он мог добавить вас в контакты.";
- els.contactListEmpty.classList.toggle("hidden",visibleContacts.length>0);
+ els.contactListEmpty.classList.toggle("hidden",!contactsLoaded||visibleContacts.length>0);
  els.privacyHelp.classList.toggle("hidden",allContacts.length>0);
  for(const contact of visibleContacts){
   const item=document.createElement("button");
@@ -631,6 +633,7 @@ async function refreshContactOptions(selectUserId=""){
  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
  els.peer.disabled=contacts.length===0;
  if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
+ contactsLoaded=true;
  renderContactList(contacts);
  els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
  originalEditContactName=els.editContactName.value.trim();
@@ -958,6 +961,11 @@ async function importContactFromInput(){
   await saveContact({...verified,name});
   await refreshContactOptions(verified.user_id);
   if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
+  if(saveSenderName){
+   els.profileDisplayName.value=senderDisplayName;
+   handleProfileDisplayNameInput();
+   debug("Имя отправителя сохранено в профиле по выбору пользователя.");
+  }
   els.contactPackage.value="";
   updatePasteContactButton();
   els.contactName.value="";
@@ -970,11 +978,6 @@ async function importContactFromInput(){
    setInlineStatus(els.qrStatus,"Контакт сохранён. Отправляем ответное приглашение…");
    debug("Автоматически отправляем ответное приглашение новому контакту.");
    await sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
-   if(saveSenderName){
-    els.profileDisplayName.value=senderDisplayName;
-    handleProfileDisplayNameInput();
-    debug("Имя отправителя сохранено в профиле по выбору пользователя.");
-   }
   }
  }catch(error){
   showError(error.message||String(error));
@@ -1130,6 +1133,7 @@ els.copyInviteInline.addEventListener("click",copyContactInvitation);
 els.scanQr.addEventListener("click",startQrScan);
 window.addEventListener("pagehide",()=>{if(qrStream)for(const track of qrStream.getTracks())track.stop()});
 els.connect.addEventListener("click",connect);
+els.answerIncoming.addEventListener("click",connect);
 els.dismissIncoming.addEventListener("click",()=>dismissIncoming(false));
 els.rejectIncoming.addEventListener("click",rejectIncoming);
 document.addEventListener("pointerdown",unlockRingingAudio,{passive:true});

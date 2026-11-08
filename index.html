@@ -44,7 +44,7 @@
           <span id="contacts-count" class="contacts-count">0</span>
         </div>
         <div id="contacts-list-items" class="contacts-list-items" role="list"></div>
-        <p id="contacts-list-empty" class="contacts-list-empty">Пока нет контактов. Нажмите «+», чтобы добавить собеседника, или отправьте ему приглашение из своего профиля, чтобы он мог добавить вас в контакты.</p>
+        <p id="contacts-list-empty" class="contacts-list-empty hidden">Пока нет контактов. Нажмите «+», чтобы добавить собеседника, или отправьте ему приглашение из своего профиля, чтобы он мог добавить вас в контакты.</p>
       </div>
     </section>
     <section class="utility-dock" aria-label="Основные действия">
@@ -112,6 +112,7 @@
       <div class="contact-screen-content">
         <div class="contact-call-content">
           <div class="contact-call-actions">
+            <button id="answer-incoming" class="button button-primary hidden" type="button">Ответить</button>
             <button id="reject-incoming" class="button button-danger hidden" type="button">Отклонить</button>
             <button id="dismiss-incoming" class="button button-secondary hidden" type="button">Скрыть вызов</button>
             <button id="hangup" class="button button-danger hidden" type="button" disabled>Завершить звонок</button>
