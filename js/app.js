@@ -959,24 +959,25 @@ els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
 els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
 els.profileScreenBack.addEventListener("click",closeProfileScreen);
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
-els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;},550);});
+els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;try{els.profileDockButton.setPointerCapture(event.pointerId)}catch{}profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;els.profileDockLabel.textContent="Отпустите";},550);});
 async function completeProfileLongPress(){
- if(!els.inviteUrl.value.trim()){openProfileScreen();setInlineStatus(els.inviteStatus,"Ссылка появится после разрешения push-уведомлений.");return;}
+ if(!els.inviteUrl.value.trim()){els.profileDockLabel.textContent="Профиль";openProfileScreen();setInlineStatus(els.inviteStatus,"Ссылка появится после разрешения push-уведомлений.");return;}
  try{
   await navigator.clipboard.writeText(els.inviteUrl.value.trim());
   els.profileDockLabel.textContent="Скопировано";
   setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
   window.setTimeout(()=>{els.profileDockLabel.textContent="Профиль"},1500);
  }catch(error){
+  els.profileDockLabel.textContent="Профиль";
   openProfileScreen();
   els.inviteUrl.focus();els.inviteUrl.select();
   setInlineStatus(els.inviteStatus,"Не удалось скопировать автоматически. Скопируйте ссылку из поля вручную.",true);
  }
 }
 function cancelProfileLongPress(){if(profileLongPressTimer!==null){window.clearTimeout(profileLongPressTimer);profileLongPressTimer=null;}}
-els.profileDockButton.addEventListener("pointerup",()=>{const wasLongPress=profileLongPressTriggered;cancelProfileLongPress();if(wasLongPress)completeProfileLongPress();});
-els.profileDockButton.addEventListener("pointerleave",cancelProfileLongPress);
-els.profileDockButton.addEventListener("pointercancel",cancelProfileLongPress);
+els.profileDockButton.addEventListener("pointerup",()=>{const wasLongPress=profileLongPressTriggered;cancelProfileLongPress();if(wasLongPress)completeProfileLongPress();else els.profileDockLabel.textContent="Профиль";});
+els.profileDockButton.addEventListener("pointerleave",event=>{if(event.pointerType==="mouse"&&!profileLongPressTriggered){cancelProfileLongPress();}});
+els.profileDockButton.addEventListener("pointercancel",()=>{cancelProfileLongPress();profileLongPressTriggered=false;els.profileDockLabel.textContent="Профиль";});
 els.copyInvite.addEventListener("click",copyContactInvitation);
 els.copyInviteInline.addEventListener("click",copyContactInvitation);
 els.scanQr.addEventListener("click",startQrScan);
