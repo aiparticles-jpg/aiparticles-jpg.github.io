@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=49">
+  <link rel="stylesheet" href="./css/style.css?v=50">
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 .verification-code{padding:16px;text-align:center;border-radius:10px;background:#0c1727;color:var(--accent);font:700 25px ui-monospace,monospace;letter-spacing:3px;overflow-wrap:anywhere}
@@ -223,21 +223,28 @@
         </section>
       </div>
     </section>
-    <section class="call-system-panel" aria-label="Системные действия">
-      <div class="call-internal-controls hidden" aria-hidden="true"><select id="peer-contact" autocomplete="off" aria-label="Выбранный контакт"><option value="">Загрузка контактов…</option></select><button id="connect" class="button button-secondary" type="button" tabindex="-1">Подключиться</button></div>
-      <div id="contact-request-panel" class="invite-panel hidden">
-        <div class="invite-title">Запрос на добавление в контакты</div>
-        <p id="contact-request-text" class="hint"></p>
-        <label class="field-label" for="contact-request-name">Имя контакта для отображения</label>
-        <input id="contact-request-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Боб">
-        <div class="actions">
-          <button id="accept-contact-request" class="button button-primary" type="button">Добавить контакт</button>
-          <button id="decline-contact-request" class="button button-secondary" type="button">Отклонить</button>
+    <section id="contact-request-screen" class="contact-request-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-request-screen-title">
+      <header class="contact-edit-screen-header">
+        <button id="contact-request-screen-back" class="contact-screen-back" type="button" aria-label="Назад"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7"/></svg></button>
+        <h2 id="contact-request-screen-title" class="contact-edit-screen-title">Запрос на добавление в контакты</h2>
+      </header>
+      <div class="contact-edit-screen-content contact-request-screen-content">
+        <div id="contact-request-panel" class="invite-panel hidden">
+          <p id="contact-request-text" class="hint"></p>
+          <label class="field-label" for="contact-request-name">Имя контакта для отображения</label>
+          <input id="contact-request-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Боб">
+          <div class="actions">
+            <button id="accept-contact-request" class="button button-primary" type="button">Добавить контакт</button>
+            <button id="decline-contact-request" class="button button-secondary" type="button">Отклонить</button>
+          </div>
         </div>
       </div>
     </section>
+    <section class="call-system-panel" aria-label="Системные действия">
+      <div class="call-internal-controls hidden" aria-hidden="true"><select id="peer-contact" autocomplete="off" aria-label="Выбранный контакт"><option value="">Загрузка контактов…</option></select><button id="connect" class="button button-secondary" type="button" tabindex="-1">Подключиться</button></div>
+    </section>
   </main>
 
-  <script type="module" src="./js/app.js?v=110"></script>
+  <script type="module" src="./js/app.js?v=111"></script>
 </body>
 </html>

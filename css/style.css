@@ -372,6 +372,26 @@ body.contact-screen-open{overflow:hidden}
 }
 
 
+/* Incoming contact requests open above the current screen. */
+.contact-request-screen{
+ position:fixed;inset:0;z-index:230;width:100%;height:100%;height:100dvh;
+ display:flex;flex-direction:column;background:var(--bg);
+}
+.contact-request-screen.hidden{display:none}
+.contact-request-screen-content{padding:22px 18px}
+.contact-request-screen-content #contact-request-panel{
+ display:block;max-width:640px;margin:0 auto;padding:0;border:0;border-radius:0;background:transparent;
+}
+.contact-request-screen-content #contact-request-panel .field-label{display:block;margin:18px 0 8px}
+.contact-request-screen-content #contact-request-name{
+ display:block;width:100%;margin:0 0 18px;padding:13px;
+ color:var(--text);background:#0c1727;border:1px solid var(--line);
+ border-radius:10px;font:inherit;
+}
+.contact-request-screen-content #contact-request-panel .actions{display:grid;gap:10px;margin-top:22px}
+.contact-request-screen-content #contact-request-panel .button{width:100%}
+@media(max-width:520px){.contact-request-screen-content{padding:18px 14px}}
+
 /* Contact editing is a second full-screen layer above the contact view */
 .contact-screen-menu-content{
  position:absolute;right:0;top:calc(100% + 8px);width:210px;

@@ -14,7 +14,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestScreen:$("contact-request-screen"),contactRequestScreenBack:$("contact-request-screen-back"),contactRequestPanel:$("contact-request-panel"),contactRequestText:$("contact-request-text"),contactRequestName:$("contact-request-name"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 let qrStream=null,qrScanActive=false;
 let originalEditContactName="";
@@ -720,15 +720,30 @@ function formatInvitationAge(timestamp){
  if(months<12)return rtf.format(-Math.max(1,Math.round(months)),"month");
  return rtf.format(-Math.max(1,Math.round(days/365.25)),"year");
 }
+let contactRequestReturnFocus=null;
+function openContactRequestScreen(){
+ if(els.contactRequestScreen.classList.contains("hidden"))contactRequestReturnFocus=document.activeElement;
+ els.contactRequestScreen.classList.remove("hidden");
+ document.body.classList.add("contact-screen-open");
+ els.contactRequestScreenBack.focus();
+}
+function closeContactRequestScreen(){
+ els.contactRequestScreen.classList.add("hidden");
+ const anotherScreenOpen=!!document.querySelector(".contact-screen:not(.hidden),.contact-edit-screen:not(.hidden),.add-contact-screen:not(.hidden),.diagnostic-screen:not(.hidden),#about-screen:not(.hidden),#settings-screen:not(.hidden)");
+ if(!anotherScreenOpen)document.body.classList.remove("contact-screen-open");
+ if(contactRequestReturnFocus?.isConnected&&!contactRequestReturnFocus.classList.contains("hidden"))contactRequestReturnFocus.focus();
+ contactRequestReturnFocus=null;
+}
 function renderContactRequest(){
  const request=state.pendingContactRequests[0];
  els.contactRequestPanel.classList.toggle("hidden",!request);
- if(!request)return;
+ if(!request){closeContactRequestScreen();return;}
  els.contactRequestText.textContent=request.invitationCreatedAt
   ?"Это ответ на ваше приглашение, отправленное "+formatInvitationAge(request.invitationCreatedAt)+"."
   :"Это ответ на ранее отправленное вами приглашение.";
  if(!els.contactRequestName.value)els.contactRequestName.value="Новый контакт";
  els.acceptContactRequest.disabled=false;
+ openContactRequestScreen();
 }
 
 function handleIncomingContactRequest(request){
@@ -926,6 +941,7 @@ updateImportContactButton();
 els.replyInvite.addEventListener("click",()=>sendContactRequest());
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
+els.contactRequestScreenBack.addEventListener("click",declineContactRequest);
 els.contactRequestName.addEventListener("focus",()=>{if(els.contactRequestName.value==="Новый контакт")els.contactRequestName.select()});
 els.createInvite.addEventListener("click",createContactInvitation);
 function updateInvitationPanel(){
@@ -1120,7 +1136,8 @@ els.contactDeleteScreenBack.addEventListener("click",closeContactDeleteScreen);
 els.cancelDeleteContact.addEventListener("click",closeContactDeleteScreen);
 document.addEventListener("keydown",event=>{
  if(event.key!=="Escape")return;
- if(!els.contactDeleteScreen.classList.contains("hidden"))closeContactDeleteScreen();
+ if(!els.contactRequestScreen.classList.contains("hidden"))declineContactRequest();
+ else if(!els.contactDeleteScreen.classList.contains("hidden"))closeContactDeleteScreen();
  else if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
  else if(!els.profileScreen.classList.contains("hidden"))closeProfileScreen();
  else if(!els.aboutScreen.classList.contains("hidden"))closeAboutScreen();
