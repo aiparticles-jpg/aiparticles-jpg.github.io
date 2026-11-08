@@ -31,8 +31,34 @@ jobs:
         run: |
           COMMIT_TIMESTAMP=$(git show -s --format=%ct HEAD)
           VERSION_DATE=$(date -u -d "@${COMMIT_TIMESTAMP}" +%Y.%m.%d)
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          APP_VERSION="${VERSION_DATE}-${COMMIT_COUNT}"
+          APP_VERSION=$(python3 - "${VERSION_DATE}" <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+
+          version_date = sys.argv[1]
+          html = Path("index.html").read_text(encoding="utf-8")
+          match = re.search(r'id="app-version"[^>]*>Версия (\d{4}\.\d{2}\.\d+)-(\d+)', html)
+          if not match:
+              raise SystemExit("Could not read the base application version from index.html")
+
+          base_version = match.group(0).split("Версия ", 1)[1]
+          base_minor = int(match.group(2))
+          base_commit = subprocess.check_output(
+              ["git", "log", "-1", "-S", f"Версия {base_version}", "--format=%H", "--", "index.html"],
+              text=True,
+          ).strip()
+          if not base_commit:
+              raise SystemExit("Could not find the commit that introduced the base application version")
+
+          commits_after_base = int(subprocess.check_output(
+              ["git", "rev-list", "--count", f"{base_commit}..HEAD"],
+              text=True,
+          ).strip())
+          print(f"{version_date}-{base_minor + commits_after_base}")
+          PY
+          )
           CACHE_VERSION=$(git rev-parse --short=12 HEAD)
 
           python3 - "${APP_VERSION}" "${CACHE_VERSION}" <<'PY'
