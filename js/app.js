@@ -94,11 +94,23 @@ function persistConfirmedContactRequests(){
  catch(error){debug("Не удалось сохранить подтверждение обмена приглашениями: "+(error.message||String(error)))}
 }
 function markContactRequestReceived(userId){
- if(!NtfySecureSignaling.validUserId(userId)||completedContactRequests.has(userId))return;
- completedContactRequests.add(userId);
- persistConfirmedContactRequests();
- if(els.peer.value===userId)updateCallButtons();
- debug("Получено корректно подписанное сообщение от контакта; обмен приглашениями подтверждён.");
+ if(!NtfySecureSignaling.validUserId(userId))return;
+ let changed=false;
+ if(!completedContactRequests.has(userId)){
+  completedContactRequests.add(userId);
+  persistConfirmedContactRequests();
+  changed=true;
+ }
+ if(Object.prototype.hasOwnProperty.call(sentContactRequests,userId)){
+  delete sentContactRequests[userId];
+  persistSentContactRequests();
+  changed=true;
+ }
+ if(els.peer.value===userId){
+  updateReplyInviteStatus();
+  updateCallButtons();
+ }
+ if(changed)debug("Получено корректно подписанное сообщение от контакта; обмен приглашениями подтверждён.");
 }
 function loadSentContactRequests(){
  try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_KEY)||"{}");return value&&typeof value==="object"&&!Array.isArray(value)?value:{}}
@@ -121,7 +133,8 @@ function clearSentContactRequest(userId){
 }
 function updateReplyInviteStatus(){
  const peer=els.peer.value;
- setInlineStatus(els.replyInviteStatus,sentContactRequests[peer]?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
+ const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
+ setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
 const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
 function debug(message){
@@ -221,7 +234,7 @@ function updateCallButtons(){
  els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim()||els.editContactName.value.trim()===originalEditContactName;
  const exchangeCompleted=selectedPeer&&completedContactRequests.has(els.peer.value);
  els.replyInvite.classList.toggle("hidden",!selectedPeer||exchangeCompleted);
- els.replyInvite.querySelector(".contact-menu-label").textContent=sentContactRequests[els.peer.value]?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
+ els.replyInvite.querySelector(".contact-menu-label").textContent=sentContactRequests[els.peer.value]&&!completedContactRequests.has(els.peer.value)?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
  els.replyInvite.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
@@ -953,8 +966,7 @@ async function handleIncomingContactRequest(request){
    authorized_by_invitation_id:request.invitationId
   });
   await refreshContactOptions(els.peer.value);
-  debug("Получен и сохранён новый запрос на добавление контакта: "+name+".");
-  await sendContactRequest(userId,els.replyInviteStatus);
+  debug("Получено и сохранено ответное приглашение от контакта: "+name+". Дополнительная отправка приглашения не требуется.");
  }catch(error){
   debug("Не удалось сохранить запрос контакта: "+(error.message||String(error)));
  }
