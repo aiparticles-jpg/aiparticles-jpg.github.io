@@ -237,6 +237,22 @@ self.addEventListener("message",event=>{
  }
 });
 
+// Activate each newly installed VoiceLink worker immediately. Without this,
+// an installed worker can remain waiting and the previous push handler keeps running.
+self.addEventListener("install",event=>{
+ event.waitUntil((async()=>{
+  await vlWriteLog("install_skip_waiting_requested",{build:"2026-11-10-lifecycle-1"});
+  await self.skipWaiting();
+ })());
+});
+
+self.addEventListener("activate",event=>{
+ event.waitUntil((async()=>{
+  await self.clients.claim();
+  await vlWriteLog("worker_activated",{build:"2026-11-10-lifecycle-1"});
+ })());
+});
+
 // Register our handler BEFORE loading OneSignal. Event listeners run in
 // registration order, so VoiceLink can stop SDK handling for its own events.
 // For all other pushes we leave propagation untouched and OneSignal handles them.
