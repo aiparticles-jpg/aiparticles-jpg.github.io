@@ -11,7 +11,7 @@ const els={
  contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenHeaderSlot:$("call-screen-header-slot"),callScreenDiagnosticsSlot:$("call-screen-diagnostics-slot"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
- audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
+ audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
@@ -547,7 +547,24 @@ async function subscribeForUser(me){
  }
 }
 if("serviceWorker" in navigator){
+ function requestServiceWorkerLog(target=navigator.serviceWorker.controller){
+  target?.postMessage({type:"VL_GET_SW_LOG"});
+ }
+ function renderServiceWorkerLog(logs){
+  if(!els.swDebugLog)return;
+  els.swDebugLog.textContent=(Array.isArray(logs)?logs:[]).map(item=>{
+   const time=new Date(item.time).toLocaleTimeString("ru-RU",{hour12:false});
+   return "["+time+"] "+item.stage+" "+JSON.stringify(item.details||{});
+  }).join("\\n")||"Записей пока нет.";
+ }
+ navigator.serviceWorker.addEventListener("controllerchange",()=>requestServiceWorkerLog());
+ navigator.serviceWorker.ready.then(reg=>requestServiceWorkerLog(reg.active));
  navigator.serviceWorker.addEventListener("message",event=>{
+  if(event.data?.type==="VL_SW_LOG"||event.data?.type==="VL_SW_LOG_UPDATED"){
+   if(event.data.type==="VL_SW_LOG")renderServiceWorkerLog(event.data.logs);
+   else requestServiceWorkerLog();
+   return;
+  }
   if(event.data?.type==="VL_PUSH_PREPARE_NOTIFICATION"){
    const senderId=event.data.data?.sender_id||"";
    event.ports?.[0]?.postMessage({suppress:!!window.voicelinkIsReadingChat?.(senderId)});
