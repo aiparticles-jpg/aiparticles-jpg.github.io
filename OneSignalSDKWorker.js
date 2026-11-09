@@ -233,12 +233,13 @@ self.addEventListener("message",event=>{
  }
 });
 
-// Load OneSignal first, then replace its standard push listener. This prevents
-// the SDK from displaying its generic notification for VoiceLink app events.
+// Register our handler BEFORE loading OneSignal. Event listeners run in
+// registration order, so VoiceLink can stop SDK handling for its own events.
+// For all other pushes we leave propagation untouched and OneSignal handles them.
+self.addEventListener("push",vlHandlePush);
+
+// OneSignal's worker API does not expose a supported push-listener hook.
+// Do not inspect or remove its private listener: intercept app events above.
 importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
 
-const vlOneSignalPushHandler=self.OneSignalWorker?.onPushReceived;
-if(typeof vlOneSignalPushHandler==="function"){
- self.removeEventListener("push",vlOneSignalPushHandler);
-}
-self.addEventListener("push",vlHandlePush);
+void vlWriteLog("worker_loaded",{pushHandlerRegisteredBeforeOneSignal:true});
