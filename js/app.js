@@ -1380,6 +1380,7 @@ async function initializeApp(){
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
+  document.documentElement.dataset.voicelinkBooted="true";
   const oneSignalReady=initializeOneSignal().then(async()=>{
    debug("OneSignal Web Push SDK инициализирован.");
    if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
@@ -1399,6 +1400,7 @@ async function initializeApp(){
  }catch(error){
   showError("Не удалось инициализировать приложение: "+(error.message||String(error)));
   setStatus("Ошибка локального хранилища","Проверьте поддержку IndexedDB и Web Crypto.","error");
+  document.documentElement.dataset.voicelinkBooted="true";
  }
 }
 els.tcp.classList.add("hidden");

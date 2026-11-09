@@ -12,13 +12,31 @@
 .join-row .button{width:190px;flex:0 0 190px}
 #connect,#hangup,#dismiss-incoming,#reject-incoming{width:145px;flex:0 0 145px}
 @media (max-width:520px){.join-row .button{width:100%;flex:0 0 auto}#connect,#hangup,#dismiss-incoming,#reject-incoming{width:100%;flex:0 0 auto}}
-</style></head>
+</style><style>
+#vl-startup-failure{position:fixed;z-index:99999;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#101827;color:#f8fafc;font:16px/1.5 system-ui,sans-serif}
+#vl-startup-failure[hidden]{display:none}
+#vl-startup-failure .vl-startup-card{width:min(100%,440px);padding:24px;border:1px solid #475569;border-radius:16px;background:#1e293b;box-shadow:0 18px 60px #0008}
+#vl-startup-failure h1{margin:0 0 12px;font-size:20px}
+#vl-startup-failure p{margin:8px 0;color:#cbd5e1}
+#vl-startup-failure pre{max-height:180px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#fca5a5;font-size:12px}
+#vl-startup-failure button{margin-top:12px;padding:12px 18px;border:0;border-radius:10px;background:#60a5fa;color:#0f172a;font-weight:700}
+</style>
+</head>
 <body>
+  <div id="vl-startup-failure" hidden role="alert">
+    <div class="vl-startup-card">
+      <h1>Не удалось запустить VoiceLink</h1>
+      <p id="vl-startup-failure-message">Приложение не завершило загрузку.</p>
+      <pre id="vl-startup-failure-details"></pre>
+      <p>Локальные контакты и идентичность не удалены. Попробуйте перезагрузить страницу.</p>
+      <button type="button" onclick="window.location.reload()">Перезагрузить</button>
+    </div>
+  </div>
   <main class="shell">
     <header class="topbar">
       <a class="brand" href="./" aria-label="Voice Link">
         <span class="brand-mark">V</span>
-        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.08-96</small></span>
+        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.09-97</small></span>
       </a>
       <div class="topbar-actions">
         <button id="privacy-help" class="privacy-label" type="button" aria-label="О приложении"><span class="dot"></span> Без регистрации</button>
@@ -256,6 +274,35 @@
     </section>
   </main>
 
-  <script type="module" src="./js/app.js?v=129"></script>
+  <script>
+    (() => {
+      const showFailure = (message, details) => {
+        const panel = document.getElementById("vl-startup-failure");
+        if (!panel) return;
+        document.getElementById("vl-startup-failure-message").textContent = message;
+        document.getElementById("vl-startup-failure-details").textContent = String(details || "").slice(0, 1200);
+        panel.hidden = false;
+      };
+      const appScript = document.querySelector('script[type="module"][src*="/js/app.js"]');
+      appScript?.addEventListener("error", () => showFailure(
+        "Не удалось загрузить основной JavaScript-файл или один из его модулей.",
+        "Проверьте интернет-соединение и повторите загрузку. Если ошибка повторится, сообщите об этом."
+      ));
+      window.addEventListener("error", event => {
+        if (event.filename && event.filename.includes("/js/")) {
+          showFailure("Во время запуска произошла ошибка JavaScript.", event.message + "\n" + event.filename + ":" + event.lineno);
+        }
+      });
+      window.addEventListener("unhandledrejection", event => {
+        showFailure("Во время запуска произошла необработанная ошибка.", event.reason?.stack || event.reason?.message || String(event.reason));
+      });
+      setTimeout(() => {
+        if (document.documentElement.dataset.voicelinkBooted !== "true") {
+          showFailure("Приложение слишком долго запускается.", "Инициализация не завершилась за 15 секунд. Контакты и локальная идентичность не удалялись.");
+        }
+      }, 15000);
+    })();
+  </script>
+  <script type="module" src="./js/app.js?v=130"></script>
 </body>
 </html>
