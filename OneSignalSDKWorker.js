@@ -157,9 +157,10 @@ async function vlHandlePush(event){
  }catch{}
  const data=vlParsePushData(parsed);
  const customEvent=VL_APP_EVENTS.has(data.event);
- await vlWriteLog("push_received",{payloadPresent:!!payload,topLevelKeys:Object.keys(parsed||{}),customKeys:Object.keys(vlDecodeData(parsed?.custom?.a)),dataKeys:Object.keys(vlDecodeData(parsed?.data)),event:data.event||null,recognized:customEvent,senderIdSuffix:typeof data.sender_id==="string"?data.sender_id.slice(-8):null});
+ 
  if(customEvent)event.stopImmediatePropagation();
  event.waitUntil((async()=>{
+  await vlWriteLog("push_received",{payloadPresent:!!payload,topLevelKeys:Object.keys(parsed||{}),customKeys:Object.keys(vlDecodeData(parsed?.custom?.a)),dataKeys:Object.keys(vlDecodeData(parsed?.data)),event:data.event||null,recognized:customEvent,senderIdSuffix:typeof data.sender_id==="string"?data.sender_id.slice(-8):null});
   try{await vlStorePush(payload)}catch{}
   let windows=[];
   try{
