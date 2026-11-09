@@ -224,9 +224,12 @@ export async function getOrCreateMessageEncryptionIdentity() {
   await transactionDone(read);
   if (existing?.value?.privateKey && existing.value.public_key && existing.value.key_id) return existing.value;
   if (!globalThis.crypto?.subtle) throw new Error("Web Crypto API is required.");
-  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
   const publicBytes = await crypto.subtle.exportKey("raw", pair.publicKey);
-  const value = { privateKey: pair.privateKey, public_key: toBase64Url(publicBytes), key_id: toHex(await crypto.subtle.digest("SHA-256", publicBytes)), created_at: new Date().toISOString() };
+  const privateBytes = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
+  const privateKey = await crypto.subtle.importKey("pkcs8", privateBytes, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+  new Uint8Array(privateBytes).fill(0);
+  const value = { privateKey, public_key: toBase64Url(publicBytes), key_id: toHex(await crypto.subtle.digest("SHA-256", publicBytes)), created_at: new Date().toISOString() };
   const tx = db.transaction("meta", "readwrite");
   const done = transactionDone(tx);
   const store = tx.objectStore("meta");
