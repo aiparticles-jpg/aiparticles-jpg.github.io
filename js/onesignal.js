@@ -1,16 +1,49 @@
 const APP_ID = "6eba7e51-55f4-4230-b78b-70c6dd293054";
+const SDK_URL = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
 let initialization;
+let sdkLoadPromise;
+
+function reportStatus(status, text) {
+  window.dispatchEvent(new CustomEvent("voicelink:onesignal-status", {
+    detail: { status, text }
+  }));
+}
+
+function loadOneSignalSdk() {
+  if (window.OneSignal) return Promise.resolve();
+  if (sdkLoadPromise) return sdkLoadPromise;
+
+  sdkLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = SDK_URL;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Не удалось загрузить OneSignal SDK с cdn.onesignal.com."));
+    document.head.appendChild(script);
+  });
+  return sdkLoadPromise;
+}
 
 export function initializeOneSignal() {
   if (initialization) return initialization;
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    reportStatus("error", "Недоступен: браузер не поддерживает Web Push");
     return Promise.reject(new Error("Этот браузер не поддерживает Web Push."));
   }
 
-  initialization = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("OneSignal SDK не загрузился. Проверьте соединение и настройки Web Push.")), 20000);
+  reportStatus("loading", "Загружается…");
+  const task = new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reportStatus("error", "Недоступен: превышено время ожидания SDK");
+      reject(new Error("OneSignal SDK не загрузился за 20 секунд. Проверьте соединение и настройки Web Push."));
+    }, 20000);
+
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     window.OneSignalDeferred.push(async OneSignal => {
+      if (settled) return;
       try {
         await OneSignal.init({
           appId: APP_ID,
@@ -18,13 +51,32 @@ export function initializeOneSignal() {
           serviceWorkerPath: "/OneSignalSDKWorker.js",
           serviceWorkerParam: { scope: "/" }
         });
+        if (settled) return;
+        settled = true;
         clearTimeout(timeout);
+        reportStatus("ready", "Инициализирован");
         resolve(OneSignal);
       } catch (error) {
+        if (settled) return;
+        settled = true;
         clearTimeout(timeout);
+        reportStatus("error", "Недоступен: ошибка инициализации");
         reject(error);
       }
     });
+
+    loadOneSignalSdk().catch(error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reportStatus("error", "Недоступен: не удалось загрузить SDK");
+      reject(error);
+    });
+  });
+
+  initialization = task.catch(error => {
+    initialization = null;
+    throw error;
   });
   return initialization;
 }

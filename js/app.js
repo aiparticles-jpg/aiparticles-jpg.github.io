@@ -3,7 +3,7 @@ import { NtfySecureSignaling } from "./ntfy-signaling.js?v=30";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation } from "./local-store.js?v=4";
 import { verifyContactPackage } from "./contact-exchange.js?v=6";
-import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=2";
+import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=3";
 import { sendPushEventToContact } from "./push-api.js";
 
 const $=id=>document.getElementById(id);
@@ -12,7 +12,7 @@ const els={
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
- debugUrl:$("debug-url"),debugState:$("debug-state"),
+ debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
@@ -114,6 +114,9 @@ function debug(message){
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
  els.debugLog.scrollTop=els.debugLog.scrollHeight;
 }
+window.addEventListener("voicelink:onesignal-status",event=>{
+ if(els.oneSignalStatus&&event.detail?.text)els.oneSignalStatus.textContent=event.detail.text;
+});
 function setStatus(title,text,kind="idle"){
  els.statusTitle.textContent=title;els.statusText.textContent=text;
  els.indicator.className="status-pill status-"+kind;
@@ -1371,6 +1374,11 @@ async function initializeApp(){
     }
    }
   }
+  const fragment=new URLSearchParams(window.location.hash.slice(1));
+  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;updatePasteContactButton();suggestContactNameFromInvitation(window.location.hash);openAddContactScreen(false,{preserveInput:true});els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
+  const contacts=await listContacts();
+  els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
+  setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
   const oneSignalReady=initializeOneSignal().then(async()=>{
    debug("OneSignal Web Push SDK инициализирован.");
    if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
@@ -1379,11 +1387,6 @@ async function initializeApp(){
    debug("OneSignal пока недоступен: "+(error.message||String(error)));
    return false;
   });
-  const fragment=new URLSearchParams(window.location.hash.slice(1));
-  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;updatePasteContactButton();suggestContactNameFromInvitation(window.location.hash);openAddContactScreen(false,{preserveInput:true});els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
-  const contacts=await listContacts();
-  els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
-  setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
   const subscribed=await subscribeForUser(state.me);
   if(subscribed)oneSignalReady.then(async ready=>{
    if(!ready)return;
