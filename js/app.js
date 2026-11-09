@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=31";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=5";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=6";
 import { verifyContactPackage } from "./contact-exchange.js?v=7";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=3";
 import { sendPushEventToContact } from "./push-api.js";
@@ -68,6 +68,47 @@ try{els.profileDisplayName.value=localStorage.getItem(PROFILE_DISPLAY_NAME_KEY)|
 let qrStream=null,qrScanActive=false;
 let originalEditContactName="";
 const CONTACT_REQUESTS_KEY="vl.contactRequestsSent.v1";
+const CONTACT_RESPONSE_INVITATIONS_KEY="vl.contactResponseInvitations.v1";
+function loadContactResponseInvitations(){
+ try{
+  const value=JSON.parse(localStorage.getItem(CONTACT_RESPONSE_INVITATIONS_KEY)||"{}");
+  return value&&typeof value==="object"&&!Array.isArray(value)?value:{};
+ }catch{return {}}
+}
+const contactResponseInvitations=loadContactResponseInvitations();
+function persistContactResponseInvitations(){
+ try{localStorage.setItem(CONTACT_RESPONSE_INVITATIONS_KEY,JSON.stringify(contactResponseInvitations))}
+ catch(error){debug("Не удалось сохранить идентификатор ответного приглашения: "+(error.message||String(error)))}
+}
+function rememberContactResponseInvitation(userId,invitationId,createdAt){
+ contactResponseInvitations[userId]={invitation_id:invitationId,created_at:Number(createdAt)||Date.now()};
+ persistContactResponseInvitations();
+}
+async function findReusableContactResponseInvitation(userId){
+ const remembered=contactResponseInvitations[userId];
+ if(remembered?.invitation_id){
+  const record=await getIssuedInvitation(remembered.invitation_id);
+  if(record&&!record.revoked)return record;
+  delete contactResponseInvitations[userId];
+  persistContactResponseInvitations();
+ }
+ // Older versions stored only the successful-send timestamp. Match it to
+ // the invitation record created immediately before that POST.
+ const sentAt=Number(sentContactRequests[userId]);
+ if(Number.isFinite(sentAt)&&sentAt>0){
+  const records=await listIssuedInvitations();
+  const candidates=records
+   .filter(record=>!record.revoked&&Math.abs(Number(record.created_at)-sentAt)<=120000)
+   .sort((a,b)=>Math.abs(Number(a.created_at)-sentAt)-Math.abs(Number(b.created_at)-sentAt));
+  if(candidates.length&&
+     (candidates.length===1||
+      Math.abs(Number(candidates[0].created_at)-sentAt)<Math.abs(Number(candidates[1].created_at)-sentAt))){
+   rememberContactResponseInvitation(userId,candidates[0].id,candidates[0].created_at);
+   return candidates[0];
+  }
+ }
+ throw Error("Не удалось однозначно найти ранее отправленное ответное приглашение на этом устройстве. Старое приглашение не заменено.");
+}
 const CONTACT_REPLY_FAILURES_KEY="vl.contactReplyFailures.v1";
 function loadContactReplyFailures(){
  try{const value=JSON.parse(localStorage.getItem(CONTACT_REPLY_FAILURES_KEY)||"[]");return new Set(Array.isArray(value)?value.filter(id=>NtfySecureSignaling.validUserId(id)):[])}
@@ -121,12 +162,17 @@ function persistSentContactRequests(){
  try{localStorage.setItem(CONTACT_REQUESTS_KEY,JSON.stringify(sentContactRequests))}
  catch(error){debug("Не удалось сохранить историю отправки приглашения: "+(error.message||String(error)))}
 }
-function markContactRequestSent(userId){
+function markContactRequestSent(userId,invitationId,createdAt){
  sentContactRequests[userId]=Date.now();
+ if(invitationId)rememberContactResponseInvitation(userId,invitationId,createdAt);
  persistSentContactRequests();
 }
 function clearSentContactRequest(userId){
  let changed=false;
+ if(Object.prototype.hasOwnProperty.call(contactResponseInvitations,userId)){
+  delete contactResponseInvitations[userId];
+  persistContactResponseInvitations();
+ }
  if(Object.prototype.hasOwnProperty.call(sentContactRequests,userId)){delete sentContactRequests[userId];changed=true}
  if(completedContactRequests.delete(userId)){persistConfirmedContactRequests();changed=true}
  if(changed)persistSentContactRequests();
@@ -876,7 +922,7 @@ async function pasteContactInvitation(event){
  }
 }
 
-async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus,displayNameOverride=undefined){
+async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus,displayNameOverride=undefined,options={}){
   const peer=peerOverride;
   const senderDisplayName=displayNameOverride===undefined?getProfileDisplayName():String(displayNameOverride||"").trim().slice(0,60);
   const report=(message,isError=false)=>{if(els.debugMode.checked)showAppNotice(message,isError)};
@@ -892,9 +938,24 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    const subscriptionId=await enableOneSignalPush();
    const identity=await getCurrentSignalingIdentity();
    if(!contact.invitation_id)throw Error("У сохранённого контакта старое приглашение без идентификатора. Попросите его прислать новую ссылку и импортируйте её заново.");
-   const invitationId=crypto.randomUUID(),createdAt=Date.now();
+   let invitationId,createdAt;
+   if(options.reuseInvitation){
+    const existingInvitation=options.reuseInvitation;
+    invitationId=existingInvitation.id;
+    createdAt=Number(existingInvitation.created_at);
+    if(!invitationId||existingInvitation.revoked||
+       (Array.isArray(existingInvitation.activations)&&existingInvitation.activations.some(item=>item.user_id!==peer))){
+     throw Error("Ранее выданное ответное приглашение нельзя безопасно использовать повторно. Ничего нового не создано.");
+    }
+   }else{
+    invitationId=crypto.randomUUID();
+    createdAt=Date.now();
+    await createIssuedInvitation({id:invitationId,created_at:createdAt,max_activations:1});
+    // Persist the association before network I/O so an interrupted send can
+    // still be retried later with this same invitation ID.
+    rememberContactResponseInvitation(peer,invitationId,createdAt);
+   }
    const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,invitation_id:invitationId,...(senderDisplayName?{display_name:senderDisplayName}:{})};
-   await createIssuedInvitation({id:invitationId,created_at:createdAt,max_activations:1});
    const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
    const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER;
    const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_id:contact.invitation_id,identity:identity.publicJwk,contact_package:contactPackage};
@@ -906,7 +967,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    // activate this locally issued invitation for that peer without another round trip.
    const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});
    if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
-   markContactRequestSent(peer);
+   markContactRequestSent(peer,invitationId,createdAt);
    setContactReplyFailure(peer,false);
    updateCallButtons();
    try{
@@ -955,24 +1016,22 @@ async function handleIncomingContactRequest(request){
    debug("Повторная доставка уже обработанного запроса контакта пропущена.");
    return;
   }
-  if(existing&&!existing.request_pending){
-   debug("Запрос контакта пропущен: отправитель уже сохранён в адресной книге.");
-   return;
-  }
   const receivedAt=existing?.request_received_at||new Date().toISOString();
   const name=existing?.name||request.contact.display_name||"Новый контакт";
   await saveContact({
    ...existing,
    ...request.contact,
    name,
-   request_pending:true,
-   request_received_at:receivedAt,
+   request_pending:existing?existing.request_pending===true:true,
+   ...(existing?.request_received_at?{request_received_at:existing.request_received_at}:{request_received_at:receivedAt}),
    request_id:request.requestId,
    invitation_created_at:request.invitationCreatedAt,
    authorized_by_invitation_id:request.invitationId
   });
   await refreshContactOptions(els.peer.value);
-  debug("Получено и сохранено ответное приглашение от контакта: "+name+". Дополнительная отправка приглашения не требуется.");
+  debug(existing
+   ?"Получено обновлённое ответное приглашение от контакта: "+name+". Локальное имя и история сохранены."
+   :"Получено и сохранено ответное приглашение от контакта: "+name+". Дополнительная отправка приглашения не требуется.");
  }catch(error){
   debug("Не удалось сохранить запрос контакта: "+(error.message||String(error)));
  }
@@ -1089,8 +1148,10 @@ async function importContactFromInput(){
   const saveSenderName=!profileName&&!!senderDisplayName&&els.saveResponseDisplayName.checked;
   if(!name)throw Error("Укажите имя, под которым контакт будет сохранён только на этом устройстве.");
   const existing=await getContact(verified.user_id);
-  if(existing&&!window.confirm("Этот контакт уже сохранён как «"+existing.name+"». Обновить его данные и локальное имя?"))return;
-  await saveContact({...verified,name});
+  if(existing&&!window.confirm("Этот контакт уже сохранён как «"+existing.name+"». Обновить данные приглашения? Локальное имя и история останутся без изменений."))return;
+  await saveContact(existing
+   ?{...existing,...verified,name:existing.name}
+   :{...verified,name});
   await refreshContactOptions(verified.user_id);
   if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
   if(saveSenderName){
@@ -1110,6 +1171,13 @@ async function importContactFromInput(){
    setInlineStatus(els.qrStatus,"Контакт сохранён. Отправляем ответное приглашение…");
    debug("Автоматически отправляем ответное приглашение новому контакту.");
    await sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
+  }else{
+   setInlineStatus(els.qrStatus,"Обновляем разрешение для существующего контакта…");
+   debug("Повторный импорт приглашения: восстанавливаем связь с повторным использованием прежнего ответного приглашения.");
+   const reusableInvitation=await findReusableContactResponseInvitation(verified.user_id);
+   const sent=await sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName,{reuseInvitation:reusableInvitation});
+   if(!sent)throw Error("Не удалось восстановить разрешение для существующего контакта.");
+   showAppNotice("Связь с контактом восстановлена. Прежнее ответное приглашение использовано повторно.");
   }
  }catch(error){
   showError(error.message||String(error));
