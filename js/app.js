@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=31";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=5";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=5";
 import { verifyContactPackage } from "./contact-exchange.js?v=7";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=3";
 import { sendPushEventToContact } from "./push-api.js";
@@ -902,6 +902,10 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    const topic=await getNtfyTopic(peer);
    const response=await fetch("https://ntfy.sh/"+topic,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message),cache:"no-store"});
    if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
+   // Sending our response invitation is the peer's acceptance of our invite:
+   // activate this locally issued invitation for that peer without another round trip.
+   const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});
+   if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
    markContactRequestSent(peer);
    setContactReplyFailure(peer,false);
    updateCallButtons();
