@@ -1311,11 +1311,21 @@ els.openAboutScreen.addEventListener("click",openAboutScreen);
 els.openSettingsScreen.addEventListener("click",openSettingsScreen);
 els.aboutScreenBack.addEventListener("click",closeAboutScreen);
 els.settingsScreenBack.addEventListener("click",closeSettingsScreen);
+const contextMenus=[els.headerMenu,els.contactScreenMenu].filter(Boolean);
+function closeContextMenus(except=null){
+ for(const menu of contextMenus)if(menu!==except&&menu.open)menu.open=false;
+}
 document.addEventListener("pointerdown",event=>{
- if(els.headerMenu.open&&!els.headerMenu.contains(event.target))els.headerMenu.open=false;
+ for(const menu of contextMenus){
+  if(menu.open&&!menu.contains(event.target))menu.open=false;
+ }
 });
 document.addEventListener("keydown",event=>{
- if(event.key==="Escape"&&els.headerMenu.open){els.headerMenu.open=false;els.headerMenu.querySelector("summary").focus()}
+ if(event.key!=="Escape")return;
+ const openMenu=contextMenus.find(menu=>menu.open);
+ if(!openMenu)return;
+ closeContextMenus();
+ openMenu.querySelector("summary")?.focus();
 });
 function updateResponseDisplayNameSection(){
  const profileName=getProfileDisplayName();
