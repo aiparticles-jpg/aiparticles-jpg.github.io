@@ -1,5 +1,5 @@
 const DB_NAME = "voicelink-local";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const HISTORY_LIMIT = 10;
 
 let databasePromise;
@@ -23,6 +23,10 @@ function openDatabase() {
         history.createIndex("created_at", "created_at");
       }
       if (!db.objectStoreNames.contains("invitations")) db.createObjectStore("invitations", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("conversation")) {
+        const conversation = db.createObjectStore("conversation", { keyPath: "id" });
+        conversation.createIndex("contact_user_id", "contact_user_id");
+      }
     };
 
     request.onsuccess = () => {
@@ -285,10 +289,65 @@ export async function updateContact(userId, updates) {
 
 export async function deleteContact(userId) {
   const db = await openDatabase();
-  const tx = db.transaction("contacts", "readwrite");
+  const tx = db.transaction(["contacts", "conversation"], "readwrite");
   const done = transactionDone(tx);
   tx.objectStore("contacts").delete(userId);
+  const conversationStore = tx.objectStore("conversation");
+  const request = conversationStore.index("contact_user_id").getAll(IDBKeyRange.only(userId));
+  request.onsuccess = () => {
+    for (const event of request.result) conversationStore.delete(event.id);
+  };
   await done;
+}
+
+
+export async function addConversationEvent(event) {
+  if (!event || typeof event !== "object" ||
+      typeof event.id !== "string" || !event.id ||
+      typeof event.contact_user_id !== "string" || !/^[a-f0-9]{64}$/.test(event.contact_user_id) ||
+      !["hello", "request", "answer", "reject", "text"].includes(event.type) ||
+      !["incoming", "outgoing"].includes(event.direction) ||
+      !Number.isFinite(Date.parse(event.created_at))) {
+    throw new TypeError("A conversation event requires a contact, type, direction, and valid timestamp.");
+  }
+  const text = event.type === "text" ? String(event.text || "").trim() : "";
+  if (event.type === "text" && (!text || text.length > 2000)) {
+    throw new TypeError("A text message must contain between 1 and 2000 characters.");
+  }
+  const record = {
+    id: event.id, contact_user_id: event.contact_user_id, type: event.type,
+    direction: event.direction, text, created_at: new Date(event.created_at).toISOString()
+  };
+  const db = await openDatabase();
+  const tx = db.transaction("conversation", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("conversation");
+  const request = store.index("contact_user_id").getAll(IDBKeyRange.only(record.contact_user_id));
+  request.onsuccess = () => {
+    const records = request.result.filter(item => item.id !== record.id);
+    records.push(record);
+    records.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    const retained = records.slice(-100);
+    const retainedIds = new Set(retained.map(item => item.id));
+    for (const oldRecord of request.result) if (!retainedIds.has(oldRecord.id)) store.delete(oldRecord.id);
+    if (retainedIds.has(record.id)) store.put(record);
+  };
+  await done;
+  return record;
+}
+
+export async function listConversationEvents(contactUserId) {
+  if (typeof contactUserId !== "string" || !/^[a-f0-9]{64}$/.test(contactUserId)) {
+    throw new TypeError("A valid contact ID is required.");
+  }
+  const db = await openDatabase();
+  const tx = db.transaction("conversation", "readonly");
+  const done = transactionDone(tx);
+  const records = await requestValue(
+    tx.objectStore("conversation").index("contact_user_id").getAll(IDBKeyRange.only(contactUserId))
+  );
+  await done;
+  return records.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).slice(-100);
 }
 
 export async function addCallHistoryEntry(entry) {

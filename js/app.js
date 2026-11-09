@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=30";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=31";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation } from "./local-store.js?v=4";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=5";
 import { verifyContactPackage } from "./contact-exchange.js?v=7";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=3";
 import { sendPushEventToContact } from "./push-api.js";
@@ -13,7 +13,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
 function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,60)}
@@ -208,6 +208,7 @@ function updateCallButtons(){
  els.contactScreenCall.disabled=active||state.connecting||callBlocked;
  els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":callBlocked?"Позвонить — ответное приглашение не отправлено":"Позвонить");
  els.contactScreenCall.title=state.incomingCall?"Ответить на звонок":contactReplyFailures.has(els.peer.value)?"Ответное приглашение не отправлено":active||state.connecting?"Звонок уже устанавливается или идёт":"Позвонить";
+ if(els.chatMessage)updateChatComposerState();
  const selectedContact=allContacts.find(contact=>contact.user_id===els.peer.value);
  const pendingRequest=selectedContact?.request_pending===true;
  els.contactScreenCall.classList.toggle("hidden",pendingRequest);
@@ -436,6 +437,7 @@ function createSecureSignaling(me,peer=""){
   onIncoming:showIncomingCall,
   onContactRequest:handleIncomingContactRequest,
   onPeerMessage:markContactRequestReceived,
+  onConversationEvent:async event=>{await addConversationEvent(event);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить историю контакта: "+(error.message||String(error))))},
   onCancelIncoming:info=>{
    if(state.incomingCall){clearIncomingUi();stopRinging();state.secure?.dismissIncoming();setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");}
   },
@@ -1353,6 +1355,80 @@ function closeAddContactScreen(){
  document.body.classList.remove("contact-screen-open");
  els.addContactFab.focus();
 }
+
+function conversationEventLabel(event){
+ if(event.type==="text")return "";
+ if(event.type==="hello"||event.type==="request")return event.direction==="outgoing"?"Исходящий звонок":"Входящий звонок";
+ if(event.type==="answer")return event.direction==="outgoing"?"Вы ответили на звонок":"Собеседник ответил на звонок";
+ if(event.type==="reject")return event.direction==="outgoing"?"Вы отклонили вызов":"Собеседник отклонил вызов";
+ return "Событие";
+}
+async function renderConversation(contactUserId){
+ if(!els.chatEvents||!NtfySecureSignaling.validUserId(contactUserId))return;
+ const events=await listConversationEvents(contactUserId);
+ if(els.peer.value!==contactUserId)return;
+ els.chatEvents.replaceChildren();
+ if(!events.length){
+  const empty=document.createElement("p");
+  empty.className="chat-empty";
+  empty.textContent="Пока нет сообщений";
+  els.chatEvents.append(empty);
+  return;
+ }
+ for(const event of events){
+  const item=document.createElement("div");
+  item.className=event.type==="text"?"chat-event chat-event-message chat-event-"+event.direction:"chat-event chat-event-system";
+  if(event.type==="text"){
+   const bubble=document.createElement("div");
+   bubble.className="chat-message-bubble";
+   const body=document.createElement("div");
+   body.className="chat-message-text";
+   body.textContent=event.text;
+   const time=document.createElement("time");
+   time.className="chat-message-time";
+   time.dateTime=event.created_at;
+   time.textContent=new Date(event.created_at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
+   bubble.append(body,time);
+   item.append(bubble);
+  }else{
+   const label=document.createElement("span");
+   label.textContent=conversationEventLabel(event);
+   const time=document.createElement("time");
+   time.dateTime=event.created_at;
+   time.textContent=new Date(event.created_at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
+   item.append(label,time);
+  }
+  els.chatEvents.append(item);
+ }
+ els.chatEvents.scrollTop=els.chatEvents.scrollHeight;
+}
+function updateChatComposerState(){
+ const contact=allContacts.find(item=>item.user_id===els.peer.value);
+ const allowed=!!contact&&!contact.request_pending&&!contactReplyFailures.has(els.peer.value);
+ els.chatMessage.disabled=!allowed;
+ els.sendChatMessage.disabled=!allowed||!els.chatMessage.value.trim();
+ els.chatMessage.placeholder=allowed?"Сообщение…":"Добавьте контакт, чтобы переписываться";
+}
+async function sendChatMessage(){
+ const text=els.chatMessage.value.trim();
+ const peer=els.peer.value;
+ if(!text||!peer)return;
+ updateChatComposerState();
+ if(els.sendChatMessage.disabled)return;
+ els.sendChatMessage.disabled=true;
+ try{
+  if(!state.secure||state.secure.closed||!state.secure.identity){
+   const connected=await subscribeForUser(state.me);
+   if(!connected||!state.secure?.identity)throw Error("Не удалось подключиться к каналу сообщений. Повторите попытку.");
+  }
+  await state.secure.sendText(peer,text);
+  if(els.peer.value===peer)els.chatMessage.value="";
+  updateChatComposerState();
+ }catch(error){
+  showError("Не удалось отправить сообщение: "+(error.message||String(error)));
+  updateChatComposerState();
+ }
+}
 function openContactScreen(item,preserveSelection=false){
  clearError();
  applyDebugMode();
@@ -1367,6 +1443,7 @@ function openContactScreen(item,preserveSelection=false){
  els.contactScreenAvatar.style.backgroundColor=avatar?.style.backgroundColor||"var(--accent)";
  els.contactScreenName.textContent=name?.textContent||"Контакт";
  updateCallButtons();
+ renderConversation(peer).catch(error=>debug("Не удалось загрузить историю контакта: "+(error.message||String(error))));
  els.contactScreen.classList.remove("hidden");
  document.body.classList.add("contact-screen-open");
  els.contactScreenBack.focus();
@@ -1414,6 +1491,11 @@ els.addContactFab.addEventListener("click",()=>openAddContactScreen(false));
 els.addContactScreenBack.addEventListener("click",closeAddContactScreen);
 els.contactScreenBack.addEventListener("click",closeContactScreen);
 els.contactScreenCall.addEventListener("click",()=>els.connect.click());
+els.chatComposer.addEventListener("submit",event=>{event.preventDefault();sendChatMessage()});
+els.chatMessage.addEventListener("input",updateChatComposerState);
+els.chatMessage.addEventListener("keydown",event=>{
+ if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();sendChatMessage()}
+});
 els.openContactEdit.addEventListener("click",openContactEditScreen);
 els.openContactDelete.addEventListener("click",openContactDeleteScreen);
 els.contactEditScreenBack.addEventListener("click",closeContactEditScreen);
@@ -1435,7 +1517,9 @@ els.peer.addEventListener("change",()=>{
  originalEditContactName=els.editContactName.value.trim();
  updateReplyInviteStatus();
  updateCallButtons();
+ updateChatComposerState();
  const peer=els.peer.value;
+ if(!els.contactScreen.classList.contains("hidden"))renderConversation(peer).catch(error=>debug("Не удалось обновить историю контакта: "+(error.message||String(error))));
  for(const item of els.contactList.querySelectorAll(".contact-list-item"))item.setAttribute("aria-pressed",String(item.dataset.peer===peer));
  if(state.incomingCall&&peer!==state.secure?.peer)dismissIncoming(false);
  if(state.secure&&!state.secure.active&&!state.connecting){

@@ -1,6 +1,6 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js";
 import { verifyContactPackage } from "./contact-exchange.js?v=6";
-import { consumeIssuedInvitation, hasActiveInvitationGrant } from "./local-store.js?v=4";
+import { consumeIssuedInvitation, hasActiveInvitationGrant } from "./local-store.js?v=5";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -12,10 +12,10 @@ const hex=b=>Array.from(bytes(b),x=>x.toString(16).padStart(2,"0")).join("");
 const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
 
 export class NtfySecureSignaling {
- constructor({me,peer,onSignal,onStatus,onReady,onError,onDebug,onIncoming,onContactRequest,onPeerMessage,onCancelIncoming,onDialing,onRejectOutgoing}) {
+ constructor({me,peer,onSignal,onStatus,onReady,onError,onDebug,onIncoming,onContactRequest,onPeerMessage,onCancelIncoming,onDialing,onRejectOutgoing,onConversationEvent}) {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
-  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});
+  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
   this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
@@ -147,12 +147,66 @@ export class NtfySecureSignaling {
   });
   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
  }
+
+ async recordConversationEvent(type,payload,direction,createdAt=Date.now()){
+  const contactUserId=direction==="incoming"?payload.from:payload.to;
+  if(!isUserId(contactUserId))return;
+  const id=type==="text"?payload.message_id:String(payload.sid||"")+":"+type+":"+direction;
+  try{
+   await this.onConversationEvent({
+    id,contact_user_id:contactUserId,type,direction,
+    text:type==="text"?payload.text:"",
+    created_at:new Date(Number(createdAt)||Date.now()).toISOString()
+   });
+  }catch(error){this.onError(error)}
+ }
+ async inspectTextMessage(n,m){
+  const p=m?.payload;
+  const createdAt=Number(p?.created_at);
+  if(m?.v!==1||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||
+     typeof p.message_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.message_id)||
+     typeof p.text!=="string"||!p.text.trim()||p.text.length>2000||
+     !Number.isSafeInteger(createdAt)||createdAt<0||createdAt>Date.now()+300000||!p.identity)return;
+  let contact;
+  try{contact=await getPeerSignalingIdentity(p.from)}catch{return;}
+  let signatureValid=false;
+  try{signatureValid=await this.verify({type:"text",payload:p},m.sig,p.identity)}catch{return;}
+  if(!signatureValid||!samePublicKey(contact.publicJwk,p.identity))return;
+  let grantValid=false;
+  try{grantValid=await this.hasCallGrant(p)}catch{return;}
+  if(!grantValid){
+   this.onDebug("[signaling] текстовое сообщение отклонено: нет действующего разрешения по приглашению");
+   return;
+  }
+  await this.recordConversationEvent("text",p,"incoming",createdAt);
+  if(n?.id){
+   this.seen.add(n.id);
+   this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id);
+  }
+  this.onDebug("[signaling] получено и сохранено подписанное текстовое сообщение от контакта");
+ }
+ async sendText(to,text){
+  if(this.closed||!this.identity)throw Error("Защищённая подписка ещё не готова.");
+  if(!isUserId(to)||to===this.me)throw Error("Выберите сохранённый контакт.");
+  const body=String(text||"").trim();
+  if(!body||body.length>2000)throw Error("Сообщение должно содержать от 1 до 2000 символов.");
+  const contact=await getPeerSignalingIdentity(to);
+  const payload={
+   message_id:crypto.randomUUID(),from:this.me,to,
+   ...(contact.invitation_id?{invitation_id:contact.invitation_id}:{}),
+   identity:this.identity.publicJwk,text:body,created_at:Date.now()
+  };
+  await this.publish(to,await this.signed("text",payload));
+  await this.recordConversationEvent("text",payload,"outgoing",payload.created_at);
+  return payload;
+ }
  async inspectIncoming(n){
   if(!n?.message||!n?.id)return;
   let m;try{m=JSON.parse(n.message)}catch{return}
   if(m.v!==1||!m.payload)return;
   const p=m.payload;
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
+  if(m.type==="text"){await this.inspectTextMessage(n,m);return;}
   if(m.type==="cancel"){if(this.peer&&p.from===this.peer)await this.processCancel(m);return;}
   if(!["hello","request"].includes(m.type)||p.to!==this.me||!isUserId(p.from)||p.from===this.me||!p.identity)return;
   // Older saved contacts predate invitation IDs; preserve their existing trust relationship.
@@ -174,6 +228,7 @@ export class NtfySecureSignaling {
    return;
   }
   if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
+  await this.recordConversationEvent(m.type,p,"incoming",Number(n.time)*1000||Date.now());
   this.onPeerMessage(p.from);
   this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=p.identity;
   const pendingCancel=this.pendingCancels.get(p.sid);
@@ -239,6 +294,7 @@ export class NtfySecureSignaling {
   const request={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),identity:this.identity.publicJwk,expiresAt:Date.now()+45000};
   this.outgoingRequest=request;
   await this.publish(this.peer,await this.signed("request",request));
+  await this.recordConversationEvent("request",request,"outgoing",Date.now());
   this.onStatus("Запрос на звонок отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
   this.onDialing({peer:this.peerName||"контакт",expiresAt:request.expiresAt,callId:request.sid});
  }
@@ -247,6 +303,7 @@ export class NtfySecureSignaling {
   if(this.closed||!sid||!this.peer||!this.incomingIdentity)return false;
   const payload={sid,from:this.me,to:this.peer,identity:this.identity.publicJwk,expiresAt:Date.now()+15000};
   await this.publish(this.peer,await this.signed("reject",payload));
+  await this.recordConversationEvent("reject",payload,"outgoing",Date.now());
   this.acceptedSids.add(sid);
   this.onDebug("[signaling] подписанный отказ от входящего вызова отправлен через ntfy");
   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
@@ -270,6 +327,7 @@ export class NtfySecureSignaling {
   this.helloAttempts++;
   this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
   await this.publish(this.peer,await this.signed("hello",this.hello));
+  await this.recordConversationEvent("hello",this.hello,"outgoing",Date.now());
   this.onStatus("Запрос отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
   if(!this.ready)this.onDialing({peer:this.peerName||"контакт",expiresAt:this.hello.expiresAt,callId:this.hello.sid});
  }
@@ -292,6 +350,7 @@ export class NtfySecureSignaling {
   this.answerAttempts++;
   this.onDebug(`[signaling] answer POST attempt ${this.answerAttempts}/3`);
   await this.publish(this.peer,await this.signed("answer",this.answer));
+  await this.recordConversationEvent("answer",this.answer,"outgoing",Date.now());
   this.lastAnswerAt=Date.now();
   this.clearAnswerRetry();
  }
@@ -326,8 +385,13 @@ export class NtfySecureSignaling {
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
   let m;try{m=JSON.parse(n.message)}catch{return}
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
-  if(m.v!==1||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me)return;
+  if(m.v!==1||!m.payload)return;
   const p=m.payload;
+  if(m.type==="text"){
+   if(p.to===this.me)await this.inspectTextMessage(n,m);
+   return;
+  }
+  if(p.from!==this.peer||p.to!==this.me)return;
   if(m.type==="hello"){
    const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
    if(!Number.isFinite(expiresAt)||Date.now()>expiresAt){this.onDebug("[signaling] просроченный hello пропущен");return}
@@ -338,6 +402,7 @@ export class NtfySecureSignaling {
    if(!request||p.sid!==request.sid||!p.identity||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
    if(!await this.verify({type:"reject",payload:p},m.sig,p.identity))throw Error("Подпись отказа от вызова недействительна.");
    await this.assertPeerKey(p.identity);
+   await this.recordConversationEvent("reject",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);
    this.outgoingRequest=null;this.clearHelloRetry();
    this.onRejectOutgoing({peer:this.peerName||"контакт",sid:p.sid});
@@ -351,6 +416,7 @@ export class NtfySecureSignaling {
     this.onDebug("[signaling] запрос вызова отклонён: нет действующего разрешения по приглашению");
     return;
    }
+   await this.recordConversationEvent("request",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);
    if(this.incomingSid!==p.sid){
     this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=p.identity;
@@ -375,6 +441,7 @@ export class NtfySecureSignaling {
     this.onDebug("[signaling] hello отклонён: нет действующего разрешения по приглашению");
     return;
    }
+   await this.recordConversationEvent("hello",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);
    if(this.cancelledSids.has(p.sid))return;
    const pendingCancel=this.pendingCancels.get(p.sid);
@@ -401,6 +468,7 @@ export class NtfySecureSignaling {
     this.onDebug("[signaling] ответ вызова отклонён: нет действующего разрешения по приглашению");
     return;
    }
+   await this.recordConversationEvent("answer",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);await this.derive(this.hello,p);return;
   }
   if(m.type==="data"&&this.ready&&p.sid===this.session){

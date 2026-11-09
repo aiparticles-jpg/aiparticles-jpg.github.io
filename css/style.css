@@ -364,7 +364,30 @@ body.contact-screen-open{overflow:hidden}
  border:1px solid var(--line);border-radius:12px;background:#172438;
  box-shadow:0 12px 32px rgba(0,0,0,.35);
 }
-.contact-screen-content{flex:1;min-height:0;overflow:auto}
+.contact-screen-content{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.contact-call-content{flex:1;min-height:0;width:100%;max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.chat-events{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+.chat-empty{margin:auto;color:var(--muted);font-size:13px;text-align:center}
+.chat-event{display:flex;align-items:flex-end;gap:7px;max-width:100%;font-size:12px}
+.chat-event-message{width:100%}
+.chat-event-outgoing{justify-content:flex-end}
+.chat-event-incoming{justify-content:flex-start}
+.chat-message-bubble{max-width:min(82%,520px);padding:10px 12px;border:1px solid var(--line);border-radius:15px;background:var(--panel-2);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.chat-event-outgoing .chat-message-bubble{background:rgba(80,203,162,.13);border-color:rgba(139,224,194,.22);border-bottom-right-radius:5px}
+.chat-event-incoming .chat-message-bubble{border-bottom-left-radius:5px}
+.chat-message-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}
+.chat-message-time{display:block;margin-top:5px;color:var(--muted);font-size:10px;text-align:right}
+.chat-event-system{justify-content:center;color:var(--muted);font-size:11px}
+.chat-event-system time{font-size:10px;opacity:.8}
+.chat-composer{flex:0 0 auto;display:grid;grid-template-columns:minmax(0,1fr) 46px;align-items:end;gap:9px;width:100%;max-width:640px;margin:0 auto;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:rgba(11,18,32,.98)}
+.chat-composer textarea{display:block;width:100%;min-height:44px;max-height:120px;resize:vertical;padding:11px 13px;border:1px solid var(--line);border-radius:14px;color:var(--text);background:#0c1727;font:14px/1.4 'DM Sans',system-ui,sans-serif;outline:none}
+.chat-composer textarea:focus{border-color:rgba(139,224,194,.55)}
+.chat-composer textarea:disabled{opacity:.55}
+.chat-send-button{display:grid;place-items:center;width:46px;height:44px;border:0;border-radius:13px;color:#092018;background:var(--accent);cursor:pointer}
+.chat-send-button:disabled{color:var(--muted);background:rgba(255,255,255,.08);cursor:not-allowed}
+.contact-diagnostics-footer{flex:0 0 auto;width:100%;max-width:640px;align-self:center;margin:0;padding:10px 12px 0}
+.contact-diagnostics-footer.hidden{display:none}
+@media(max-width:520px){.chat-events{padding:12px 12px}.chat-composer{padding-left:10px;padding-right:10px}}
 @media(max-width:520px){
  .contact-screen-header{min-height:58px;gap:9px;padding-left:10px;padding-right:10px}
  .contact-screen-back,.contact-screen-call,.contact-screen-menu summary{flex-basis:36px;width:36px;height:36px}
@@ -448,8 +471,7 @@ body.contact-screen-open{overflow:hidden}
 
 /* Call controls are shown inside the selected contact screen. */
 .call-internal-controls{display:none!important}
-.contact-call-content{max-width:640px;margin:0 auto;display:grid;gap:14px}
-.contact-call-actions{display:grid;gap:9px}
+.contact-call-actions{display:grid;gap:9px;flex:0 0 auto}
 .contact-call-actions .button{width:100%}
 .contact-call-content .transport-row{margin-top:0}
 
@@ -527,7 +549,7 @@ body.contact-screen-open{overflow:hidden}
 /* One bordered diagnostics panel anchored to the bottom of the contact screen. */
 .contact-screen-content{display:flex;flex-direction:column;overflow:hidden;padding:0}
 .contact-call-content{flex:1 1 auto;width:100%;height:100%;min-height:0;display:flex;flex-direction:column;gap:14px}
-.contact-diagnostics-footer{flex:0 0 auto;margin-top:auto;margin-bottom:0;padding:12px 0 0}
+.contact-diagnostics-footer{flex:0 0 auto;margin-top:0;margin-bottom:0;padding:10px 12px 0}
 .contact-diagnostics-grid{display:grid;grid-template-columns:minmax(0,1fr) 76px;align-items:center;gap:12px;padding:13px;border:1px solid var(--line);border-radius:13px;background:rgba(5,13,24,.34)}
 .contact-diagnostics-info{display:flex;flex-direction:column;gap:10px;min-width:0}
 .contact-diagnostics-info .status-card{padding:0;border:0;border-radius:0;background:transparent}

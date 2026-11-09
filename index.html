@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=62">
+  <link rel="stylesheet" href="./css/style.css?v=63">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -143,28 +143,34 @@
             <button id="accept-contact-request" class="button button-primary" type="button">Добавить контакт</button>
             <button id="decline-contact-request" class="button button-secondary" type="button">Отклонить</button>
           </div>
-          <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>          <audio id="remote-audio" autoplay playsinline></audio>
+          <div id="chat-events" class="chat-events" role="log" aria-live="polite" aria-relevant="additions text"></div>
+          <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
+          <audio id="remote-audio" autoplay playsinline></audio>
           <p id="error-message" class="error-message hidden" role="alert"></p>
-          <div id="contact-diagnostics-footer" class="contact-diagnostics-footer hidden">
-            <div class="contact-diagnostics-grid">
-              <div class="contact-diagnostics-info">
-                <div class="status-card">
-                  <div class="status-icon" id="status-icon" aria-hidden="true">⌁</div>
-                  <div class="status-copy">
-                    <strong id="status-title">Ожидаем комнату</strong>
-                    <span id="status-text">Выберите контакт и нажмите кнопку звонка.</span>
-                  </div>
-                </div>
-                <div class="transport-row">
-                  <span>Транспорт</span>
-                  <strong id="transport-label">Не выбран</strong>
-                </div>
-              </div>
-              <button id="contact-diagnostic-button" class="dock-action diagnostic-inline-action" type="button" aria-label="Открыть диагностику" title="Диагностика"><span class="dock-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-6 4.6 12 2.2-6H21"/><path d="M4 4h16v16H4z" opacity=".35"/></svg></span><span class="dock-label">Диагностика</span></button>
-            </div>
-          </div>
         </div>
       </div>
+      <div id="contact-diagnostics-footer" class="contact-diagnostics-footer hidden">
+        <div class="contact-diagnostics-grid">
+          <div class="contact-diagnostics-info">
+            <div class="status-card">
+              <div class="status-icon" id="status-icon" aria-hidden="true">⌁</div>
+              <div class="status-copy">
+                <strong id="status-title">Ожидаем комнату</strong>
+                <span id="status-text">Выберите контакт и нажмите кнопку звонка.</span>
+              </div>
+            </div>
+            <div class="transport-row">
+              <span>Транспорт</span>
+              <strong id="transport-label">Не выбран</strong>
+            </div>
+          </div>
+          <button id="contact-diagnostic-button" class="dock-action diagnostic-inline-action" type="button" aria-label="Открыть диагностику" title="Диагностика"><span class="dock-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-6 4.6 12 2.2-6H21"/><path d="M4 4h16v16H4z" opacity=".35"/></svg></span><span class="dock-label">Диагностика</span></button>
+        </div>
+      </div>
+      <form id="chat-composer" class="chat-composer">
+        <textarea id="chat-message" rows="1" maxlength="2000" placeholder="Сообщение…" aria-label="Текст сообщения"></textarea>
+        <button id="send-chat-message" class="chat-send-button" type="submit" aria-label="Отправить сообщение" title="Отправить сообщение" disabled><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg></button>
+      </form>
     </section>
 
     <section id="contact-edit-screen" class="contact-edit-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-edit-screen-title">
@@ -311,6 +317,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=136"></script>
+  <script type="module" src="./js/app.js?v=137"></script>
 </body>
 </html>
