@@ -140,6 +140,23 @@ async function vlHandlePush(event){
  })());
 }
 
+self.addEventListener("notificationclick",event=>{
+ if(!event.notification?.data?.voicelink)return;
+ event.stopImmediatePropagation();
+ const data=event.notification.data;
+ event.notification.close();
+ event.waitUntil((async()=>{
+  const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+  const existing=windows.find(client=>client.url.startsWith(self.registration.scope));
+  if(existing){
+   await existing.focus();
+   existing.postMessage({type:"VL_NOTIFICATION_CLICKED",data});
+   return;
+  }
+  await self.clients.openWindow(self.registration.scope);
+ })());
+});
+
 async function vlReadPushes(){
  const db=await vlOpenPushDb();
  try{
