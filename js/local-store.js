@@ -63,6 +63,25 @@ export async function createIssuedInvitation({ id, created_at = Date.now(), max_
   await done;
 }
 
+export async function getIssuedInvitation(invitationId) {
+  if (typeof invitationId !== "string" || !/^[0-9a-f-]{36}$/i.test(invitationId)) return null;
+  const db = await openDatabase();
+  const tx = db.transaction("invitations", "readonly");
+  const done = transactionDone(tx);
+  const record = await requestValue(tx.objectStore("invitations").get(invitationId));
+  await done;
+  return record || null;
+}
+
+export async function listIssuedInvitations() {
+  const db = await openDatabase();
+  const tx = db.transaction("invitations", "readonly");
+  const done = transactionDone(tx);
+  const records = await requestValue(tx.objectStore("invitations").getAll());
+  await done;
+  return Array.isArray(records) ? records : [];
+}
+
 export async function consumeIssuedInvitation({ invitationId, userId, requestId }) {
   if (typeof invitationId !== "string" || !/^[0-9a-f-]{36}$/i.test(invitationId) ||
       typeof userId !== "string" || !/^[a-f0-9]{64}$/.test(userId) ||
