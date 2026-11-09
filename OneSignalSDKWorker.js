@@ -1,3 +1,37 @@
+const VL_SW_LOG_DB="voicelink-sw-log-v1";
+async function vlWriteLog(stage,details={}){
+ try{
+  const db=await new Promise((resolve,reject)=>{
+   const request=indexedDB.open(VL_SW_LOG_DB,1);
+   request.onupgradeneeded=()=>request.result.createObjectStore("logs",{keyPath:"id",autoIncrement:true});
+   request.onsuccess=()=>resolve(request.result);
+   request.onerror=()=>reject(request.error);
+  });
+  await new Promise((resolve,reject)=>{
+   const tx=db.transaction("logs","readwrite");
+   const store=tx.objectStore("logs");
+   store.add({time:Date.now(),stage,details});
+   const count=store.count();
+   count.onsuccess=()=>{if(count.result>200){const cursor=store.openCursor();let remove=count.result-200;cursor.onsuccess=()=>{const c=cursor.result;if(c&&remove-->0){c.delete();c.continue()}}}};
+   tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+  db.close();
+  const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+  for(const client of windows)client.postMessage({type:"VL_SW_LOG_UPDATED"});
+ }catch{}
+}
+async function vlReadLog(){
+ const db=await new Promise((resolve,reject)=>{
+  const request=indexedDB.open(VL_SW_LOG_DB,1);
+  request.onupgradeneeded=()=>request.result.createObjectStore("logs",{keyPath:"id",autoIncrement:true});
+  request.onsuccess=()=>resolve(request.result);
+  request.onerror=()=>reject(request.error);
+ });
+ try{return await new Promise((resolve,reject)=>{
+  const tx=db.transaction("logs","readonly"),request=tx.objectStore("logs").getAll();
+  request.onsuccess=()=>resolve(request.result||[]);request.onerror=()=>reject(request.error);
+ })}finally{db.close()}
+}
 const VL_PUSH_DB="voicelink-push-events-v1";
 const VL_APP_EVENTS=new Set([
  "incoming_call",
@@ -174,7 +208,7 @@ async function vlReadPushes(){
  }finally{db.close()}
 }
 
-self.addEventListener("message",event=>{
+self.addEventListener("message",event=>{\n if(event.data?.type==="VL_GET_SW_LOG"){event.waitUntil(vlReadLog().then(logs=>event.source?.postMessage({type:"VL_SW_LOG",logs})).catch(()=>event.source?.postMessage({type:"VL_SW_LOG",logs:[]})));return;}
  if(event.data?.type==="VL_CLEAR_PUSH_EVENTS"){
   event.waitUntil(vlClearPushes().catch(()=>{}));
   return;
