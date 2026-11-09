@@ -241,7 +241,8 @@ export class NtfySecureSignaling {
   if(!isUserId(to)||to===this.me)throw Error("Выберите сохранённый контакт.");
   const body=String(text||"").trim();
   if(!body||body.length>2000)throw Error("Сообщение должно содержать от 1 до 2000 символов.");
-  const contact=await getPeerSignalingIdentity(to);
+  const contact=await getContact(to);
+  if(!contact)throw Error("Выберите сохранённый контакт.");
   if(!contact.message_encryption_key_id){
    await this.sendMessageEncryptionKey(to);
    throw Error("Согласуем ключ шифрования с контактом. Повторите отправку через несколько секунд.");
