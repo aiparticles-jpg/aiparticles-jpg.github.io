@@ -7,6 +7,7 @@ const APP_ID = "6eba7e51-55f4-4230-b78b-70c6dd293054";
 const ALLOWED_ORIGIN = "https://aiparticles-jpg.github.io";
 const ALLOWED_EVENTS = new Set([
   "incoming_call",
+  "new_message",
   "contact_request",
   "call_cancelled",
   "call_ignored",
@@ -80,7 +81,7 @@ function isUuid(value) {
 
 function validateAndVerify(body, now) {
   if (!body || typeof body !== "object" || Array.isArray(body) || body.v !== 1) return null;
-  const { user_id, public_key, timestamp, nonce, event, call_id, recipient_subscription_id, expires_at, signature } = body;
+  const { user_id, public_key, timestamp, nonce, event, call_id, recipient_subscription_id, expires_at, signature, sender_name } = body;
   if (typeof user_id !== "string" || !/^[a-f0-9]{64}$/.test(user_id)) return null;
   if (!Number.isSafeInteger(timestamp) || Math.abs(now - timestamp) > WINDOW_MS) return null;
   if (typeof nonce !== "string" || !/^[A-Za-z0-9_-]{22,86}$/.test(nonce)) return null;
@@ -89,6 +90,7 @@ function validateAndVerify(body, now) {
   if (typeof recipient_subscription_id !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(recipient_subscription_id)) return null;
   if (!Number.isSafeInteger(expires_at)) return null;
+  if (sender_name !== undefined && (typeof sender_name !== "string" || sender_name.length > 60 || sender_name.trim() !== sender_name || /[\u0000-\u001f\u007f]/.test(sender_name))) return null;
 
   const rawPublicKey = decodeBase64Url(public_key);
   const sig = decodeBase64Url(signature);
@@ -109,6 +111,7 @@ function validateAndVerify(body, now) {
     recipient_subscription_id,
     expires_at
   };
+  if (sender_name !== undefined) signed.sender_name = sender_name;
   const valid = crypto.verify(
     "sha256",
     Buffer.from(JSON.stringify(signed), "utf8"),
@@ -116,12 +119,13 @@ function validateAndVerify(body, now) {
     sig
   );
   if (!valid) return null;
-  return { user_id, nonce, event, call_id, recipient_subscription_id, expires_at };
+  return { user_id, nonce, event, call_id, recipient_subscription_id, expires_at, sender_name: sender_name || "" };
 }
 
 function notificationText(event) {
-  switch (event) {
+  switch (event.event) {
     case "incoming_call": return "Вам поступает входящий голосовой вызов.";
+    case "new_message": return event.sender_name ? "Новое сообщение от " + event.sender_name + "." : "Новое сообщение в VoiceLink.";
     case "contact_request": return "Пользователь хочет добавить вас в контакты VoiceLink.";
     case "call_cancelled": return "Входящий вызов отменён.";
     case "call_ignored": return "Вызов отклонён.";
@@ -150,12 +154,13 @@ async function submitOneSignal(event) {
       target_channel: "push",
       include_subscription_ids: [event.recipient_subscription_id],
       headings: { en: "VoiceLink" },
-      contents: { en: notificationText(event.event) },
+      contents: { en: notificationText(event) },
       data: {
         event: event.event,
         sender_id: event.user_id,
         call_id: event.call_id,
-        expires_at: event.expires_at
+        expires_at: event.expires_at,
+        sender_name: event.sender_name || ""
       }
     })
   });
@@ -200,8 +205,10 @@ app.post("/v1/push", async (req, res) => {
   if (!event) return res.status(400).json({ ok: false, error: "invalid_request" });
 
   const ip = req.ip || req.socket.remoteAddress || "unknown";
-  if (!rateLimit("ip:" + ip, 10, 60_000, now) ||
-      !rateLimit("user:" + event.user_id, 5, 60_000, now)) {
+  const ipLimit = event.event === "new_message" ? 60 : 10;
+  const userLimit = event.event === "new_message" ? 30 : 5;
+  if (!rateLimit("ip:" + ip, ipLimit, 60_000, now) ||
+      !rateLimit("user:" + event.user_id, userLimit, 60_000, now)) {
     return res.status(429).json({ ok: false, error: "rate_limited" });
   }
 

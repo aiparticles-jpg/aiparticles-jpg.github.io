@@ -3,8 +3,8 @@ import { NtfySecureSignaling } from "./ntfy-signaling.js?v=31";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=6";
 import { verifyContactPackage } from "./contact-exchange.js?v=7";
-import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=3";
-import { sendPushEventToContact } from "./push-api.js";
+import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=4";
+import { sendPushEventToContact } from "./push-api.js?v=2";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -15,6 +15,18 @@ const els={
  debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
+window.voicelinkIsReadingChat=senderId=>
+ document.visibilityState==="visible"&&
+ !els.contactScreen.classList.contains("hidden")&&
+ els.callScreen.classList.contains("hidden")&&
+ els.profileScreen.classList.contains("hidden")&&
+ els.diagnosticScreen.classList.contains("hidden")&&
+ els.addContactScreen.classList.contains("hidden")&&
+ els.aboutScreen.classList.contains("hidden")&&
+ els.settingsScreen.classList.contains("hidden")&&
+ els.contactEditScreen.classList.contains("hidden")&&
+ els.contactDeleteScreen.classList.contains("hidden")&&
+ els.peer.value===senderId;
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
 function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,60)}
 let profileInviteRefreshTimer=null;
@@ -182,7 +194,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],callReturnSnapshot:null};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -247,6 +259,7 @@ async function checkServiceWorkerAvailability(){
 }
 function updateCallButtons(){
  const active=!!(state.peerPresent||state.outgoingCall||state.secure?.active||state.callStarted||state.answeringCall);
+ els.contactScreenBack.disabled=!els.callScreen.classList.contains("hidden");
  els.connect.classList.toggle("hidden",active);
  els.connect.disabled=active||state.connecting;
  els.connect.textContent=state.connecting?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";
@@ -351,15 +364,16 @@ function clearIncomingUi(){
 }
 function showIncomingCall({peer,peerId,expiresAt}){
  if(state.connecting||state.callStarted||state.incomingCall)return;
+ const remaining=Math.max(0,expiresAt-Date.now());
+ if(!remaining)return;
+ const returnSnapshot=captureCallReturnState();
  if(peerId&&NtfySecureSignaling.validUserId(peerId))els.peer.value=peerId;
  if(state.outgoingCall){
   if(state.secure?.role!=="A"||state.secure?.hello)return;
   stopOutgoingCall();
   debug("Одновременный вызов: роль A принимает входящий запрос; исходящий запрос отменён локально.");
  }
- const remaining=Math.max(0,expiresAt-Date.now());
- if(!remaining)return;
- state.incomingCall=true;els.answerIncoming.classList.remove("hidden");els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");
+ state.incomingCall=true;state.callReturnSnapshot=returnSnapshot;els.answerIncoming.classList.remove("hidden");els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");
  const incomingItem=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(item=>item.dataset.peer===els.peer.value);
  if(incomingItem)openContactScreen(incomingItem,true);
  else openContactScreen({dataset:{peer:els.peer.value},querySelector:()=>null},true);
@@ -1519,6 +1533,9 @@ async function sendChatMessage(){
    if(!connected||!state.secure?.identity)throw Error("Не удалось подключиться к каналу сообщений. Повторите попытку.");
   }
   await state.secure.sendText(peer,text);
+  sendPushEventToContact(peer,"new_message",crypto.randomUUID(),Date.now()+24*60*60*1000,getProfileDisplayName())
+   .then(()=>debug("OneSignal принял push о новом сообщении."))
+   .catch(error=>debug("Push о сообщении не отправлен (сообщение уже доставлено через ntfy): "+(error.message||String(error))));
   if(els.peer.value===peer)els.chatMessage.value="";
   updateChatComposerState();
  }catch(error){
@@ -1526,8 +1543,41 @@ async function sendChatMessage(){
   updateChatComposerState();
  }
 }
+const CALL_RETURN_SCREEN_IDS=["contact-screen","profile-screen","diagnostic-screen","add-contact-screen","about-screen","settings-screen","contact-edit-screen","contact-delete-screen"];
+function captureCallReturnState(){
+ return {
+  screens:Object.fromEntries(CALL_RETURN_SCREEN_IDS.map(id=>[id,$(id)?.classList.contains("hidden")??true])),
+  contactScreenOpen:document.body.classList.contains("contact-screen-open"),
+  peer:els.peer.value,
+  contactName:els.contactScreenName.textContent,
+  contactAvatar:els.contactScreenAvatar.textContent,
+  contactAvatarColor:els.contactScreenAvatar.style.backgroundColor,
+  chatScrollTop:els.chatEvents.scrollTop
+ };
+}
+function restoreCallReturnState(snapshot){
+ if(!snapshot)return;
+ for(const [id,hidden] of Object.entries(snapshot.screens||{})){
+  const screen=$(id);
+  if(!screen)continue;
+  screen.classList.toggle("hidden",hidden);
+ }
+ document.body.classList.toggle("contact-screen-open",!!snapshot.contactScreenOpen);
+ if(snapshot.peer&&els.peer.value!==snapshot.peer){
+  els.peer.value=snapshot.peer;
+  els.peer.dispatchEvent(new Event("change",{bubbles:true}));
+ }
+ els.contactScreenName.textContent=snapshot.contactName||"";
+ els.contactScreenAvatar.textContent=snapshot.contactAvatar||"";
+ els.contactScreenAvatar.style.backgroundColor=snapshot.contactAvatarColor||"";
+ if(!snapshot.screens?.["contact-screen"]&&snapshot.peer){
+  renderConversation(snapshot.peer).then(()=>{els.chatEvents.scrollTop=snapshot.chatScrollTop||0;})
+   .catch(error=>debug("Не удалось восстановить прежнюю переписку после звонка: "+(error.message||String(error))));
+ }
+}
 function openCallScreen(){
  if(els.contactScreen.classList.contains("hidden"))return false;
+ if(!state.callReturnSnapshot)state.callReturnSnapshot=captureCallReturnState();
  clearError();
  els.contactScreen.classList.add("hidden");
  els.callScreen.classList.remove("hidden");
@@ -1542,24 +1592,22 @@ function openCallScreen(){
 function closeCallScreen(){
  if(els.callScreen.classList.contains("hidden"))return;
  els.callScreen.classList.add("hidden");
- els.contactScreen.classList.remove("hidden");
  els.contactScreenHeader.classList.remove("call-screen-header-mode");
  els.contactScreenHeaderPlaceholder.insertAdjacentElement("afterend",els.contactScreenHeader);
  els.contactDiagnosticsPlaceholder.insertAdjacentElement("afterend",els.contactDiagnosticsFooter);
+ const returnState=state.callReturnSnapshot;
+ state.callReturnSnapshot=null;
+ if(returnState)restoreCallReturnState(returnState);
+ else{
+  els.contactScreen.classList.remove("hidden");
+  document.body.classList.add("contact-screen-open");
+ }
  clearError();
  updateCallButtons();
- els.contactScreenBack.focus();
+ if(!els.contactScreen.classList.contains("hidden"))els.contactScreenBack.focus();
 }
 function handleContactScreenBack(){
- if(!els.callScreen.classList.contains("hidden")){
-  if(state.incomingCall){dismissIncoming(false);return}
-  if(state.connecting||state.outgoingCall||state.callStarted||state.peerPresent||state.answeringCall||state.secure?.active){
-   showAppNotice("Чтобы вернуться к сообщениям, сначала завершите звонок.");
-   return;
-  }
-  closeCallScreen();
-  return;
- }
+ if(!els.callScreen.classList.contains("hidden"))return;
  closeContactScreen();
 }
 function openContactScreen(item,preserveSelection=false){
