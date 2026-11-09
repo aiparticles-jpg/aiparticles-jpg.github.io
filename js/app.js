@@ -564,9 +564,31 @@ if("serviceWorker" in navigator){
    return "["+time+"] "+item.stage+" "+JSON.stringify(item.details||{});
   }).join("\n")||"Записей пока нет.";
  }
- navigator.serviceWorker.addEventListener("controllerchange",()=>requestServiceWorkerLog());
- navigator.serviceWorker.ready.then(reg=>requestServiceWorkerLog(reg.active));
+ function requestServiceWorkerStatus(reg){
+  if(!reg)return;
+  const send=(worker,role)=>{
+   if(!worker)return;
+   appendServiceWorkerLog("registration_worker",{role,state:worker.state||"unknown",scriptURL:worker.scriptURL||null});
+   worker.postMessage({type:"VL_GET_SW_STATUS",role});
+  };
+  send(reg.active,"active");
+  send(reg.waiting,"waiting");
+  send(reg.installing,"installing");
+ }
+ navigator.serviceWorker.addEventListener("controllerchange",()=>{
+  requestServiceWorkerLog();
+  navigator.serviceWorker.getRegistration().then(requestServiceWorkerStatus);
+ });
+ navigator.serviceWorker.ready.then(reg=>{
+  requestServiceWorkerLog(reg.active);
+  requestServiceWorkerStatus(reg);
+ });
+ navigator.serviceWorker.getRegistration().then(requestServiceWorkerStatus);
  navigator.serviceWorker.addEventListener("message",event=>{
+  if(event.data?.type==="VL_SW_STATUS"){
+   appendServiceWorkerLog("worker_status",{role:event.data.requestRole,build:event.data.workerBuild,scriptURL:event.data.scriptURL,scope:event.data.scope});
+   return;
+  }
   if(event.data?.type==="VL_SW_LOG"||event.data?.type==="VL_SW_LOG_UPDATED"){
    if(event.data.type==="VL_SW_LOG")renderServiceWorkerLog(event.data.logs);
    else requestServiceWorkerLog();
