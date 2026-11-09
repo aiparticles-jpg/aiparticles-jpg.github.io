@@ -129,7 +129,12 @@ async function vlHandlePush(event){
    windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
    for(const client of windows)client.postMessage({type:"VL_PUSH_RECEIVED"});
   }catch{}
-  if(!customEvent)return;
+  if(!customEvent){
+   if(typeof vlOneSignalPushHandler==="function"){
+    try{await vlOneSignalPushHandler(parsed)}catch{}
+   }
+   return;
+  }
   try{
    if(await vlShouldSuppressNotification(data,windows))return;
    await vlShowCustomNotification(data);
