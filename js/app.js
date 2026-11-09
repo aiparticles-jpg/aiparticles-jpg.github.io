@@ -13,7 +13,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),
  debugUrl:$("debug-url"),debugState:$("debug-state"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
+  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request")
 };
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
 function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,60)}
@@ -146,12 +146,18 @@ function updateCallButtons(){
  els.contactScreenCall.classList.toggle("hidden",pendingRequest);
  els.contactRequestActions.classList.toggle("hidden",!pendingRequest);
  els.contactRequestText.textContent=pendingRequest
-  ?"Этот человек отправил вам приглашение. Добавьте его в контакты, когда будете готовы."
+  ?"Этот человек воспользовался вашим приглашением. Добавьте его в контакты, когда будете готовы. После добавления вы сможете звонить ему. Если отклонить запрос, контакт не будет добавлен, и звонки между вами будут невозможны."
   :"";
+ const requestReceivedAt=Date.parse(selectedContact?.request_received_at||"");
+ const hasRequestReceivedAt=pendingRequest&&Number.isFinite(requestReceivedAt)&&requestReceivedAt>0;
+ els.contactRequestReceivedAge.textContent=hasRequestReceivedAt
+  ?"Запрос на добавление получен "+formatInvitationAge(requestReceivedAt)+"."
+  :"";
+ els.contactRequestReceivedAge.classList.toggle("hidden",!hasRequestReceivedAt);
  const invitationCreatedAt=Number(selectedContact?.invitation_created_at);
  const hasInvitationDate=pendingRequest&&Number.isFinite(invitationCreatedAt)&&invitationCreatedAt>0;
  els.contactRequestAge.textContent=hasInvitationDate
-  ?"Приглашение создано "+formatInvitationAge(invitationCreatedAt)+"."
+  ?"Ваше приглашение, которым он воспользовался, создано "+formatInvitationAge(invitationCreatedAt)+"."
   :"";
  els.contactRequestAge.classList.toggle("hidden",!hasInvitationDate);
  els.contactEditTools.classList.toggle("hidden",!selectedPeer);
