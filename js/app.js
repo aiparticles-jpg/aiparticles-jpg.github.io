@@ -555,7 +555,7 @@ if("serviceWorker" in navigator){
   els.swDebugLog.textContent=(Array.isArray(logs)?logs:[]).map(item=>{
    const time=new Date(item.time).toLocaleTimeString("ru-RU",{hour12:false});
    return "["+time+"] "+item.stage+" "+JSON.stringify(item.details||{});
-  }).join("\\n")||"Записей пока нет.";
+  }).join("\n")||"Записей пока нет.";
  }
  navigator.serviceWorker.addEventListener("controllerchange",()=>requestServiceWorkerLog());
  navigator.serviceWorker.ready.then(reg=>requestServiceWorkerLog(reg.active));
