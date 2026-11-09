@@ -3,8 +3,8 @@ import { NtfySecureSignaling } from "./ntfy-signaling.js?v=31";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=6";
 import { verifyContactPackage } from "./contact-exchange.js?v=7";
-import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=4";
-import { sendPushEventToContact } from "./push-api.js?v=2";
+import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=5";
+import { sendPushEventToContact } from "./push-api.js?v=3";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -548,6 +548,11 @@ async function subscribeForUser(me){
 }
 if("serviceWorker" in navigator){
  navigator.serviceWorker.addEventListener("message",event=>{
+  if(event.data?.type==="VL_PUSH_PREPARE_NOTIFICATION"){
+   const senderId=event.data.data?.sender_id||"";
+   event.ports?.[0]?.postMessage({suppress:!!window.voicelinkIsReadingChat?.(senderId)});
+   return;
+  }
   if(event.data?.type==="VL_PUSH_EVENTS"){
    const pending=Array.isArray(event.data.events)?event.data.events:[];
    debug("VoiceLink получил из Service Worker "+pending.length+" сохранённых push-событий; сверяемся с очередью ntfy.");
@@ -1533,7 +1538,7 @@ async function sendChatMessage(){
    if(!connected||!state.secure?.identity)throw Error("Не удалось подключиться к каналу сообщений. Повторите попытку.");
   }
   await state.secure.sendText(peer,text);
-  sendPushEventToContact(peer,"new_message",crypto.randomUUID(),Date.now()+24*60*60*1000,getProfileDisplayName())
+  sendPushEventToContact(peer,"new_message",crypto.randomUUID(),Date.now()+24*60*60*1000)
    .then(()=>debug("OneSignal принял push о новом сообщении."))
    .catch(error=>debug("Push о сообщении не отправлен (сообщение уже доставлено через ntfy): "+(error.message||String(error))));
   if(els.peer.value===peer)els.chatMessage.value="";

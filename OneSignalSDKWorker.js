@@ -31,15 +31,102 @@ async function vlClearPushes(){
   });
  }finally{db.close()}
 }
+function vlParsePushData(raw){
+ try{
+  const parsed=typeof raw==="string"?JSON.parse(raw):raw;
+  let data=parsed?.custom?.a??parsed?.data??{};
+  if(typeof data==="string")data=JSON.parse(data);
+  return data&&typeof data==="object"?data:{};
+ }catch{return {}}
+}
+async function vlFindContactName(userId){
+ if(typeof userId!=="string"||!/^[a-f0-9]{64}$/.test(userId))return "";
+ let db;
+ try{
+  db=await new Promise((resolve,reject)=>{
+   const request=indexedDB.open("voicelink-local");
+   request.onsuccess=()=>resolve(request.result);
+   request.onerror=()=>reject(request.error||new Error("IndexedDB open failed"));
+  });
+  if(!db.objectStoreNames.contains("contacts"))return "";
+  return await new Promise((resolve,reject)=>{
+   const tx=db.transaction("contacts","readonly");
+   const request=tx.objectStore("contacts").get(userId);
+   request.onsuccess=()=>resolve(typeof request.result?.name==="string"?request.result.name.trim():"");
+   request.onerror=()=>reject(request.error||new Error("Contact lookup failed"));
+  });
+ }catch{return ""}finally{db?.close()}
+}
+function vlNotificationBody(data,name){
+ const who=name||"неизвестного контакта";
+ switch(data.event){
+  case "incoming_call":return "Входящий звонок от "+who+".";
+  case "new_message":return "Новое сообщение от "+who+".";
+  case "contact_request":return "Приглашение от "+who+".";
+  case "call_cancelled":return "Вызов от "+who+" отменён.";
+  case "call_ignored":return "Вызов от "+who+" отклонён.";
+  case "call_ended":return "Звонок с "+who+" завершён.";
+  default:return "Новое событие VoiceLink.";
+ }
+}
+async function vlShouldSuppressNotification(data,windows){
+ const visible=windows.filter(client=>client.visibilityState==="visible");
+ if(!visible.length)return false;
+ const checks=visible.map(client=>new Promise(resolve=>{
+  const channel=new MessageChannel();
+  let settled=false;
+  const finish=value=>{if(settled)return;settled=true;channel.port1.close();resolve(value)};
+  channel.port1.onmessage=event=>finish(event.data?.suppress===true);
+  try{client.postMessage({type:"VL_PUSH_PREPARE_NOTIFICATION",data},[channel.port2])}catch{finish(false)}
+  setTimeout(()=>finish(false),700);
+ }));
+ const results=await Promise.all(checks);
+ return results.some(Boolean);
+}
+async function vlShowCustomNotification(data){
+ const name=await vlFindContactName(data.sender_id);
+ const options={
+  body:vlNotificationBody(data,name),
+  tag:"voicelink-"+String(data.event||"event")+"-"+String(data.sender_id||"unknown"),
+  data:{voicelink:true,event:data.event||"",sender_id:data.sender_id||"",call_id:data.call_id||"",expires_at:data.expires_at||0}
+ };
+ await self.registration.showNotification("VoiceLink",options);
+}
 self.addEventListener("push",event=>{
  let payload="";
- try{payload=event.data?event.data.text():""}catch{}
+ let parsed={};
+ try{payload=event.data?event.data.text():"";parsed=payload?JSON.parse(payload):{}}catch{}
+ const data=vlParsePushData(parsed);
+ const customEvent=["incoming_call","new_message","contact_request","call_cancelled","call_ignored","call_ended"].includes(data.event);
+ if(customEvent)event.stopImmediatePropagation();
  event.waitUntil((async()=>{
   try{await vlStorePush(payload)}catch{}
+  let windows=[];
   try{
-   const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+   windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
    for(const client of windows)client.postMessage({type:"VL_PUSH_RECEIVED"});
   }catch{}
+  if(!customEvent)return;
+  try{
+   if(await vlShouldSuppressNotification(data,windows))return;
+   await vlShowCustomNotification(data);
+  }catch{}
+ })());
+});
+self.addEventListener("notificationclick",event=>{
+ if(!event.notification?.data?.voicelink)return;
+ event.stopImmediatePropagation();
+ const data=event.notification.data;
+ event.notification.close();
+ event.waitUntil((async()=>{
+  const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+  const existing=windows.find(client=>client.url.startsWith(self.registration.scope));
+  if(existing){
+   await existing.focus();
+   existing.postMessage({type:"VL_NOTIFICATION_CLICKED",data});
+   return;
+  }
+  await self.clients.openWindow(self.registration.scope);
  })());
 });
 async function vlReadPushes(){
