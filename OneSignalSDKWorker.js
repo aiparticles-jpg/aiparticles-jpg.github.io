@@ -145,6 +145,7 @@ async function vlShowCustomNotification(data){
   data:{voicelink:true,event:data.event||"",sender_id:data.sender_id||"",call_id:data.call_id||"",expires_at:data.expires_at||0}
  };
  await self.registration.showNotification("VoiceLink",options);
+  await vlWriteLog("notification_shown",{event:data.event,withName:!!name});
 }
 async function vlHandlePush(event){
  let payload="";
@@ -208,7 +209,8 @@ async function vlReadPushes(){
  }finally{db.close()}
 }
 
-self.addEventListener("message",event=>{\n if(event.data?.type==="VL_GET_SW_LOG"){event.waitUntil(vlReadLog().then(logs=>event.source?.postMessage({type:"VL_SW_LOG",logs})).catch(()=>event.source?.postMessage({type:"VL_SW_LOG",logs:[]})));return;}
+self.addEventListener("message",event=>{
+ if(event.data?.type==="VL_GET_SW_LOG"){event.waitUntil(vlReadLog().then(logs=>event.source?.postMessage({type:"VL_SW_LOG",logs})).catch(()=>event.source?.postMessage({type:"VL_SW_LOG",logs:[]})));return;}
  if(event.data?.type==="VL_CLEAR_PUSH_EVENTS"){
   event.waitUntil(vlClearPushes().catch(()=>{}));
   return;
