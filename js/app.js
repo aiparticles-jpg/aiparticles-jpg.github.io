@@ -969,6 +969,7 @@ async function importContactFromInput(){
  updateImportContactButton();
  try{
   const verified=await verifyContactPackage(els.contactPackage.value);
+  if(verified.user_id===state.me)throw Error("Это ваше собственное приглашение. Его нельзя добавить в контакты.");
   const name=els.contactName.value.trim();
   const profileName=getProfileDisplayName();
   const senderDisplayName=profileName||String(els.responseDisplayName.value||"").trim().slice(0,60);
