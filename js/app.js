@@ -1,8 +1,8 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=32";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=33";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=7";
-import { verifyContactPackage } from "./contact-exchange.js?v=7";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, getOrCreateMessageEncryptionIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=8";
+import { verifyContactPackage } from "./contact-exchange.js?v=8";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=5";
 import { sendPushEventToContact } from "./push-api.js?v=3";
 
@@ -915,12 +915,15 @@ async function createContactInvitation({focusResult=true,expectedRevision=null}=
  try{
   const subscriptionId=await enableOneSignalPush();
   const identity=await getCurrentSignalingIdentity();
+  const encryptionIdentity=await getOrCreateMessageEncryptionIdentity();
   const unsigned={
    version:1,
    user_id:identity.user_id,
    public_key:identity.public_key,
    push_subscription_id:subscriptionId,
    invitation_id:crypto.randomUUID(),
+   message_encryption_public_key:encryptionIdentity.public_key,
+   message_encryption_key_id:encryptionIdentity.key_id,
    ...(displayName?{display_name:displayName}:{})
   };
   await createIssuedInvitation({id:unsigned.invitation_id,created_at:unsigned.created_at,max_activations:1});
@@ -1046,7 +1049,8 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
     // still be retried later with this same invitation ID.
     rememberContactResponseInvitation(peer,invitationId,createdAt);
    }
-   const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,invitation_id:invitationId,...(senderDisplayName?{display_name:senderDisplayName}:{})};
+   const encryptionIdentity=await getOrCreateMessageEncryptionIdentity();
+   const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,invitation_id:invitationId,message_encryption_public_key:encryptionIdentity.public_key,message_encryption_key_id:encryptionIdentity.key_id,...(senderDisplayName?{display_name:senderDisplayName}:{})};
    const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
    const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER;
    const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_id:contact.invitation_id,identity:identity.publicJwk,contact_package:contactPackage};

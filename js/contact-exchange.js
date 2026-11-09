@@ -21,7 +21,9 @@ function canonicalPayload(contact) {
     user_id: contact.user_id,
     public_key: contact.public_key,
     push_subscription_id: contact.push_subscription_id,
-    invitation_id: contact.invitation_id
+    invitation_id: contact.invitation_id,
+    message_encryption_public_key: contact.message_encryption_public_key,
+    message_encryption_key_id: contact.message_encryption_key_id
   };
   if (Object.hasOwn(contact, "display_name")) payload.display_name = contact.display_name;
   return JSON.stringify(payload);
@@ -73,6 +75,24 @@ export async function verifyContactPackage(input) {
        contact.display_name.trim() !== contact.display_name)) {
     throw new Error("Некорректное имя в приглашении.");
   }
+  if (typeof contact.message_encryption_public_key !== "string" ||
+      !/^[A-Za-z0-9_-]{80,100}$/.test(contact.message_encryption_public_key) ||
+      typeof contact.message_encryption_key_id !== "string" ||
+      !/^[a-f0-9]{64}$/.test(contact.message_encryption_key_id)) {
+    throw new Error("В приглашении отсутствует корректный ключ шифрования. Попросите собеседника создать новое приглашение.");
+  }
+  const encryptionBytes = fromBase64Url(contact.message_encryption_public_key);
+  if (encryptionBytes.length !== 65 || encryptionBytes[0] !== 4) {
+    throw new Error("Некорректный открытый ключ шифрования в приглашении.");
+  }
+  try {
+    await crypto.subtle.importKey("raw", encryptionBytes, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  } catch {
+    throw new Error("Открытый ключ шифрования в приглашении недействителен.");
+  }
+  if (toHex(await crypto.subtle.digest("SHA-256", encryptionBytes)) !== contact.message_encryption_key_id) {
+    throw new Error("Идентификатор ключа шифрования не совпадает с ключом в приглашении.");
+  }
 
   const publicBytes = fromBase64Url(contact.public_key);
   const fingerprint = toHex(await crypto.subtle.digest("SHA-256", publicBytes));
@@ -102,6 +122,8 @@ export async function verifyContactPackage(input) {
     public_key: contact.public_key,
     push_subscription_id: contact.push_subscription_id,
     invitation_id: contact.invitation_id,
+    message_encryption_public_key: contact.message_encryption_public_key,
+    message_encryption_key_id: contact.message_encryption_key_id,
     ...(Object.hasOwn(contact, "display_name") ? { display_name: contact.display_name } : {})
   };
 }
