@@ -221,6 +221,10 @@ async function vlReadPushes(){
 }
 
 self.addEventListener("message",event=>{
+ if(event.data?.type==="VL_GET_SW_STATUS"){
+  event.source?.postMessage({type:"VL_SW_STATUS",requestRole:event.data.role||"unknown",workerBuild:"2026-11-10-status-1",scriptURL:self.location.href,scope:self.registration.scope});
+  return;
+ }
  if(event.data?.type==="VL_GET_SW_LOG"){event.waitUntil(vlReadLog().then(logs=>event.source?.postMessage({type:"VL_SW_LOG",logs})).catch(()=>event.source?.postMessage({type:"VL_SW_LOG",logs:[]})));return;}
  if(event.data?.type==="VL_CLEAR_PUSH_EVENTS"){
   event.waitUntil(vlClearPushes().catch(()=>{}));
