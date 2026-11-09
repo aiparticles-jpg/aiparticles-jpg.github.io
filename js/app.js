@@ -585,6 +585,12 @@ if("serviceWorker" in navigator){
  });
  navigator.serviceWorker.getRegistration().then(requestServiceWorkerStatus);
  navigator.serviceWorker.addEventListener("message",event=>{
+  if(event.data?.type==="VL_NOTIFICATION_CLICKED"){
+   if(event.data.data?.event==="new_message"){
+    openChatFromNotification(event.data.data.sender_id).catch(error=>debug("Не удалось открыть переписку из уведомления: "+(error.message||String(error))));
+   }
+   return;
+  }
   if(event.data?.type==="VL_SW_STATUS"){
    appendServiceWorkerLog("worker_status",{role:event.data.requestRole,build:event.data.workerBuild,scriptURL:event.data.scriptURL,scope:event.data.scope});
    return;
@@ -1685,6 +1691,20 @@ function openContactScreen(item,preserveSelection=false){
  document.body.classList.add("contact-screen-open");
  els.contactScreenBack.focus();
 }
+async function openChatFromNotification(senderId){
+ if(!NtfySecureSignaling.validUserId(senderId)||senderId===state.me)return false;
+ let item=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(node=>node.dataset.peer===senderId);
+ if(!item){
+  await refreshContactOptions();
+  item=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(node=>node.dataset.peer===senderId);
+ }
+ if(!item){
+  debug("Push-уведомление относится к контакту, которого нет в локальном списке.");
+  return false;
+ }
+ openContactScreen(item);
+ return true;
+}
 function closeContactEditScreen(){
  clearError();
  els.contactEditScreen.classList.add("hidden");
@@ -1794,6 +1814,13 @@ async function initializeApp(){
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
   await refreshContactOptions();
+  const requestedChat=new URLSearchParams(window.location.search).get("openChat");
+  if(requestedChat){
+   await openChatFromNotification(requestedChat);
+   const cleanUrl=new URL(window.location.href);
+   cleanUrl.searchParams.delete("openChat");
+   history.replaceState(null,"",cleanUrl.pathname+cleanUrl.search+cleanUrl.hash);
+  }
   const savedInvitation=await getMyInvitation();
   if(savedInvitation){
    els.inviteUrl.value=savedInvitation;
