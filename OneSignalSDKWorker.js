@@ -139,6 +139,7 @@ async function vlShouldSuppressNotification(data,windows){
 }
 async function vlShowCustomNotification(data){
  const name=await vlFindContactName(data.sender_id);
+ await vlWriteLog("contact_lookup",{event:data.event,found:!!name,name:name||null});
  const options={
   body:vlNotificationBody(data,name),
   tag:"voicelink-"+String(data.event||"event")+"-"+String(data.sender_id||"unknown"),
@@ -156,6 +157,7 @@ async function vlHandlePush(event){
  }catch{}
  const data=vlParsePushData(parsed);
  const customEvent=VL_APP_EVENTS.has(data.event);
+ await vlWriteLog("push_received",{payloadPresent:!!payload,topLevelKeys:Object.keys(parsed||{}),customKeys:Object.keys(vlDecodeData(parsed?.custom?.a)),dataKeys:Object.keys(vlDecodeData(parsed?.data)),event:data.event||null,recognized:customEvent,senderIdSuffix:typeof data.sender_id==="string"?data.sender_id.slice(-8):null});
  if(customEvent)event.stopImmediatePropagation();
  event.waitUntil((async()=>{
   try{await vlStorePush(payload)}catch{}
@@ -165,15 +167,18 @@ async function vlHandlePush(event){
    for(const client of windows)client.postMessage({type:"VL_PUSH_RECEIVED"});
   }catch{}
   if(!customEvent){
+   await vlWriteLog("unrecognized_push",{topLevelKeys:Object.keys(parsed||{})});
    if(typeof vlOneSignalPushHandler==="function"){
     try{await vlOneSignalPushHandler(parsed)}catch{}
    }
    return;
   }
   try{
-   if(await vlShouldSuppressNotification(data,windows))return;
+   const suppressed=await vlShouldSuppressNotification(data,windows);
+   if(suppressed){await vlWriteLog("notification_suppressed",{event:data.event});return;}
    await vlShowCustomNotification(data);
   }catch(error){
+   await vlWriteLog("notification_error",{event:data.event,error:String(error?.message||error)});
    // Keep app events out of OneSignal's generic notification path.
    try{await self.registration.showNotification("VoiceLink",{body:vlNotificationBody(data,""),tag:"voicelink-event-"+String(data.event||"unknown")})}catch{}
   }
