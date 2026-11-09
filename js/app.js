@@ -670,7 +670,7 @@ function renderContactList(contacts){
   const status=document.createElement("span");status.className="contact-list-status";
   const replyFailed=contactReplyFailures.has(contact.user_id);
   status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):replyFailed?"Ответное приглашение не отправлено":"Контакт добавлен";
-  status.classList.toggle("contact-list-status-error",!isPendingRequest&&replyFailed);
+  status.dataset.statusType=replyFailed&&!isPendingRequest?"error":isPendingRequest?"pending":"normal";
   details.append(name,status);
   const last=document.createElement("span");last.className="contact-list-last";last.textContent=formatLastInteraction(contact.last_interaction_at);
   item.append(avatar,details,last);
