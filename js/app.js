@@ -463,7 +463,7 @@ function scheduleIcePrewarm(reason="input",force=false){
  if(state.prewarmTimer)clearTimeout(state.prewarmTimer);
  state.prewarmTimer=setTimeout(async()=>{
   state.prewarmTimer=null;
-  const me=state.me;
+  const me=state.me,peer=els.peer.value;
   const names=me+"|"+peer;
   const eligible=NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&
    me!==peer&&me<peer&&!els.pilot.checked&&navigator.onLine;
@@ -560,7 +560,7 @@ async function connect(){
  if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging()}
  clearError();setBusy(true);
  try{
-  const me=state.me,peer=els.peer.value;
+  const me=state.me;
   if(state.prewarmPromise&&(state.prewarmTargetNames===me+"|"+peer||state.prewarmNames===me+"|"+peer)){try{await state.prewarmPromise}catch{}}
   const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer&&!els.pilot.checked);
   if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
