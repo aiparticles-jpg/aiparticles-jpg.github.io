@@ -550,6 +550,13 @@ if("serviceWorker" in navigator){
  function requestServiceWorkerLog(target=navigator.serviceWorker.controller){
   target?.postMessage({type:"VL_GET_SW_LOG"});
  }
+ function appendServiceWorkerLog(stage,details={}){
+  if(!els.swDebugLog)return;
+  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
+  const line="["+time+"] "+stage+" "+JSON.stringify(details);
+  const current=els.swDebugLog.textContent;
+  els.swDebugLog.textContent=(current==="Ожидаем событий Service Worker."||current==="Записей пока нет."?"":current+"\n")+line;
+ }
  function renderServiceWorkerLog(logs){
   if(!els.swDebugLog)return;
   els.swDebugLog.textContent=(Array.isArray(logs)?logs:[]).map(item=>{
