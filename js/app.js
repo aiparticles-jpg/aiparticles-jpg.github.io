@@ -68,6 +68,20 @@ try{els.profileDisplayName.value=localStorage.getItem(PROFILE_DISPLAY_NAME_KEY)|
 let qrStream=null,qrScanActive=false;
 let originalEditContactName="";
 const CONTACT_REQUESTS_KEY="vl.contactRequestsSent.v1";
+const CONTACT_REPLY_FAILURES_KEY="vl.contactReplyFailures.v1";
+function loadContactReplyFailures(){
+ try{const value=JSON.parse(localStorage.getItem(CONTACT_REPLY_FAILURES_KEY)||"[]");return new Set(Array.isArray(value)?value.filter(id=>NtfySecureSignaling.validUserId(id)):[])}
+ catch{return new Set()}
+}
+const contactReplyFailures=loadContactReplyFailures();
+function setContactReplyFailure(userId,failed){
+ if(!NtfySecureSignaling.validUserId(userId))return;
+ if(failed)contactReplyFailures.add(userId);else contactReplyFailures.delete(userId);
+ try{localStorage.setItem(CONTACT_REPLY_FAILURES_KEY,JSON.stringify([...contactReplyFailures]))}
+ catch(error){debug("Не удалось сохранить статус ответного приглашения: "+(error.message||String(error)))}
+ if(typeof allContacts!=="undefined"&&allContacts.length)renderContactList(allContacts);
+}
+
 const CONTACT_REQUESTS_CONFIRMED_KEY="vl.contactRequestsConfirmed.v1";
 function loadConfirmedContactRequests(){
  try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_CONFIRMED_KEY)||"[]");return Array.isArray(value)?value.filter(id=>NtfySecureSignaling.validUserId(id)):[]}
@@ -654,7 +668,9 @@ function renderContactList(contacts){
   const details=document.createElement("span");details.className="contact-list-details";
   const name=document.createElement("span");name.className="contact-list-name";name.textContent=contact.name;
   const status=document.createElement("span");status.className="contact-list-status";
-  status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):"В контактах";
+  const replyFailed=contactReplyFailures.has(contact.user_id);
+  status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):replyFailed?"Ответное приглашение не отправлено":"Контакт добавлен";
+  status.classList.toggle("contact-list-status-error",!isPendingRequest&&replyFailed);
   details.append(name,status);
   const last=document.createElement("span");last.className="contact-list-last";last.textContent=formatLastInteraction(contact.last_interaction_at);
   item.append(avatar,details,last);
@@ -821,10 +837,13 @@ async function pasteContactInvitation(event){
 async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus,displayNameOverride=undefined){
   const peer=peerOverride;
   const senderDisplayName=displayNameOverride===undefined?getProfileDisplayName():String(displayNameOverride||"").trim().slice(0,60);
-  const report=(message,isError=false)=>{if(!setInlineStatus(statusElement,message,isError))showAppNotice(message,isError)};
-  if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){report("Не удалось отправить ответное приглашение: сначала выберите контакт, от которого вы получили приглашение.",true);return false;}
+  const report=(message,isError=false)=>{if(els.debugMode.checked)showAppNotice(message,isError)};
+  if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){
+   const message="Не удалось отправить ответное приглашение: сначала выберите контакт, от которого вы получили приглашение.";
+   report(message,true);debug(message);return false;
+  }
   updateCallButtons();
-  els.replyInvite.disabled=true;report("Подготавливаем ответное приглашение…");clearError();
+  els.replyInvite.disabled=true;clearError();
   try{
    const contact=await getContact(peer);
    if(!contact?.push_subscription_id)throw Error("У контакта отсутствует OneSignal ID. Попросите его обновить приглашение.");
@@ -841,7 +860,9 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    const topic=await getNtfyTopic(peer);
    const response=await fetch("https://ntfy.sh/"+topic,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message),cache:"no-store"});
    if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
-   markContactRequestSent(peer);updateCallButtons();
+   markContactRequestSent(peer);
+   setContactReplyFailure(peer,false);
+   updateCallButtons();
    try{
     await sendPushEventToContact(peer,"contact_request",requestId,expiresAt);
     report("Ответное приглашение отправлено. OneSignal принял push-уведомление.");
@@ -852,10 +873,14 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    }
    return true;
   }catch(error){
-   const message="Не удалось отправить ответное приглашение: "+(error.message||String(error));
+   const detail=error.message||String(error);
+   const message="Не удалось отправить ответное приглашение: "+detail;
+   setContactReplyFailure(peer,true);
    report(message,true);
-   const dialog=statusElement.closest('[role="dialog"]');
-   if(dialog&&!dialog.classList.contains("hidden"))showError(error.message||String(error));
+   if(els.debugMode.checked){
+    const dialog=statusElement?.closest('[role="dialog"]');
+    if(dialog&&!dialog.classList.contains("hidden"))showError(detail);
+   }
    debug(message);
    return false;
   }finally{els.replyInvite.disabled=false;updateCallButtons()}

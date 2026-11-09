@@ -570,3 +570,6 @@ body.contact-screen-open{overflow:hidden}
 
 /* One-use invitation warning */
 .invitation-one-use-warning{margin:12px 0;padding:10px 12px;border:1px solid rgba(225,171,82,.38);border-radius:10px;background:rgba(225,171,82,.08);color:var(--text)}
+
+
+.contact-list-status-error{color:#ff9292!important;font-weight:600}
