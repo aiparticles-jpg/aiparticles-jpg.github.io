@@ -175,6 +175,10 @@ export class NtfySecureSignaling {
   try{if(!await this.hasCallGrant(p))return}catch{return}
   let raw;try{raw=un64(p.public_key);await crypto.subtle.importKey("raw",raw,{name:"ECDH",namedCurve:"P-256"},false,[]);if(hex(await digest(raw))!==p.key_id)return}catch{return}
   const record=await getContact(p.from);if(!record)return;
+  if(record.message_encryption_key_id&&record.message_encryption_key_id!==p.key_id){
+   const previousTime=Date.parse(record.message_encryption_updated_at||"");
+   if(Number.isFinite(previousTime)&&createdAt<=previousTime)return;
+  }
   if(record.message_encryption_key_id!==p.key_id){
    await updateContact(p.from,{message_encryption_public_key:p.public_key,message_encryption_key_id:p.key_id,message_encryption_updated_at:new Date(createdAt).toISOString()});
    this.onDebug("[e2ee] ключ контакта проверен и сохранён");
@@ -441,6 +445,7 @@ export class NtfySecureSignaling {
   const n=JSON.parse(event.data);if(!n.message||!n.id||this.seen.has(n.id))return;
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
   let m;try{m=JSON.parse(n.message)}catch{return}
+  if(m.type==="e2ee_key"){await this.inspectEncryptionKey(n,m);return;}
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.v!==1||!m.payload)return;
   const p=m.payload;
