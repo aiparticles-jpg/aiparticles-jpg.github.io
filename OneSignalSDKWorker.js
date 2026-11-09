@@ -197,6 +197,10 @@ self.addEventListener("notificationclick",event=>{
  const data=event.notification.data;
  event.notification.close();
  event.waitUntil((async()=>{
+  const targetUrl=new URL(self.registration.scope);
+  if(data.event==="new_message"&&typeof data.sender_id==="string"&&/^[a-f0-9]{64}$/.test(data.sender_id)){
+   targetUrl.searchParams.set("openChat",data.sender_id);
+  }
   const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
   const existing=windows.find(client=>client.url.startsWith(self.registration.scope));
   if(existing){
@@ -204,7 +208,7 @@ self.addEventListener("notificationclick",event=>{
    existing.postMessage({type:"VL_NOTIFICATION_CLICKED",data});
    return;
   }
-  await self.clients.openWindow(self.registration.scope);
+  await self.clients.openWindow(targetUrl.href);
  })());
 });
 
