@@ -220,8 +220,9 @@ export async function getOrCreateIdentity() {
 export async function getOrCreateMessageEncryptionIdentity() {
   const db = await openDatabase();
   const read = db.transaction("meta", "readonly");
+  const readDone = transactionDone(read);
   const existing = await requestValue(read.objectStore("meta").get("message_encryption_identity"));
-  await transactionDone(read);
+  await readDone;
   if (existing?.value?.privateKey && existing.value.public_key && existing.value.key_id) return existing.value;
   if (!globalThis.crypto?.subtle) throw new Error("Web Crypto API is required.");
   const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
