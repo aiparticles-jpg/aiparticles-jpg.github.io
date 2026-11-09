@@ -137,7 +137,7 @@ async function vlHandlePush(event){
    // Keep app events out of OneSignal's generic notification path.
    try{await self.registration.showNotification("VoiceLink",{body:vlNotificationBody(data,""),tag:"voicelink-event-"+String(data.event||"unknown")})}catch{}
   }
- });
+ })());
 }
 
 async function vlReadPushes(){
