@@ -18,7 +18,12 @@ async function vlWriteLog(stage,details={}){
   db.close();
   const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
   for(const client of windows)client.postMessage({type:"VL_SW_LOG_UPDATED"});
- }catch{}
+ }catch(error){
+  try{
+   const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+   for(const client of windows)client.postMessage({type:"VL_SW_LOG_WRITE_ERROR",stage,error:String(error?.message||error)});
+  }catch{}
+ }
 }
 async function vlReadLog(){
  const db=await new Promise((resolve,reject)=>{
