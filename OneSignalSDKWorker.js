@@ -1,4 +1,13 @@
 const VL_PUSH_DB="voicelink-push-events-v1";
+const VL_APP_EVENTS=new Set([
+ "incoming_call",
+ "new_message",
+ "contact_request",
+ "call_cancelled",
+ "call_ignored",
+ "call_ended"
+]);
+
 function vlOpenPushDb(){
  return new Promise((resolve,reject)=>{
   const request=indexedDB.open(VL_PUSH_DB,1);
@@ -31,13 +40,24 @@ async function vlClearPushes(){
   });
  }finally{db.close()}
 }
-function vlParsePushData(raw){
- try{
-  const parsed=typeof raw==="string"?JSON.parse(raw):raw;
-  let data=parsed?.custom?.a??parsed?.data??{};
-  if(typeof data==="string")data=JSON.parse(data);
-  return data&&typeof data==="object"?data:{};
- }catch{return {}}
+function vlDecodeData(value){
+ if(typeof value==="string"){
+  try{return JSON.parse(value)}catch{return {}}
+ }
+ return value&&typeof value==="object"?value:{};
+}
+function vlParsePushData(parsed){
+ const candidates=[
+  parsed?.custom?.a,
+  parsed?.data,
+  parsed?.additionalData,
+  parsed?.notification?.data
+ ];
+ for(const candidate of candidates){
+  const data=vlDecodeData(candidate);
+  if(VL_APP_EVENTS.has(data.event))return data;
+ }
+ return {};
 }
 async function vlFindContactName(userId){
  if(typeof userId!=="string"||!/^[a-f0-9]{64}$/.test(userId))return "";
@@ -92,12 +112,15 @@ async function vlShowCustomNotification(data){
  };
  await self.registration.showNotification("VoiceLink",options);
 }
-self.addEventListener("push",event=>{
+async function vlHandlePush(event){
  let payload="";
  let parsed={};
- try{payload=event.data?event.data.text():"";parsed=payload?JSON.parse(payload):{}}catch{}
+ try{
+  payload=event.data?event.data.text():"";
+  parsed=payload?JSON.parse(payload):{};
+ }catch{}
  const data=vlParsePushData(parsed);
- const customEvent=["incoming_call","new_message","contact_request","call_cancelled","call_ignored","call_ended"].includes(data.event);
+ const customEvent=VL_APP_EVENTS.has(data.event);
  if(customEvent)event.stopImmediatePropagation();
  event.waitUntil((async()=>{
   try{await vlStorePush(payload)}catch{}
@@ -110,25 +133,13 @@ self.addEventListener("push",event=>{
   try{
    if(await vlShouldSuppressNotification(data,windows))return;
    await vlShowCustomNotification(data);
-  }catch{}
- })());
-});
-self.addEventListener("notificationclick",event=>{
- if(!event.notification?.data?.voicelink)return;
- event.stopImmediatePropagation();
- const data=event.notification.data;
- event.notification.close();
- event.waitUntil((async()=>{
-  const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
-  const existing=windows.find(client=>client.url.startsWith(self.registration.scope));
-  if(existing){
-   await existing.focus();
-   existing.postMessage({type:"VL_NOTIFICATION_CLICKED",data});
-   return;
+  }catch(error){
+   // Keep app events out of OneSignal's generic notification path.
+   try{await self.registration.showNotification("VoiceLink",{body:vlNotificationBody(data,""),tag:"voicelink-event-"+String(data.event||"unknown")})}catch{}
   }
-  await self.clients.openWindow(self.registration.scope);
- })());
-});
+ });
+}
+
 async function vlReadPushes(){
  const db=await vlOpenPushDb();
  try{
@@ -140,6 +151,7 @@ async function vlReadPushes(){
   });
  }finally{db.close()}
 }
+
 self.addEventListener("message",event=>{
  if(event.data?.type==="VL_CLEAR_PUSH_EVENTS"){
   event.waitUntil(vlClearPushes().catch(()=>{}));
@@ -151,4 +163,13 @@ self.addEventListener("message",event=>{
   }).catch(()=>event.source?.postMessage({type:"VL_PUSH_EVENTS",events:[]})));
  }
 });
+
+// Load OneSignal first, then replace its standard push listener. This prevents
+// the SDK from displaying its generic notification for VoiceLink app events.
 importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
+
+const vlOneSignalPushHandler=self.OneSignalWorker?.onPushReceived;
+if(typeof vlOneSignalPushHandler==="function"){
+ self.removeEventListener("push",vlOneSignalPushHandler);
+}
+self.addEventListener("push",vlHandlePush);
