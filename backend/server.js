@@ -119,13 +119,13 @@ function validateAndVerify(body, now) {
     sig
   );
   if (!valid) return null;
-  return { user_id, nonce, event, call_id, recipient_subscription_id, expires_at, sender_name: sender_name || "" };
+  return { user_id, nonce, event, call_id, recipient_subscription_id, expires_at };
 }
 
 function notificationText(event) {
   switch (event.event) {
-    case "incoming_call": return "Вам поступает входящий голосовой вызов.";
-    case "new_message": return event.sender_name ? "Новое сообщение от " + event.sender_name + "." : "Новое сообщение в VoiceLink.";
+    case "incoming_call": return "Входящий звонок в VoiceLink.";
+    case "new_message": return "Новое сообщение в VoiceLink.";
     case "contact_request": return "Пользователь хочет добавить вас в контакты VoiceLink.";
     case "call_cancelled": return "Входящий вызов отменён.";
     case "call_ignored": return "Вызов отклонён.";
@@ -159,8 +159,7 @@ async function submitOneSignal(event) {
         event: event.event,
         sender_id: event.user_id,
         call_id: event.call_id,
-        expires_at: event.expires_at,
-        sender_name: event.sender_name || ""
+        expires_at: event.expires_at
       }
     })
   });
