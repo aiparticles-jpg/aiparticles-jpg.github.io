@@ -80,6 +80,7 @@ function setContactReplyFailure(userId,failed){
  try{localStorage.setItem(CONTACT_REPLY_FAILURES_KEY,JSON.stringify([...contactReplyFailures]))}
  catch(error){debug("Не удалось сохранить статус ответного приглашения: "+(error.message||String(error)))}
  if(typeof allContacts!=="undefined"&&allContacts.length)renderContactList(allContacts);
+ if(els.peer.value===userId)updateCallButtons();
 }
 
 const CONTACT_REQUESTS_CONFIRMED_KEY="vl.contactRequestsConfirmed.v1";
@@ -181,7 +182,7 @@ async function checkServiceWorkerAvailability(){
  }catch(error){setServiceStatus(els.serviceWorkerStatus,"Ошибка проверки")}
 }
 function updateCallButtons(){
- const active=!!(state.peerPresent||state.outgoingCall||state.secure?.active);
+ const active=!!(state.peerPresent||state.outgoingCall||state.secure?.active||state.callStarted||state.answeringCall);
  els.connect.classList.toggle("hidden",active);
  els.connect.disabled=active||state.connecting;
  els.connect.textContent=state.connecting?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";
@@ -189,10 +190,11 @@ function updateCallButtons(){
  els.hangup.disabled=!active||state.hangingUp;
  els.answerIncoming.disabled=state.connecting;
  els.dismissIncoming.disabled=state.connecting;
- els.contactScreenCall.disabled=active||state.connecting;
- els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":"Позвонить");
- els.contactScreenCall.title=state.incomingCall?"Ответить на звонок":"Позвонить";
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
+ const callBlocked=!state.incomingCall&&(!selectedPeer||contactReplyFailures.has(els.peer.value));
+ els.contactScreenCall.disabled=active||state.connecting||callBlocked;
+ els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":callBlocked?"Позвонить — ответное приглашение не отправлено":"Позвонить");
+ els.contactScreenCall.title=state.incomingCall?"Ответить на звонок":contactReplyFailures.has(els.peer.value)?"Ответное приглашение не отправлено":active||state.connecting?"Звонок уже устанавливается или идёт":"Позвонить";
  const selectedContact=allContacts.find(contact=>contact.user_id===els.peer.value);
  const pendingRequest=selectedContact?.request_pending===true;
  els.contactScreenCall.classList.toggle("hidden",pendingRequest);
@@ -461,7 +463,7 @@ function scheduleIcePrewarm(reason="input",force=false){
  if(state.prewarmTimer)clearTimeout(state.prewarmTimer);
  state.prewarmTimer=setTimeout(async()=>{
   state.prewarmTimer=null;
-  const me=state.me,peer=els.peer.value;
+  const me=state.me;
   const names=me+"|"+peer;
   const eligible=NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&
    me!==peer&&me<peer&&!els.pilot.checked&&navigator.onLine;
@@ -548,6 +550,12 @@ async function startWebRtcOffer(){
 }
 async function connect(){
  const answering=state.incomingCall;
+ const peer=els.peer.value;
+ if(!answering&&contactReplyFailures.has(peer)){
+  updateCallButtons();
+  showError("Нельзя позвонить: ответное приглашение этому контакту не отправлено.");
+  return;
+ }
  state.answeringCall=answering;
  if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging()}
  clearError();setBusy(true);

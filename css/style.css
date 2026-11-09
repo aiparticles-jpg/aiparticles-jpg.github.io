@@ -355,6 +355,7 @@ body.contact-screen-open{overflow:hidden}
  font:700 16px Manrope,sans-serif;
 }
 .contact-screen-call{color:var(--accent);background:rgba(139,224,194,.1)}
+.contact-screen-call:disabled{color:var(--muted);background:rgba(255,255,255,.045);border-color:var(--line);opacity:.55;cursor:not-allowed}
 .contact-screen-menu{position:relative;flex:0 0 40px}
 .contact-screen-menu summary{list-style:none;font-size:25px;line-height:1}
 .contact-screen-menu summary::-webkit-details-marker{display:none}
