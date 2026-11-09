@@ -1,6 +1,6 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js";
-import { verifyContactPackage } from "./contact-exchange.js?v=6";
-import { consumeIssuedInvitation, hasActiveInvitationGrant, getOrCreateMessageEncryptionIdentity, listContacts, getContact, updateContact } from "./local-store.js?v=7";
+import { verifyContactPackage } from "./contact-exchange.js?v=8";
+import { consumeIssuedInvitation, hasActiveInvitationGrant, getOrCreateMessageEncryptionIdentity, getContact } from "./local-store.js?v=8";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -16,7 +16,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.messageEncryptionIdentity=null;this.keyExchangeSent=new Set();this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.messageEncryptionIdentity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
  async sign(payload){return b64u(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},this.identity.privateKey,enc.encode(stable(payload))))}
@@ -60,7 +60,7 @@ export class NtfySecureSignaling {
   if(this.es&&this.es.readyState===EventSource.CLOSED){this.es=null;this.sseReadyPromise=null}
   const task=this.openSubscription();
   this.subscribePromise=task;
-  try{await task;await this.publishEncryptionKeyToContacts()}
+  try{await task}
   finally{if(this.subscribePromise===task)this.subscribePromise=null}
  }
  async openSubscription(){
@@ -152,40 +152,6 @@ export class NtfySecureSignaling {
   if(!this.messageEncryptionIdentity)this.messageEncryptionIdentity=await getOrCreateMessageEncryptionIdentity();
   return this.messageEncryptionIdentity;
  }
- async sendMessageEncryptionKey(to){
-  if(!isUserId(to)||to===this.me||this.closed)return false;
-  const local=await this.getMessageEncryptionIdentity(),marker=to+":"+local.key_id;
-  if(this.keyExchangeSent.has(marker))return true;
-  const contact=await getPeerSignalingIdentity(to);
-  const payload={from:this.me,to,public_key:local.public_key,key_id:local.key_id,identity:this.identity.publicJwk,created_at:Date.now(),...(contact.invitation_id?{invitation_id:contact.invitation_id}:{})};
-  await this.publish(to,await this.signed("e2ee_key",payload));
-  this.keyExchangeSent.add(marker);
-  this.onDebug("[e2ee] открытый ключ шифрования отправлен контакту");
-  return true;
- }
- async publishEncryptionKeyToContacts(){
-  try{for(const contact of await listContacts())try{await this.sendMessageEncryptionKey(contact.user_id)}catch(error){this.onDebug("[e2ee] обмен ключом: "+(error.message||String(error)))}}catch(error){this.onDebug("[e2ee] список контактов: "+(error.message||String(error)))}
- }
- async inspectEncryptionKey(n,m){
-  const p=m?.payload,createdAt=Number(m?.payload?.created_at);
-  if(m?.v!==1||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||typeof p.public_key!=="string"||!/^[A-Za-z0-9_-]{80,100}$/.test(p.public_key)||typeof p.key_id!=="string"||!/^[a-f0-9]{64}$/.test(p.key_id)||!Number.isSafeInteger(createdAt)||createdAt<0||createdAt>Date.now()+300000||!p.identity)return;
-  let contact;try{contact=await getPeerSignalingIdentity(p.from)}catch{return}
-  let valid=false;try{valid=await this.verify({type:"e2ee_key",payload:p},m.sig,p.identity)}catch{return}
-  if(!valid||!samePublicKey(contact.publicJwk,p.identity))return;
-  try{if(!await this.hasCallGrant(p))return}catch{return}
-  let raw;try{raw=un64(p.public_key);await crypto.subtle.importKey("raw",raw,{name:"ECDH",namedCurve:"P-256"},false,[]);if(hex(await digest(raw))!==p.key_id)return}catch{return}
-  const record=await getContact(p.from);if(!record)return;
-  if(record.message_encryption_key_id&&record.message_encryption_key_id!==p.key_id){
-   const previousTime=Date.parse(record.message_encryption_updated_at||"");
-   if(Number.isFinite(previousTime)&&createdAt<=previousTime)return;
-  }
-  if(record.message_encryption_key_id!==p.key_id){
-   await updateContact(p.from,{message_encryption_public_key:p.public_key,message_encryption_key_id:p.key_id,message_encryption_updated_at:new Date(createdAt).toISOString()});
-   this.onDebug("[e2ee] ключ контакта проверен и сохранён");
-  }
-  if(n?.id){this.seen.add(n.id);this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id)}
-  await this.sendMessageEncryptionKey(p.from);
- }
  async deriveMessageEncryptionKey(peer,from,to){
   const local=await this.getMessageEncryptionIdentity(),contact=await getContact(peer);
   if(!contact?.message_encryption_public_key)throw new Error("Ключ шифрования контакта ещё не получен.");
@@ -247,9 +213,8 @@ export class NtfySecureSignaling {
   if(!body||body.length>2000)throw Error("Сообщение должно содержать от 1 до 2000 символов.");
   const contact=await getContact(to);
   if(!contact)throw Error("Выберите сохранённый контакт.");
-  if(!contact.message_encryption_key_id){
-   await this.sendMessageEncryptionKey(to);
-   throw Error("Согласуем ключ шифрования с контактом. Повторите отправку через несколько секунд.");
+  if(!contact.message_encryption_key_id||!contact.message_encryption_public_key){
+   throw Error("У контакта нет ключа шифрования. Попросите его отправить новое приглашение и добавьте контакт заново.");
   }
   const createdAt=Date.now();
   const payload={message_id:crypto.randomUUID(),from:this.me,to,...(contact.invitation_id?{invitation_id:contact.invitation_id}:{}),identity:this.identity.publicJwk,enc_v:1,created_at:createdAt};
@@ -265,7 +230,6 @@ export class NtfySecureSignaling {
   let m;try{m=JSON.parse(n.message)}catch{return}
   if(m.v!==1||!m.payload)return;
   const p=m.payload;
-  if(m.type==="e2ee_key"){await this.inspectEncryptionKey(n,m);return;}
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){await this.inspectTextMessage(n,m);return;}
   if(m.type==="cancel"){if(this.peer&&p.from===this.peer)await this.processCancel(m);return;}
@@ -445,7 +409,6 @@ export class NtfySecureSignaling {
   const n=JSON.parse(event.data);if(!n.message||!n.id||this.seen.has(n.id))return;
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
   let m;try{m=JSON.parse(n.message)}catch{return}
-  if(m.type==="e2ee_key"){await this.inspectEncryptionKey(n,m);return;}
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.v!==1||!m.payload)return;
   const p=m.payload;
