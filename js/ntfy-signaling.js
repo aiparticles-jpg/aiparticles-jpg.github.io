@@ -213,7 +213,7 @@ export class NtfySecureSignaling {
   const createdAt=Number(p?.created_at);
   if(m?.v!==1||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||
      typeof p.message_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.message_id)||
-     p.enc_v!==1||typeof p.iv!=="string"||typeof p.ciphertext!=="string"||p.ciphertext.length>3000||
+     p.enc_v!==1||typeof p.iv!=="string"||typeof p.ciphertext!=="string"||p.ciphertext.length>9000||
      !Number.isSafeInteger(createdAt)||createdAt<0||createdAt>Date.now()+300000||!p.identity)return;
   let contact;
   try{contact=await getPeerSignalingIdentity(p.from)}catch{return;}
