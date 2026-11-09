@@ -430,3 +430,13 @@ Not yet verified: Render deployment of this backend commit, actual OneSignal API
 - Contact requests expire after two minutes. The existing ntfy subscription replays messages from the last 120 seconds, matching this request lifetime.
 - OneSignal is best-effort. If push submission fails after ntfy publication, the request remains published and the sender sees a warning; no contact data is placed in the push payload.
 - Browser testing on two independent devices, including delayed push/open behavior, remains required.
+
+
+## Message push notifications and call-screen return — 2026-11-10
+
+- After a text message is successfully published to ntfy, the sender submits a signed new_message event to the existing Render /v1/push endpoint. Push is best-effort: a push failure does not undo or report failure for the already-published message.
+- Message push contains no message text. Its notification body is “Новое сообщение от …” when the sender has a profile display name, otherwise “Новое сообщение в VoiceLink.” The optional sender name is included in the signed request and is limited to 60 characters.
+- OneSignal suppresses a new_message notification while the page is visible and the recipient is actively viewing the conversation with that sender. Notifications remain enabled when the app is in the background or another screen/conversation is open.
+- The backend accepts new_message as an allowed push event. Message notifications have a higher but bounded rate limit than call/contact events; message content is never sent to Render or OneSignal.
+- The call-screen back arrow is disabled and visually muted while the call screen is displayed. Incoming calls preserve the previously visible app screen; after the call ends or is dismissed, that exact screen visibility is restored. The contact-screen back arrow is available again when the call screen closes so normal navigation remains usable.
+- Frontend version: 2026.11.10-108.

@@ -11,7 +11,7 @@ function toBase64Url(value) {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
 }
 
-export async function sendPushEventToContact(userId, event, callId, expiresAt) {
+export async function sendPushEventToContact(userId, event, callId, expiresAt, senderName) {
   const contact = await getContact(userId);
   if (!contact?.push_subscription_id) {
     throw new Error("У контакта нет OneSignal Subscription ID. Попросите его обновить приглашение.");
@@ -29,6 +29,8 @@ export async function sendPushEventToContact(userId, event, callId, expiresAt) {
     recipient_subscription_id: contact.push_subscription_id,
     expires_at: expiresAt
   };
+  const safeSenderName = typeof senderName === "string" ? senderName.trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 60) : "";
+  if (safeSenderName) request.sender_name = safeSenderName;
   const signature = await crypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-256" },
     identity.privateKey,

@@ -51,6 +51,12 @@ export function initializeOneSignal() {
           serviceWorkerPath: "/OneSignalSDKWorker.js",
           serviceWorkerParam: { scope: "/" }
         });
+        OneSignal.Notifications.addEventListener("foregroundWillDisplay", event => {
+          const data = event.notification?.additionalData || {};
+          if (data.event === "new_message" && window.voicelinkIsReadingChat?.(data.sender_id)) {
+            event.preventDefault();
+          }
+        });
         if (settled) return;
         settled = true;
         clearTimeout(timeout);

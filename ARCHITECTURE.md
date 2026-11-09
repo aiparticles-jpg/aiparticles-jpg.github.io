@@ -468,3 +468,17 @@ The single “Поделиться приглашением” action also repre
 - Contact requests expire after two minutes. The existing ntfy subscription replays messages from the last 120 seconds, matching this request lifetime.
 - OneSignal is best-effort. If push submission fails after ntfy publication, the request remains published and the sender sees a warning; no contact data is placed in the push payload.
 - Browser testing on two independent devices, including delayed push/open behavior, remains required.
+
+
+## Text-message push notifications — 2026-11-10
+
+- After ntfy accepts an outgoing text message, the frontend sends a signed new_message event to the existing Render /v1/push endpoint. This push is best-effort; the message has already been sent through ntfy and remains successful if push submission fails.
+- The push carries event metadata and an optional signed sender profile name, never the message body. The recipient sees “Новое сообщение от …” or the generic “Новое сообщение в VoiceLink.”
+- The OneSignal foreground lifecycle handler suppresses only new_message notifications when the browser page is visible and the recipient is actively viewing the conversation with that sender. Background notifications and notifications from other contacts/screens are not suppressed.
+- Backend message-event rate limits are higher than the limits for call/contact events but remain bounded. Message notification idempotency uses a fresh UUID per message.
+
+## Call-screen navigation — 2026-11-10
+
+- The call-screen back arrow is disabled and visually muted while the call screen is open; it does not show a warning or navigate away from the call.
+- Before an incoming call overlays the current UI, the frontend records which top-level screens were visible. On call end, rejection, timeout, or dismissal, it restores that visibility state. Outgoing calls restore the contact conversation they were started from.
+- When the call screen closes, the normal contact-screen back arrow is enabled again for ordinary navigation.
