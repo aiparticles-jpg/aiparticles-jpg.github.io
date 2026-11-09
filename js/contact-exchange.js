@@ -64,9 +64,6 @@ export async function verifyContactPackage(input) {
       typeof contact.signature !== "string") {
     throw new Error("В пакете отсутствует публичный ключ, OneSignal Subscription ID или подпись.");
   }
-  if (Object.hasOwn(contact, "created_at")) {
-    throw new Error("В приглашении не должно быть даты создания.");
-  }
   if (typeof contact.invitation_id !== "string" || !/^[0-9a-f-]{36}$/i.test(contact.invitation_id)) {
     throw new Error("Некорректный идентификатор приглашения.");
   }
