@@ -123,7 +123,7 @@ function updateReplyInviteStatus(){
  const peer=els.peer.value;
  setInlineStatus(els.replyInviteStatus,sentContactRequests[peer]?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[]};
 function debug(message){
  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
  els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
@@ -306,15 +306,34 @@ function showIncomingCall({peer,peerId,expiresAt}){
 }
 function stopOutgoingCall(){
  if(state.callTimer){clearTimeout(state.callTimer);state.callTimer=null}
- state.outgoingCall=false;stopRinging();
+ state.outgoingCall=false;state.outgoingCallExpiresAt=null;stopRinging();
+}
+function scheduleOutgoingCallExpiry(){
+ if(state.callTimer){clearTimeout(state.callTimer);state.callTimer=null}
+ if(!state.outgoingCall||!Number.isFinite(state.outgoingCallExpiresAt))return;
+ const remaining=state.outgoingCallExpiresAt-Date.now();
+ if(remaining<=0){finishNoAnswer();return}
+ state.callTimer=window.setTimeout(()=>{
+  state.callTimer=null;
+  scheduleOutgoingCallExpiry();
+ },remaining);
+}
+function reconcileOutgoingCallExpiry(){
+ if(!state.outgoingCall||!Number.isFinite(state.outgoingCallExpiresAt))return;
+ if(Date.now()>=state.outgoingCallExpiresAt){
+  debug("После возвращения приложения обнаружено, что срок исходящего вызова истёк.");
+  finishNoAnswer();
+ }else if(!state.callTimer){
+  scheduleOutgoingCallExpiry();
+ }
 }
 function startOutgoingCall({peer,expiresAt}){
  if(state.outgoingCall||state.incomingCall||state.secure?.ready||state.peerPresent)return;
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
- state.outgoingCall=true;updateCallButtons();const peerLabel=els.peer.selectedOptions[0]?.textContent||"контакт";setStatus("Вызываем "+peerLabel,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
+ state.outgoingCall=true;state.outgoingCallExpiresAt=expiresAt;updateCallButtons();const peerLabel=els.peer.selectedOptions[0]?.textContent||"контакт";setStatus("Вызываем "+peerLabel,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
  startRinging("outgoing");
- state.callTimer=setTimeout(()=>finishNoAnswer(),remaining);
+ scheduleOutgoingCallExpiry();
 }
 async function rejectIncoming(){
  if(!state.incomingCall)return;
@@ -1415,8 +1434,13 @@ els.peer.addEventListener("change",()=>{
 });
 setInterval(()=>scheduleIcePrewarm("periodic",true),30000);
 document.addEventListener("visibilitychange",()=>{
- if(!document.hidden)scheduleIcePrewarm("visibility",true);
+ if(!document.hidden){
+  reconcileOutgoingCallExpiry();
+  scheduleIcePrewarm("visibility",true);
+ }
 });
+window.addEventListener("pageshow",reconcileOutgoingCallExpiry);
+window.addEventListener("focus",reconcileOutgoingCallExpiry);
 window.addEventListener("online",()=>scheduleIcePrewarm("online",true));
 els.hangup.addEventListener("click",hangup);
 els.confirmDeleteContact.addEventListener("click",deleteSelectedContact);
