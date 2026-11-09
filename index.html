@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=63">
+  <link rel="stylesheet" href="./css/style.css?v=64">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -36,7 +36,7 @@
     <header class="topbar">
       <a class="brand" href="./" aria-label="Voice Link">
         <span class="brand-mark">V</span>
-        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.09-106</small></span>
+        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.09-107</small></span>
       </a>
       <div class="topbar-actions">
         <button id="privacy-help" class="privacy-label" type="button" aria-label="О приложении"><span class="dot"></span> Без регистрации</button>
@@ -112,7 +112,8 @@
     </section>
 
     <section id="contact-screen" class="contact-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-screen-name">
-      <header class="contact-screen-header">
+      <div id="contact-screen-header-placeholder"></div>
+      <header id="contact-screen-header" class="contact-screen-header">
         <button id="contact-screen-back" class="contact-screen-back" type="button" aria-label="Вернуться к контактам"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7"/></svg></button>
         <span id="contact-screen-avatar" class="contact-screen-avatar"></span>
         <h2 id="contact-screen-name" class="contact-screen-name"></h2>
@@ -130,12 +131,6 @@
       </header>
       <div class="contact-screen-content">
         <div class="contact-call-content">
-          <div class="contact-call-actions">
-            <button id="answer-incoming" class="button button-primary hidden" type="button">Ответить</button>
-            <button id="reject-incoming" class="button button-danger hidden" type="button">Отклонить</button>
-            <button id="dismiss-incoming" class="button button-secondary hidden" type="button">Скрыть вызов</button>
-            <button id="hangup" class="button button-danger hidden" type="button" disabled>Завершить звонок</button>
-          </div>
           <div id="contact-request-actions" class="contact-request-actions hidden">
             <p id="contact-request-detail-text" class="hint"></p>
             <p id="contact-request-received-age" class="hint contact-request-age hidden"></p>
@@ -145,10 +140,10 @@
           </div>
           <div id="chat-events" class="chat-events" role="log" aria-live="polite" aria-relevant="additions text"></div>
           <p id="reply-contact-invite-status" class="hint" aria-live="polite"></p>
-          <audio id="remote-audio" autoplay playsinline></audio>
           <p id="error-message" class="error-message hidden" role="alert"></p>
         </div>
       </div>
+      <div id="contact-diagnostics-placeholder"></div>
       <div id="contact-diagnostics-footer" class="contact-diagnostics-footer hidden">
         <div class="contact-diagnostics-grid">
           <div class="contact-diagnostics-info">
@@ -171,6 +166,23 @@
         <textarea id="chat-message" rows="1" maxlength="2000" placeholder="Сообщение…" aria-label="Текст сообщения"></textarea>
         <button id="send-chat-message" class="chat-send-button" type="submit" aria-label="Отправить сообщение" title="Отправить сообщение" disabled><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg></button>
       </form>
+    </section>
+
+    <section id="call-screen" class="call-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-screen-name">
+      <div id="call-screen-header-slot"></div>
+      <div class="call-screen-content">
+        <div class="call-screen-stage">
+          <div class="contact-call-actions">
+            <button id="answer-incoming" class="button button-primary hidden" type="button">Ответить</button>
+            <button id="reject-incoming" class="button button-danger hidden" type="button">Отклонить</button>
+            <button id="dismiss-incoming" class="button button-secondary hidden" type="button">Скрыть вызов</button>
+            <button id="hangup" class="button button-danger hidden" type="button" disabled>Завершить звонок</button>
+          </div>
+          <audio id="remote-audio" autoplay playsinline></audio>
+          <p id="call-error-message" class="error-message hidden" role="alert"></p>
+        </div>
+      </div>
+      <div id="call-screen-diagnostics-slot"></div>
     </section>
 
     <section id="contact-edit-screen" class="contact-edit-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-edit-screen-title">
@@ -317,6 +329,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=140"></script>
+  <script type="module" src="./js/app.js?v=141"></script>
 </body>
 </html>
