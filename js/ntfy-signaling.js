@@ -1,6 +1,6 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js";
 import { verifyContactPackage } from "./contact-exchange.js?v=6";
-import { consumeIssuedInvitation, hasActiveInvitationGrant } from "./local-store.js?v=5";
+import { consumeIssuedInvitation, hasActiveInvitationGrant, getOrCreateMessageEncryptionIdentity, listContacts, getContact, updateContact } from "./local-store.js?v=6";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -16,7 +16,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.messageEncryptionIdentity=null;this.keyExchangeSent=new Set();this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
  async sign(payload){return b64u(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},this.identity.privateKey,enc.encode(stable(payload))))}
@@ -60,7 +60,7 @@ export class NtfySecureSignaling {
   if(this.es&&this.es.readyState===EventSource.CLOSED){this.es=null;this.sseReadyPromise=null}
   const task=this.openSubscription();
   this.subscribePromise=task;
-  try{await task}
+  try{await task;await this.publishEncryptionKeyToContacts()}
   finally{if(this.subscribePromise===task)this.subscribePromise=null}
  }
  async openSubscription(){
@@ -148,6 +148,50 @@ export class NtfySecureSignaling {
   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
  }
 
+ async getMessageEncryptionIdentity(){
+  if(!this.messageEncryptionIdentity)this.messageEncryptionIdentity=await getOrCreateMessageEncryptionIdentity();
+  return this.messageEncryptionIdentity;
+ }
+ async sendMessageEncryptionKey(to){
+  if(!isUserId(to)||to===this.me||this.closed)return false;
+  const local=await this.getMessageEncryptionIdentity(),marker=to+":"+local.key_id;
+  if(this.keyExchangeSent.has(marker))return true;
+  const contact=await getPeerSignalingIdentity(to);
+  const payload={from:this.me,to,public_key:local.public_key,key_id:local.key_id,identity:this.identity.publicJwk,created_at:Date.now(),...(contact.invitation_id?{invitation_id:contact.invitation_id}:{})};
+  await this.publish(to,await this.signed("e2ee_key",payload));
+  this.keyExchangeSent.add(marker);
+  this.onDebug("[e2ee] открытый ключ шифрования отправлен контакту");
+  return true;
+ }
+ async publishEncryptionKeyToContacts(){
+  try{for(const contact of await listContacts())try{await this.sendMessageEncryptionKey(contact.user_id)}catch(error){this.onDebug("[e2ee] обмен ключом: "+(error.message||String(error)))}}catch(error){this.onDebug("[e2ee] список контактов: "+(error.message||String(error)))}
+ }
+ async inspectEncryptionKey(n,m){
+  const p=m?.payload,createdAt=Number(m?.payload?.created_at);
+  if(m?.v!==1||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||typeof p.public_key!=="string"||!/^[A-Za-z0-9_-]{80,100}$/.test(p.public_key)||typeof p.key_id!=="string"||!/^[a-f0-9]{64}$/.test(p.key_id)||!Number.isSafeInteger(createdAt)||createdAt<0||createdAt>Date.now()+300000||!p.identity)return;
+  let contact;try{contact=await getPeerSignalingIdentity(p.from)}catch{return}
+  let valid=false;try{valid=await this.verify({type:"e2ee_key",payload:p},m.sig,p.identity)}catch{return}
+  if(!valid||!samePublicKey(contact.publicJwk,p.identity))return;
+  try{if(!await this.hasCallGrant(p))return}catch{return}
+  let raw;try{raw=un64(p.public_key);await crypto.subtle.importKey("raw",raw,{name:"ECDH",namedCurve:"P-256"},false,[]);if(hex(await digest(raw))!==p.key_id)return}catch{return}
+  const record=await getContact(p.from);if(!record)return;
+  if(record.message_encryption_key_id!==p.key_id){
+   await updateContact(p.from,{message_encryption_public_key:p.public_key,message_encryption_key_id:p.key_id,message_encryption_updated_at:new Date(createdAt).toISOString()});
+   this.onDebug("[e2ee] ключ контакта проверен и сохранён");
+  }
+  if(n?.id){this.seen.add(n.id);this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id)}
+  await this.sendMessageEncryptionKey(p.from);
+ }
+ async deriveMessageEncryptionKey(peer,from,to){
+  const local=await this.getMessageEncryptionIdentity(),contact=await getContact(peer);
+  if(!contact?.message_encryption_public_key)throw new Error("Ключ шифрования контакта ещё не получен.");
+  const publicKey=await crypto.subtle.importKey("raw",un64(contact.message_encryption_public_key),{name:"ECDH",namedCurve:"P-256"},false,[]);
+  const shared=await crypto.subtle.deriveBits({name:"ECDH",public:publicKey},local.privateKey,256);
+  const material=await crypto.subtle.importKey("raw",shared,"HKDF",false,["deriveKey"]);
+  const salt=await digest(enc.encode("voicelink-message-pair-v1|"+[this.me,peer].sort().join("|")));
+  return crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt,info:enc.encode("voicelink-message-e2ee-v1|"+from+"|"+to)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+ }
+ messageAad(p){return enc.encode(JSON.stringify({v:1,message_id:p.message_id,from:p.from,to:p.to,created_at:p.created_at,...(p.invitation_id?{invitation_id:p.invitation_id}:{})}));}
  async recordConversationEvent(type,payload,direction,createdAt=Date.now()){
   const contactUserId=direction==="incoming"?payload.from:payload.to;
   if(!isUserId(contactUserId))return;
@@ -165,7 +209,7 @@ export class NtfySecureSignaling {
   const createdAt=Number(p?.created_at);
   if(m?.v!==1||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||
      typeof p.message_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.message_id)||
-     typeof p.text!=="string"||!p.text.trim()||p.text.length>2000||
+     p.enc_v!==1||typeof p.iv!=="string"||typeof p.ciphertext!=="string"||p.ciphertext.length>3000||
      !Number.isSafeInteger(createdAt)||createdAt<0||createdAt>Date.now()+300000||!p.identity)return;
   let contact;
   try{contact=await getPeerSignalingIdentity(p.from)}catch{return;}
@@ -178,7 +222,14 @@ export class NtfySecureSignaling {
    this.onDebug("[signaling] текстовое сообщение отклонено: нет действующего разрешения по приглашению");
    return;
   }
-  await this.recordConversationEvent("text",p,"incoming",createdAt);
+  let plaintext;
+  try{
+   const key=await this.deriveMessageEncryptionKey(p.from,p.from,this.me);
+   const decrypted=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(p.iv),additionalData:this.messageAad(p)},key,un64(p.ciphertext));
+   plaintext=new TextDecoder().decode(decrypted);
+   if(!plaintext.trim()||plaintext.length>2000)return;
+  }catch(error){this.onDebug("[e2ee] не удалось расшифровать входящее сообщение; отклонено");return}
+  await this.recordConversationEvent("text",{...p,text:plaintext},"incoming",createdAt);
   if(n?.id){
    this.seen.add(n.id);
    this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id);
@@ -191,13 +242,17 @@ export class NtfySecureSignaling {
   const body=String(text||"").trim();
   if(!body||body.length>2000)throw Error("Сообщение должно содержать от 1 до 2000 символов.");
   const contact=await getPeerSignalingIdentity(to);
-  const payload={
-   message_id:crypto.randomUUID(),from:this.me,to,
-   ...(contact.invitation_id?{invitation_id:contact.invitation_id}:{}),
-   identity:this.identity.publicJwk,text:body,created_at:Date.now()
-  };
+  if(!contact.message_encryption_key_id){
+   await this.sendMessageEncryptionKey(to);
+   throw Error("Согласуем ключ шифрования с контактом. Повторите отправку через несколько секунд.");
+  }
+  const createdAt=Date.now();
+  const payload={message_id:crypto.randomUUID(),from:this.me,to,...(contact.invitation_id?{invitation_id:contact.invitation_id}:{}),identity:this.identity.publicJwk,enc_v:1,created_at:createdAt};
+  const key=await this.deriveMessageEncryptionKey(to,this.me,to),iv=crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:this.messageAad(payload)},key,enc.encode(body));
+  payload.iv=b64u(iv);payload.ciphertext=b64u(ciphertext);
   await this.publish(to,await this.signed("text",payload));
-  await this.recordConversationEvent("text",payload,"outgoing",payload.created_at);
+  await this.recordConversationEvent("text",{...payload,text:body},"outgoing",createdAt);
   return payload;
  }
  async inspectIncoming(n){
@@ -205,6 +260,7 @@ export class NtfySecureSignaling {
   let m;try{m=JSON.parse(n.message)}catch{return}
   if(m.v!==1||!m.payload)return;
   const p=m.payload;
+  if(m.type==="e2ee_key"){await this.inspectEncryptionKey(n,m);return;}
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){await this.inspectTextMessage(n,m);return;}
   if(m.type==="cancel"){if(this.peer&&p.from===this.peer)await this.processCancel(m);return;}
