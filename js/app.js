@@ -572,6 +572,10 @@ if("serviceWorker" in navigator){
    else requestServiceWorkerLog();
    return;
   }
+  if(event.data?.type==="VL_SW_LOG_WRITE_ERROR"){
+   appendServiceWorkerLog("journal_write_error",{stage:event.data.stage||null,error:event.data.error||"Unknown error"});
+   return;
+  }
   if(event.data?.type==="VL_PUSH_PREPARE_NOTIFICATION"){
    const senderId=event.data.data?.sender_id||"";
    event.ports?.[0]?.postMessage({suppress:!!window.voicelinkIsReadingChat?.(senderId)});
@@ -586,6 +590,7 @@ if("serviceWorker" in navigator){
    return;
   }
   if(event.data?.type!=="VL_PUSH_RECEIVED")return;
+  appendServiceWorkerLog("push_event_received",{source:"service_worker_message"});
   debug("Service Worker получил фоновый push. Проверяем канал входящих сообщений.");
   const subscription=state.secure;
   if(subscription&&!subscription.closed&&(!subscription.es||subscription.es.readyState===EventSource.CLOSED)){
