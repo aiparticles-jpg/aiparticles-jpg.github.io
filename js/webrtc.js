@@ -549,6 +549,7 @@ export class WebRtcAudio {
     const candidates = this.pendingLocalCandidates.length;
     // A complete localDescription SDP already contains all gathered ICE candidates.
     // Send it once; never trickle candidates as separate ntfy POSTs.
+    this.onState("PC["+this.pcDiagnosticId+"] sending prepared OFFER; SDP chars="+(this.pc.localDescription?.sdp?.length||0)+"; candidates="+candidates+".");
     await this.sendSignal({ description: this.pc.localDescription });
     this.pendingLocalCandidates = [];
     this.onState("Предварительно собранный ICE offer отправлен одним сообщением; кандидатов в SDP: " + candidates);
@@ -564,6 +565,7 @@ export class WebRtcAudio {
     await this.waitForIceGatheringComplete(pc);
     this.signalEnabled = true;
     const candidates = this.pendingLocalCandidates.length;
+    this.onState("PC["+this.pcDiagnosticId+"] sending OFFER; SDP chars="+(pc.localDescription?.sdp?.length||0)+"; candidates="+candidates+".");
     await this.sendSignal({ description: pc.localDescription });
     this.pendingLocalCandidates = [];
     this.onState("ICE offer отправлен одним сообщением после полного gathering; кандидатов в SDP: " + candidates);
