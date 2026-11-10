@@ -1,6 +1,6 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js";
-import { verifyContactPackage } from "./contact-exchange.js?v=8";
-import { consumeIssuedInvitation, hasActiveInvitationGrant, getOrCreateMessageEncryptionIdentity, getContact } from "./local-store.js?v=8";
+import { verifyContactPackage } from "./contact-exchange.js?v=9";
+import { consumeIssuedInvitation, hasActiveInvitationGrant, getMessageEncryptionKeyRing, createPendingMessageEncryptionIdentity, activatePendingMessageEncryptionIdentity, acknowledgePendingMessageEncryptionIdentity, markPreviousMessageEncryptionIdentityForDeletion, getContact, updateContact, listContacts } from "./local-store.js?v=9";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -16,7 +16,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.messageEncryptionIdentity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
  async sign(payload){return b64u(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},this.identity.privateKey,enc.encode(stable(payload))))}
@@ -148,20 +148,48 @@ export class NtfySecureSignaling {
   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
  }
 
- async getMessageEncryptionIdentity(){
-  if(!this.messageEncryptionIdentity)this.messageEncryptionIdentity=await getOrCreateMessageEncryptionIdentity();
-  return this.messageEncryptionIdentity;
- }
- async deriveMessageEncryptionKey(peer,from,to){
-  const local=await this.getMessageEncryptionIdentity(),contact=await getContact(peer);
-  if(!contact?.message_encryption_public_key)throw new Error("Ключ шифрования контакта ещё не получен.");
-  const publicKey=await crypto.subtle.importKey("raw",un64(contact.message_encryption_public_key),{name:"ECDH",namedCurve:"P-256"},false,[]);
-  const shared=await crypto.subtle.deriveBits({name:"ECDH",public:publicKey},local.privateKey,256);
+ async deriveMessageEncryptionKey(peer,from,to,localIdentity,peerPublicKey){
+  if(!localIdentity?.privateKey||!peerPublicKey)throw new Error("Не найден ключ для шифрования сообщения.");
+  const publicKey=await crypto.subtle.importKey("raw",un64(peerPublicKey),{name:"ECDH",namedCurve:"P-256"},false,[]);
+  const shared=await crypto.subtle.deriveBits({name:"ECDH",public:publicKey},localIdentity.privateKey,256);
   const material=await crypto.subtle.importKey("raw",shared,"HKDF",false,["deriveKey"]);
   const salt=await digest(enc.encode("voicelink-message-pair-v1|"+[this.me,peer].sort().join("|")));
   return crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt,info:enc.encode("voicelink-message-e2ee-v1|"+from+"|"+to)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
  }
- messageAad(p){return enc.encode(JSON.stringify({v:1,message_id:p.message_id,from:p.from,to:p.to,created_at:p.created_at,...(p.invitation_id?{invitation_id:p.invitation_id}:{})}));}
+ messageAad(p){return enc.encode(JSON.stringify({v:1,message_id:p.message_id,from:p.from,to:p.to,created_at:p.created_at,...(p.invitation_id?{invitation_id:p.invitation_id}:{}),...(p.sender_key_id?{sender_key_id:p.sender_key_id}:{}),...(p.recipient_key_id?{recipient_key_id:p.recipient_key_id}:{})}));}
+ async promotePendingPeerEncryptionKey(peer,keyId){
+  const contact=await getContact(peer);
+  if(!contact||contact.message_encryption_pending_key_id!==keyId)return false;
+  await updateContact(peer,{
+   message_encryption_previous_public_key:contact.message_encryption_public_key,
+   message_encryption_previous_key_id:contact.message_encryption_key_id,
+   message_encryption_previous_generation:Number(contact.message_encryption_generation)||1,
+   message_encryption_previous_at:Date.now(),
+   message_encryption_public_key:contact.message_encryption_pending_public_key,
+   message_encryption_key_id:contact.message_encryption_pending_key_id,
+   message_encryption_generation:Number(contact.message_encryption_pending_generation),
+   message_encryption_pending_public_key:null,
+   message_encryption_pending_key_id:null,
+   message_encryption_pending_generation:null
+  });
+  return true;
+ }
+ async acceptPeerEncryptionKeyUpdate(peer,update){
+  if(!update||!Number.isSafeInteger(Number(update.generation))||Number(update.generation)<2||typeof update.public_key!=="string"||!/^[A-Za-z0-9_-]{80,100}$/.test(update.public_key)||typeof update.key_id!=="string"||!/^[a-f0-9]{64}$/.test(update.key_id))return false;
+  const contact=await getContact(peer);
+  if(!contact)return false;
+  const generation=Number(update.generation),activeGeneration=Number(contact.message_encryption_generation)||1;
+  if(generation<=activeGeneration)return update.key_id===contact.message_encryption_key_id;
+  if(generation!==activeGeneration+1||update.key_id===contact.message_encryption_key_id)return false;
+  if(contact.message_encryption_pending_key_id)return contact.message_encryption_pending_key_id===update.key_id&&Number(contact.message_encryption_pending_generation)===generation;
+  if(contact.message_encryption_previous_key_id&&Date.now()-Number(contact.message_encryption_previous_at||0)<12*60*60*1000)return false;
+  let raw;try{raw=un64(update.public_key)}catch{return false}
+  if(raw.length!==65||raw[0]!==4)return false;
+  try{await crypto.subtle.importKey("raw",raw,{name:"ECDH",namedCurve:"P-256"},false,[])}catch{return false}
+  if(hex(await digest(raw))!==update.key_id)return false;
+  await updateContact(peer,{message_encryption_pending_public_key:update.public_key,message_encryption_pending_key_id:update.key_id,message_encryption_pending_generation:generation});
+  return true;
+ }
  async recordConversationEvent(type,payload,direction,createdAt=Date.now()){
   const contactUserId=direction==="incoming"?payload.from:payload.to;
   if(!isUserId(contactUserId))return;
@@ -175,50 +203,101 @@ export class NtfySecureSignaling {
   }catch(error){this.onError(error)}
  }
  async inspectTextMessage(n,m){
-  const p=m?.payload;
-  const createdAt=Number(p?.created_at);
-  if(m?.v!==1||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||
-     typeof p.message_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.message_id)||
-     p.enc_v!==1||typeof p.iv!=="string"||typeof p.ciphertext!=="string"||p.ciphertext.length>9000||
-     !Number.isSafeInteger(createdAt)||createdAt<0||createdAt>Date.now()+300000||!p.identity)return;
-  let contact;
-  try{contact=await getPeerSignalingIdentity(p.from)}catch{return;}
-  let signatureValid=false;
-  try{signatureValid=await this.verify({type:"text",payload:p},m.sig,p.identity)}catch{return;}
-  if(!signatureValid||!samePublicKey(contact.publicJwk,p.identity))return;
-  let grantValid=false;
-  try{grantValid=await this.hasCallGrant(p)}catch{return;}
-  if(!grantValid){
-   this.onDebug("[signaling] текстовое сообщение отклонено: нет действующего разрешения по приглашению");
-   return;
+  const p=m?.payload,createdAt=Number(p?.created_at);
+  if(m?.v!==1||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||typeof p.message_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.message_id)||p.enc_v!==1||typeof p.iv!=="string"||typeof p.ciphertext!=="string"||p.ciphertext.length>9000||!Number.isSafeInteger(createdAt)||createdAt<0||createdAt>Date.now()+300000||!p.identity||(p.sender_key_id!==undefined&&!/^[a-f0-9]{64}$/.test(p.sender_key_id))||(p.recipient_key_id!==undefined&&!/^[a-f0-9]{64}$/.test(p.recipient_key_id)))return;
+  let contactIdentity,contactRecord;
+  try{contactIdentity=await getPeerSignalingIdentity(p.from);contactRecord=await getContact(p.from)}catch{return;}
+  let signatureValid=false;try{signatureValid=await this.verify({type:"text",payload:p},m.sig,p.identity)}catch{return;}
+  if(!signatureValid||!samePublicKey(contactIdentity.publicJwk,p.identity)||!contactRecord)return;
+  let grantValid=false;try{grantValid=await this.hasCallGrant(p)}catch{return;}
+  if(!grantValid){this.onDebug("[signaling] текстовое сообщение отклонено: нет действующего разрешения по приглашению");return;}
+
+  const localRing=await getMessageEncryptionKeyRing();
+  const localKeys=[{slot:"active",value:localRing.active},{slot:"pending",value:localRing.pending},{slot:"previous",value:localRing.previous}].filter(x=>x.value?.privateKey&&(!p.recipient_key_id||x.value.key_id===p.recipient_key_id));
+  const peerKeys=[
+   {slot:"active",key_id:contactRecord.message_encryption_key_id,public_key:contactRecord.message_encryption_public_key},
+   {slot:"pending",key_id:contactRecord.message_encryption_pending_key_id,public_key:contactRecord.message_encryption_pending_public_key},
+   {slot:"previous",key_id:contactRecord.message_encryption_previous_key_id,public_key:contactRecord.message_encryption_previous_public_key}
+  ].filter(x=>x.key_id&&x.public_key&&(!p.sender_key_id||x.key_id===p.sender_key_id));
+  let plaintext=null,usedLocal=null,usedPeer=null;
+  for(const local of localKeys){
+   for(const remote of peerKeys){
+    try{
+     const key=await this.deriveMessageEncryptionKey(p.from,p.from,this.me,local.value,remote.public_key);
+     const decrypted=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(p.iv),additionalData:this.messageAad(p)},key,un64(p.ciphertext));
+     const candidate=new TextDecoder().decode(decrypted);
+     if(!candidate.trim()||candidate.length>2000)continue;
+     plaintext=candidate;usedLocal=local;usedPeer=remote;break;
+    }catch{}
+   }
+   if(plaintext!==null)break;
   }
-  let plaintext;
-  try{
-   const key=await this.deriveMessageEncryptionKey(p.from,p.from,this.me);
-   const decrypted=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(p.iv),additionalData:this.messageAad(p)},key,un64(p.ciphertext));
-   plaintext=new TextDecoder().decode(decrypted);
-   if(!plaintext.trim()||plaintext.length>2000)return;
-  }catch(error){this.onDebug("[e2ee] не удалось расшифровать входящее сообщение; отклонено");return}
+  if(plaintext===null){this.onDebug("[e2ee] не удалось расшифровать сообщение ни одной из сохранённых версий ключей");return;}
+
+  let switchedByUse=false;
+  if(usedLocal.slot==="pending"){
+   const contacts=await listContacts();
+   const requiredPeers=contacts.filter(item=>item.request_pending!==true&&item.message_encryption_key_id&&item.message_encryption_public_key).map(item=>item.user_id);
+   const allAcknowledged=await acknowledgePendingMessageEncryptionIdentity(usedLocal.value.key_id,usedLocal.value.generation,p.from,requiredPeers);
+   if(allAcknowledged){
+    switchedByUse=await activatePendingMessageEncryptionIdentity(usedLocal.value.key_id,usedLocal.value.generation);
+    
+   }else this.onDebug("[e2ee] собеседник уже использует новый ключ; ждём подтверждений остальных сохранённых контактов");
+  }
+  if(usedPeer.slot==="pending")await this.promotePendingPeerEncryptionKey(p.from,usedPeer.key_id);
+
+  let switchedByAck=false;
+  if(p.key_update_ack&&typeof p.key_update_ack.key_id==="string"&&Number.isSafeInteger(Number(p.key_update_ack.generation))){
+   const ring=await getMessageEncryptionKeyRing();
+   if(ring.pending&&ring.pending.key_id===p.key_update_ack.key_id&&Number(ring.pending.generation)===Number(p.key_update_ack.generation)){
+    const contacts=await listContacts();
+    const requiredPeers=contacts.filter(item=>item.request_pending!==true&&item.message_encryption_key_id&&item.message_encryption_public_key).map(item=>item.user_id);
+    const allAcknowledged=await acknowledgePendingMessageEncryptionIdentity(ring.pending.key_id,ring.pending.generation,p.from,requiredPeers);
+    if(allAcknowledged){
+     switchedByAck=await activatePendingMessageEncryptionIdentity(ring.pending.key_id,ring.pending.generation);
+     
+    }else this.onDebug("[e2ee] подтверждение ключа получено; ждём подтверждений остальных сохранённых контактов");
+   }
+  }
+  if(p.key_update){
+   const accepted=await this.acceptPeerEncryptionKeyUpdate(p.from,p.key_update);
+   if(accepted)this.onDebug("[e2ee] получен новый ключ собеседника; подтверждение будет включено в следующее сообщение");
+   else this.onDebug("[e2ee] предложение нового ключа отклонено или уже обработано");
+  }
+  if(!switchedByUse&&!switchedByAck&&usedLocal.slot==="active"&&p.recipient_key_id===localRing.active.key_id&&localRing.previous){
+   await markPreviousMessageEncryptionIdentityForDeletion(localRing.previous.key_id);
+  }
   await this.recordConversationEvent("text",{...p,text:plaintext},"incoming",createdAt);
-  if(n?.id){
-   this.seen.add(n.id);
-   this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id);
-  }
-  this.onDebug("[signaling] получено и сохранено подписанное текстовое сообщение от контакта");
+  if(n?.id){this.seen.add(n.id);this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id);}
+  this.onDebug("[signaling] получено и сохранено подписанное зашифрованное сообщение от контакта");
  }
  async sendText(to,text){
   if(this.closed||!this.identity)throw Error("Защищённая подписка ещё не готова.");
   if(!isUserId(to)||to===this.me)throw Error("Выберите сохранённый контакт.");
   const body=String(text||"").trim();
   if(!body||body.length>2000)throw Error("Сообщение должно содержать от 1 до 2000 символов.");
-  const contact=await getContact(to);
+  let contact=await getContact(to);
   if(!contact)throw Error("Выберите сохранённый контакт.");
-  if(!contact.message_encryption_key_id||!contact.message_encryption_public_key){
-   throw Error("У контакта нет ключа шифрования. Попросите его отправить новое приглашение и добавьте контакт заново.");
+  if(!contact.message_encryption_key_id||!contact.message_encryption_public_key)throw Error("У контакта нет ключа шифрования. Попросите его отправить новое приглашение и добавьте контакт заново.");
+
+  let localRing=await getMessageEncryptionKeyRing();
+  const week=7*24*60*60*1000,activeAge=Date.now()-Date.parse(localRing.active.activated_at||localRing.active.created_at||new Date().toISOString());
+  if(!localRing.pending&&!localRing.previous&&Number.isFinite(activeAge)&&activeAge>=week){
+   await createPendingMessageEncryptionIdentity();
+   localRing=await getMessageEncryptionKeyRing();
   }
+  contact=await getContact(to);
   const createdAt=Date.now();
-  const payload={message_id:crypto.randomUUID(),from:this.me,to,...(contact.invitation_id?{invitation_id:contact.invitation_id}:{}),identity:this.identity.publicJwk,enc_v:1,created_at:createdAt};
-  const key=await this.deriveMessageEncryptionKey(to,this.me,to),iv=crypto.getRandomValues(new Uint8Array(12));
+  const payload={
+   message_id:crypto.randomUUID(),from:this.me,to,
+   ...(contact.invitation_id?{invitation_id:contact.invitation_id}:{}),
+   identity:this.identity.publicJwk,enc_v:1,created_at:createdAt,
+   sender_key_id:localRing.active.key_id,recipient_key_id:contact.message_encryption_key_id
+  };
+  if(localRing.pending)payload.key_update={generation:Number(localRing.pending.generation),key_id:localRing.pending.key_id,public_key:localRing.pending.public_key};
+  if(contact.message_encryption_pending_key_id)payload.key_update_ack={generation:Number(contact.message_encryption_pending_generation),key_id:contact.message_encryption_pending_key_id};
+  const key=await this.deriveMessageEncryptionKey(to,this.me,to,localRing.active,contact.message_encryption_public_key);
+  const iv=crypto.getRandomValues(new Uint8Array(12));
   const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:this.messageAad(payload)},key,enc.encode(body));
   payload.iv=b64u(iv);payload.ciphertext=b64u(ciphertext);
   await this.publish(to,await this.signed("text",payload));
