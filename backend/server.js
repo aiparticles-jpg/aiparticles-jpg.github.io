@@ -1,4 +1,3 @@
-const crypto = require("node:crypto");
 const express = require("express");
 
 const app = express();
@@ -14,9 +13,7 @@ const ALLOWED_EVENTS = new Set([
   "call_ended"
 ]);
 const WINDOW_MS = 60_000;
-const NONCE_TTL_MS = 120_000;
 const IDEMPOTENCY_TTL_MS = 120_000;
-const nonceCache = new Map();
 const idempotencyCache = new Map();
 const rateCache = new Map();
 
@@ -51,75 +48,24 @@ function rateLimit(key, limit, windowMs, now) {
   return entry.count <= limit;
 }
 
-function decodeBase64Url(value) {
-  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
-  try {
-    return Buffer.from(value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4), "base64");
-  } catch {
-    return null;
-  }
-}
-
-function publicKeyFromRaw(raw) {
-  if (!Buffer.isBuffer(raw) || raw.length !== 65 || raw[0] !== 4) return null;
-  const x = raw.subarray(1, 33).toString("base64url");
-  const y = raw.subarray(33, 65).toString("base64url");
-  try {
-    return crypto.createPublicKey({
-      key: { kty: "EC", crv: "P-256", x, y, ext: true },
-      format: "jwk"
-    });
-  } catch {
-    return null;
-  }
-}
-
 function isUuid(value) {
   return typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function validateAndVerify(body, now) {
+function validateRequest(body, now) {
   if (!body || typeof body !== "object" || Array.isArray(body) || body.v !== 1) return null;
-  const { user_id, public_key, timestamp, nonce, event, call_id, recipient_subscription_id, expires_at, signature, sender_name } = body;
+  const { user_id, timestamp, event, call_id, recipient_subscription_id, expires_at, sender_name } = body;
   if (typeof user_id !== "string" || !/^[a-f0-9]{64}$/.test(user_id)) return null;
   if (!Number.isSafeInteger(timestamp) || Math.abs(now - timestamp) > WINDOW_MS) return null;
-  if (typeof nonce !== "string" || !/^[A-Za-z0-9_-]{22,86}$/.test(nonce)) return null;
   if (!ALLOWED_EVENTS.has(event)) return null;
   if (!isUuid(call_id)) return null;
   if (typeof recipient_subscription_id !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(recipient_subscription_id)) return null;
   if (!Number.isSafeInteger(expires_at)) return null;
-  if (sender_name !== undefined && (typeof sender_name !== "string" || sender_name.length > 60 || sender_name.trim() !== sender_name || /[\u0000-\u001f\u007f]/.test(sender_name))) return null;
+  if (sender_name !== undefined && (typeof sender_name !== "string" || sender_name.length > 60 || sender_name.trim() !== sender_name || /[\\u0000-\\u001f\\u007f]/.test(sender_name))) return null;
 
-  const rawPublicKey = decodeBase64Url(public_key);
-  const sig = decodeBase64Url(signature);
-  if (!rawPublicKey || !sig || sig.length !== 64) return null;
-  const fingerprint = crypto.createHash("sha256").update(rawPublicKey).digest("hex");
-  if (fingerprint !== user_id) return null;
-  const key = publicKeyFromRaw(rawPublicKey);
-  if (!key) return null;
-
-  const signed = {
-    v: 1,
-    user_id,
-    public_key,
-    timestamp,
-    nonce,
-    event,
-    call_id,
-    recipient_subscription_id,
-    expires_at
-  };
-  if (sender_name !== undefined) signed.sender_name = sender_name;
-  const valid = crypto.verify(
-    "sha256",
-    Buffer.from(JSON.stringify(signed), "utf8"),
-    { key, dsaEncoding: "ieee-p1363" },
-    sig
-  );
-  if (!valid) return null;
-  return { user_id, nonce, event, call_id, recipient_subscription_id, expires_at };
+  return { user_id, event, call_id, recipient_subscription_id, expires_at };
 }
 
 function notificationText(event) {
@@ -196,11 +142,10 @@ app.get("/health", (_req, res) => {
 
 app.post("/v1/push", async (req, res) => {
   const now = Date.now();
-  cleanupCache(nonceCache, now);
   cleanupCache(idempotencyCache, now);
   cleanupCache(rateCache, now);
 
-  const event = validateAndVerify(req.body, now);
+  const event = validateRequest(req.body, now);
   if (!event) return res.status(400).json({ ok: false, error: "invalid_request" });
 
   const ip = req.ip || req.socket.remoteAddress || "unknown";
@@ -211,9 +156,6 @@ app.post("/v1/push", async (req, res) => {
     return res.status(429).json({ ok: false, error: "rate_limited" });
   }
 
-  const nonceKey = event.user_id + ":" + event.nonce;
-  if (nonceCache.has(nonceKey)) return res.status(409).json({ ok: false, error: "replayed_request" });
-  nonceCache.set(nonceKey, { expiresAt: now + NONCE_TTL_MS });
 
   const idempotencyKey = event.call_id + ":" + event.event;
   if (idempotencyCache.has(idempotencyKey)) {
