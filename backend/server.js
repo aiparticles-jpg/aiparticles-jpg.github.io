@@ -50,6 +50,18 @@ function rateLimit(key, limit, windowMs, now) {
   return entry.count <= limit;
 }
 
+function rateLimitSliding(key, limit, windowMs, now) {
+  let entry = rateCache.get(key);
+  if (!entry || !Array.isArray(entry.timestamps)) entry = { timestamps: [] };
+
+  entry.timestamps = entry.timestamps.filter(timestamp => now - timestamp < windowMs);
+  entry.timestamps.push(now);
+  entry.expiresAt = now + windowMs;
+  rateCache.set(key, entry);
+
+  return entry.timestamps.length <= limit;
+}
+
 function isUuid(value) {
   return typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -159,7 +171,7 @@ app.post("/v1/push", async (req, res) => {
 
   const ipAllowed = rateLimit("ip:" + ip, ipLimit, 60_000, now);
   const userAllowed = rateLimit("user:" + event.user_id, userLimit, 60_000, now);
-  const recipientAllowed = rateLimit(
+  const recipientAllowed = rateLimitSliding(
     "recipient:" + event.recipient_subscription_id + ":" + recipientCategory,
     recipientLimit,
     60_000,
