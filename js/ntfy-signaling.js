@@ -426,8 +426,8 @@ export class NtfySecureSignaling {
   const p=m.payload;
   if(m.type==="cancel"){await this.processCancel(m);return;}
   if(!["rotation_response","reject","hello","answer","data"].includes(m.type))return;
+  const sidShort=value=>typeof value==="string"?value.slice(0,8):"нет";
   if(m.type==="data"){
-   const sidShort=value=>typeof value==="string"?value.slice(0,8):"нет";
    this.onDebug("[signaling] получено data: sid="+sidShort(p.sid)+"; ready="+this.ready+"; session="+sidShort(this.session)+"; signal="+(p.signal?.type||"нет")+"; ntfyId="+String(n.id).slice(0,12));
   }
   const verified=await this.verifyPeerEnvelope(m.type,p,m.auth);
