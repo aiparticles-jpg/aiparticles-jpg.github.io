@@ -172,43 +172,172 @@ function toHex(buffer) {
   return Array.from(new Uint8Array(buffer), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function getOrCreateIdentity() {
-  const db = await openDatabase();
-  const read = db.transaction("meta", "readonly");
-  const readDone = transactionDone(read);
-  const record = await requestValue(read.objectStore("meta").get("identity"));
-  await readDone;
-  if (record?.value?.version === 3 && typeof record.value.user_id === "string" && /^[a-f0-9]{64}$/.test(record.value.user_id)) return record.value;
+// TEMPORARY COMPATIBILITY MIGRATION (remove only after legacy installations are no longer supported).
+// Older installations stored one ECDSA public identity key per participant.
+// For each saved legacy contact, both devices derive the same shared secret
+// and the same pair invitation ID from the two exchanged public identities.
+const LEGACY_SHARED_SECRET_MIGRATION = "legacy_public_key_shared_secret_v3";
 
-  // One-time migration: old ECDH/HMAC contacts cannot be mixed with the shared-key protocol.
-  if (record?.value) {
-    const tx = db.transaction(["meta", "contacts", "history", "conversation", "invitations"], "readwrite");
-    const done = transactionDone(tx);
-    const meta = tx.objectStore("meta");
-    meta.delete("identity");
-    meta.delete("my_invitation");
-    meta.delete("message_encryption_identity");
-    meta.delete("message_encryption_pending_identity");
-    meta.delete("message_encryption_previous_identity");
-    tx.objectStore("contacts").clear();
-    tx.objectStore("history").clear();
-    tx.objectStore("conversation").clear();
-    tx.objectStore("invitations").clear();
-    await done;
+function decodeLegacyPublicKey(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error("Legacy public key is missing or malformed.");
   }
-  if (!globalThis.crypto?.subtle) throw new Error("This browser does not support the Web Crypto API.");
-  const random = crypto.getRandomValues(new Uint8Array(32));
-  const userId = toHex(await crypto.subtle.digest("SHA-256", random));
-  random.fill(0);
-  const identity = { version: 3, user_id: userId, created_at: new Date().toISOString() };
-  const tx = db.transaction("meta", "readwrite");
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(base64 + "=".repeat((4 - value.length % 4) % 4));
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+async function deriveLegacySharedSecret(identity, contact) {
+  if (!identity || !contact ||
+      !/^[a-f0-9]{64}$/.test(identity.user_id || "") ||
+      !/^[a-f0-9]{64}$/.test(contact.user_id || "")) {
+    throw new Error("Legacy participant IDs are invalid.");
+  }
+  const localBytes = decodeLegacyPublicKey(identity.public_key);
+  const peerBytes = decodeLegacyPublicKey(contact.public_key);
+  if (toHex(await crypto.subtle.digest("SHA-256", localBytes)) !== identity.user_id ||
+      toHex(await crypto.subtle.digest("SHA-256", peerBytes)) !== contact.user_id) {
+    throw new Error("Legacy public key fingerprint does not match user_id.");
+  }
+  const pair = [
+    { user_id: identity.user_id, public_key: identity.public_key },
+    { user_id: contact.user_id, public_key: contact.public_key }
+  ].sort((a, b) => a.user_id < b.user_id ? -1 : a.user_id > b.user_id ? 1 : 0);
+  const canonical = "voicelink-legacy-pair-secret-v1|" +
+    pair.map(item => item.user_id + ":" + item.public_key).join("|");
+  return toBase64Url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical)));
+}
+
+// The oldest contacts predate invitation IDs. Use one symmetric pair ID,
+// rather than depending on which side originally created an invitation.
+async function deriveLegacyInvitationId(firstUserId, secondUserId) {
+  const pair = [firstUserId, secondUserId].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  const input = "voicelink-legacy-invitation-id-v1|" + pair.join("|");
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input)));
+  hash[6] = (hash[6] & 0x0f) | 0x50;
+  hash[8] = (hash[8] & 0x3f) | 0x80;
+  const hex = toHex(hash.slice(0, 16));
+  return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) +
+    "-" + hex.slice(16, 20) + "-" + hex.slice(20, 32);
+}
+
+async function migrateLegacyPublicKeyContacts(db, storedIdentity, storedContacts) {
+  let identity = storedIdentity;
+  if (!identity?.user_id || !/^[a-f0-9]{64}$/.test(identity.user_id)) {
+    const random = crypto.getRandomValues(new Uint8Array(32));
+    identity = {
+      version: 3,
+      user_id: toHex(await crypto.subtle.digest("SHA-256", random)),
+      created_at: new Date().toISOString()
+    };
+    random.fill(0);
+  } else {
+    // Keep the existing user_id and ECDSA identity material. Changing user_id
+    // would change the ntfy topic and disconnect every existing contact.
+    identity = { ...identity, version: 3 };
+  }
+
+  const migratedContacts = [];
+  const migratedInvitations = [];
+  for (const contact of Array.isArray(storedContacts) ? storedContacts : []) {
+    // New v3 contacts already carry a random invitation secret and have no
+    // legacy ECDSA public_key field. Do not alter those records.
+    if (typeof contact.public_key !== "string") continue;
+    try {
+      const secret = await deriveLegacySharedSecret(identity, contact);
+      const invitationId = await deriveLegacyInvitationId(identity.user_id, contact.user_id);
+      const migrated = {
+        ...contact,
+        invitation_id: invitationId,
+        invitation_secret: secret,
+        shared_secret_created_at: Number(contact.shared_secret_created_at) || Date.now()
+      };
+      migratedContacts.push(migrated);
+
+      // Each device creates the same local grant for this trusted pair.
+      // This also upgrades contacts from versions that had no invitations store.
+      migratedInvitations.push({
+        id: invitationId,
+        secret,
+        created_at: Date.now(),
+        max_activations: 1,
+        activations: [{
+          user_id: contact.user_id,
+          request_id: crypto.randomUUID(),
+          activated_at: Date.now(),
+          status: "active"
+        }],
+        revoked: false
+      });
+    } catch {
+      // Keep incomplete contacts and their history intact. They can be paired
+      // again by importing a fresh invitation; never invent a secret for them.
+    }
+  }
+
+  const tx = db.transaction(["meta", "contacts", "invitations"], "readwrite");
   const done = transactionDone(tx);
-  const store = tx.objectStore("meta");
-  const current = await requestValue(store.get("identity"));
-  if (current?.value?.version === 3 && current.value.user_id) { await done; return current.value; }
-  store.put({ key: "identity", value: identity });
+  tx.objectStore("meta").put({ key: "identity", value: identity });
+  // The saved pre-v3 invitation URL has an obsolete package format; a fresh
+  // v3 invitation is generated when push permission is available.
+  tx.objectStore("meta").delete("my_invitation");
+  for (const contact of migratedContacts) tx.objectStore("contacts").put(contact);
+
+  const invitationStore = tx.objectStore("invitations");
+  for (const invitation of migratedInvitations) {
+    const request = invitationStore.get(invitation.id);
+    request.onsuccess = () => {
+      const existing = request.result;
+      if (existing?.revoked) return;
+      const activations = Array.isArray(existing?.activations) ? [...existing.activations] : [];
+      if (!activations.some(item => item.user_id === invitation.activations[0].user_id)) {
+        activations.push(invitation.activations[0]);
+      }
+      invitationStore.put({
+        ...existing,
+        ...invitation,
+        created_at: Number(existing?.created_at) || invitation.created_at,
+        activations
+      });
+    };
+  }
+  tx.objectStore("meta").put({
+    key: LEGACY_SHARED_SECRET_MIGRATION,
+    value: {
+      version: 3,
+      completed_at: new Date().toISOString(),
+      migrated_contacts: migratedContacts.length,
+      migrated_invitations: migratedInvitations.length
+    }
+  });
   await done;
   return identity;
+}
+
+export async function getOrCreateIdentity() {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("This browser does not support the Web Crypto API.");
+  }
+  const db = await openDatabase();
+  const tx = db.transaction(["meta", "contacts", "invitations"], "readonly");
+  const done = transactionDone(tx);
+  const [identityRecord, migrationRecord, contacts] = await Promise.all([
+    requestValue(tx.objectStore("meta").get("identity")),
+    requestValue(tx.objectStore("meta").get(LEGACY_SHARED_SECRET_MIGRATION)),
+    requestValue(tx.objectStore("contacts").getAll())
+  ]);
+  await done;
+
+  if (identityRecord?.value?.version === 3 &&
+      migrationRecord?.value?.version === 3 &&
+      identityRecord.value.user_id) {
+    return identityRecord.value;
+  }
+  return migrateLegacyPublicKeyContacts(
+    db,
+    identityRecord?.value || null,
+    contacts
+  );
 }
 
 export async function saveContact(contact) {

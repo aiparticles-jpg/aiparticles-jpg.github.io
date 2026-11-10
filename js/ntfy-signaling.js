@@ -1,6 +1,6 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js?v=3";
 import { decryptContactRequestEnvelope } from "./contact-exchange.js?v=11";
-import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact } from "./local-store.js?v=11";
+import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact } from "./local-store.js?v=12";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);

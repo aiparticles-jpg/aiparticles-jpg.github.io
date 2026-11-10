@@ -1,4 +1,4 @@
-import {getOrCreateIdentity,getContact} from "./local-store.js?v=11";
+import {getOrCreateIdentity,getContact} from "./local-store.js?v=12";
 const enc=new TextEncoder(),toHex=v=>Array.from(new Uint8Array(v),b=>b.toString(16).padStart(2,"0")).join("");
 export function isUserId(v){return typeof v==="string"&&/^[a-f0-9]{64}$/.test(v)}
 export async function getNtfyTopic(id){if(!isUserId(id))throw new TypeError("A valid anonymous user ID is required.");return "vl-"+toHex(await crypto.subtle.digest("SHA-256",enc.encode("voicelink-ntfy-topic-v1|"+id))).slice(0,40)}
