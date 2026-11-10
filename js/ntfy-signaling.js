@@ -416,9 +416,13 @@ export class NtfySecureSignaling {
   const n=JSON.parse(event.data);if(!n.message||!n.id||this.seen.has(n.id))return;
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
   let m;try{m=JSON.parse(n.message)}catch{return;}
+  if(m.type==="data")this.onDebug("[signaling] ntfy data envelope: v="+m.v+"; from="+String(m.payload?.from||"нет").slice(0,10)+"; expectedFrom="+this.peer.slice(0,10)+"; to="+String(m.payload?.to||"нет").slice(0,10)+"; expectedTo="+this.me.slice(0,10)+"; ntfyId="+String(n.id).slice(0,12));
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){if(m.v===3&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
-  if(m.v!==3||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me)return;
+  if(m.v!==3||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me){
+   if(m.type==="data")this.onDebug("[signaling] data отклонено до AES-GCM: неверная версия, payload, from или to.");
+   return;
+  }
   const p=m.payload;
   if(m.type==="cancel"){await this.processCancel(m);return;}
   if(!["rotation_response","reject","hello","answer","data"].includes(m.type))return;
