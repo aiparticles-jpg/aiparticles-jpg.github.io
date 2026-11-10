@@ -55,11 +55,16 @@ function rateLimitSliding(key, limit, windowMs, now) {
   if (!entry || !Array.isArray(entry.timestamps)) entry = { timestamps: [] };
 
   entry.timestamps = entry.timestamps.filter(timestamp => now - timestamp < windowMs);
-  entry.timestamps.push(now);
-  entry.expiresAt = now + windowMs;
-  rateCache.set(key, entry);
+  if (entry.timestamps.length >= limit) {
+    entry.expiresAt = entry.timestamps[0] + windowMs;
+    rateCache.set(key, entry);
+    return false;
+  }
 
-  return entry.timestamps.length <= limit;
+  entry.timestamps.push(now);
+  entry.expiresAt = entry.timestamps[0] + windowMs;
+  rateCache.set(key, entry);
+  return true;
 }
 
 function isUuid(value) {
