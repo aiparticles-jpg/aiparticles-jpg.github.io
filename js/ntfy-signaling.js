@@ -24,6 +24,17 @@ export class NtfySecureSignaling {
   const k=await crypto.subtle.importKey("jwk",jwk,{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
   return crypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},k,un64(sig),enc.encode(stable(payload)));
  }
+ async verifyPeerEnvelope(type,payload,sig,jwk){
+  if(!await this.verify({type,payload},sig,jwk))return false;
+  if(type==="contact_request")return true;
+  const peer=payload?.from;
+  if(!isUserId(peer)||peer===this.me)return false;
+  const contact=await getPeerSignalingIdentity(peer);
+  if(!samePublicKey(contact.publicJwk,jwk))return false;
+  if(!await this.hasCallGrant(payload))return false;
+  await this.processIncomingKeyRotation(peer,payload);
+  return true;
+ }
  async publish(to,msg){
   const task=async()=>{
    if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
@@ -52,7 +63,15 @@ export class NtfySecureSignaling {
   this.publishQueue=result.catch(()=>{});
   return result;
  }
- async signed(type,payload){return {v:1,type,payload,sig:await this.sign({type,payload})}}
+ async signed(type,payload){
+  let body=payload;
+  // All established-contact signed packets carry key rotation metadata by default.
+  // contact_request is the sole exception: its recipient is not yet a trusted contact.
+  if(type!=="contact_request"&&isUserId(payload?.to)&&payload.to!==this.me){
+   body={...payload,...(await this.outgoingKeyRotationFields(payload.to))};
+  }
+  return {v:1,type,payload:body,sig:await this.sign({type,payload:body})};
+ }
  async subscribe(){
   if(this.es&&this.es.readyState===EventSource.OPEN)return;
   if(this.subscribePromise)return this.subscribePromise;
@@ -240,10 +259,9 @@ export class NtfySecureSignaling {
   if(m?.v!==1||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||typeof p.message_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.message_id)||p.enc_v!==1||typeof p.iv!=="string"||typeof p.ciphertext!=="string"||p.ciphertext.length>9000||!Number.isSafeInteger(createdAt)||createdAt<0||createdAt>Date.now()+300000||!p.identity||(p.sender_key_id!==undefined&&!/^[a-f0-9]{64}$/.test(p.sender_key_id))||(p.recipient_key_id!==undefined&&!/^[a-f0-9]{64}$/.test(p.recipient_key_id)))return;
   let contactIdentity,contactRecord;
   try{contactIdentity=await getPeerSignalingIdentity(p.from);contactRecord=await getContact(p.from)}catch{return;}
-  let signatureValid=false;try{signatureValid=await this.verify({type:"text",payload:p},m.sig,p.identity)}catch{return;}
-  if(!signatureValid||!samePublicKey(contactIdentity.publicJwk,p.identity)||!contactRecord)return;
-  let grantValid=false;try{grantValid=await this.hasCallGrant(p)}catch{return;}
-  if(!grantValid){this.onDebug("[signaling] текстовое сообщение отклонено: нет действующего разрешения по приглашению");return;}
+  if(!contactRecord)return;
+  let envelopeValid=false;try{envelopeValid=await this.verifyPeerEnvelope("text",p,m.sig,p.identity)}catch{return;}
+  if(!envelopeValid||!samePublicKey(contactIdentity.publicJwk,p.identity))return;
 
   const localRing=await getMessageEncryptionKeyRing();
   const localKeys=[{slot:"active",value:localRing.active},{slot:"pending",value:localRing.pending},{slot:"previous",value:localRing.previous}].filter(x=>x.value?.privateKey&&(!p.recipient_key_id||x.value.key_id===p.recipient_key_id));
@@ -279,7 +297,6 @@ export class NtfySecureSignaling {
   }
   if(usedPeer.slot==="pending")await this.promotePendingPeerEncryptionKey(p.from,usedPeer.key_id);
 
-  const switchedByAck=await this.processIncomingKeyRotation(p.from,p);
   if(!switchedByUse&&!switchedByAck&&usedLocal.slot==="active"&&p.recipient_key_id===localRing.active.key_id&&localRing.previous){
    await markPreviousMessageEncryptionIdentityForDeletion(localRing.previous.key_id);
   }
@@ -296,12 +313,7 @@ export class NtfySecureSignaling {
   if(!contact)throw Error("Выберите сохранённый контакт.");
   if(!contact.message_encryption_key_id||!contact.message_encryption_public_key)throw Error("У контакта нет ключа шифрования. Попросите его отправить новое приглашение и добавьте контакт заново.");
 
-  let localRing=await getMessageEncryptionKeyRing();
-  const week=7*24*60*60*1000,activeAge=Date.now()-Date.parse(localRing.active.activated_at||localRing.active.created_at||new Date().toISOString());
-  if(!localRing.pending&&!localRing.previous&&Number.isFinite(activeAge)&&activeAge>=week){
-   await createPendingMessageEncryptionIdentity();
-   localRing=await getMessageEncryptionKeyRing();
-  }
+  const localRing=await getMessageEncryptionKeyRing();
   contact=await getContact(to);
   const createdAt=Date.now();
   const payload={
@@ -310,8 +322,6 @@ export class NtfySecureSignaling {
    identity:this.identity.publicJwk,enc_v:1,created_at:createdAt,
    sender_key_id:localRing.active.key_id,recipient_key_id:contact.message_encryption_key_id
   };
-  if(localRing.pending)payload.key_update={generation:Number(localRing.pending.generation),key_id:localRing.pending.key_id,public_key:localRing.pending.public_key};
-  if(contact.message_encryption_pending_key_id)payload.key_update_ack={generation:Number(contact.message_encryption_pending_generation),key_id:contact.message_encryption_pending_key_id};
   const key=await this.deriveMessageEncryptionKey(to,this.me,to,localRing.active,contact.message_encryption_public_key);
   const iv=crypto.getRandomValues(new Uint8Array(12));
   const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:this.messageAad(payload)},key,enc.encode(body));
@@ -341,13 +351,10 @@ export class NtfySecureSignaling {
   else if(!this.peerName)this.peerName=contact.name;
   const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
   if(!Number.isFinite(expiresAt)||Date.now()>expiresAt)return;
-  if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись входящего вызова недействительна.");
-  await this.assertPeerKey(p.identity);
-  if(!await this.hasCallGrant(p)){
-   this.onDebug("[signaling] вызов отклонён: приглашение не активировано или отозвано");
+  if(!await this.verifyPeerEnvelope(m.type,p,m.sig,p.identity)){
+   this.onDebug("[signaling] вызов отклонён: подпись, контакт или разрешение недействительны");
    return;
   }
-  await this.processIncomingKeyRotation(p.from,p);
   if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
   await this.recordConversationEvent(m.type,p,"incoming",Number(n.time)*1000||Date.now());
   this.onPeerMessage(p.from);
@@ -383,8 +390,7 @@ export class NtfySecureSignaling {
   const p=m?.payload;
   if(m?.v!==1||!p||p.from!==this.peer||p.to!==this.me||!p.sid||!p.identity)return;
   if(this.acceptedSids.has(p.sid))return;
-  if(!await this.verify({type:"cancel",payload:p},m.sig,p.identity))throw Error("Подпись отмены вызова недействительна.");
-  await this.assertPeerKey(p.identity);
+  if(!await this.verifyPeerEnvelope("cancel",p,m.sig,p.identity))throw Error("Подпись отмены вызова, контакт или разрешение недействительны.");
   if(!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
   if(this.incomingIdentity&&!samePublicKey(this.incomingIdentity,p.identity))return;
   this.onPeerMessage(this.peer);
@@ -412,7 +418,7 @@ export class NtfySecureSignaling {
  }
  async sendCallRequest(){
   if(this.closed||this.ready||this.rateLimited||this.role!=="B")return;
-  const request={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),...(await this.outgoingKeyRotationFields(this.peer)),identity:this.identity.publicJwk,expiresAt:Date.now()+45000};
+  const request={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),identity:this.identity.publicJwk,expiresAt:Date.now()+45000};
   this.outgoingRequest=request;
   await this.publish(this.peer,await this.signed("request",request));
   await this.recordConversationEvent("request",request,"outgoing",Date.now());
@@ -422,7 +428,7 @@ export class NtfySecureSignaling {
  async rejectIncoming(){
   const sid=this.incomingSid;
   if(this.closed||!sid||!this.peer||!this.incomingIdentity)return false;
-  const payload={sid,from:this.me,to:this.peer,identity:this.identity.publicJwk,expiresAt:Date.now()+15000};
+  const payload={sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),identity:this.identity.publicJwk,expiresAt:Date.now()+15000};
   await this.publish(this.peer,await this.signed("reject",payload));
   await this.recordConversationEvent("reject",payload,"outgoing",Date.now());
   this.acceptedSids.add(sid);
@@ -433,7 +439,7 @@ export class NtfySecureSignaling {
  async cancelCall(){
   const request=this.outgoingRequest||this.hello;
   if(this.closed||!request||!["A","B"].includes(this.role))return false;
-  const payload={sid:request.sid,from:this.me,to:this.peer,identity:this.identity.publicJwk,expiresAt:Date.now()+15000};
+  const payload={sid:request.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),identity:this.identity.publicJwk,expiresAt:Date.now()+15000};
   await this.publish(this.peer,await this.signed("cancel",payload));
   this.outgoingRequest=null;
   this.onDebug("[signaling] подписанная отмена вызова отправлена через ntfy");
@@ -443,7 +449,7 @@ export class NtfySecureSignaling {
   if(this.closed||this.ready||this.rateLimited||this.role!=="A")return;
   if(!this.hello){
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-   this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),...(await this.outgoingKeyRotationFields(this.peer)),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),expiresAt:Date.now()+45000};
+   this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),expiresAt:Date.now()+45000};
   }
   this.helloAttempts++;
   this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
@@ -521,8 +527,7 @@ export class NtfySecureSignaling {
   if(m.type==="reject"){
    const request=this.outgoingRequest||this.hello;
    if(!request||p.sid!==request.sid||!p.identity||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
-   if(!await this.verify({type:"reject",payload:p},m.sig,p.identity))throw Error("Подпись отказа от вызова недействительна.");
-   await this.assertPeerKey(p.identity);
+   if(!await this.verifyPeerEnvelope("reject",p,m.sig,p.identity))throw Error("Подпись отказа от вызова, контакт или разрешение недействительны.");
    await this.recordConversationEvent("reject",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);
    this.outgoingRequest=null;this.clearHelloRetry();
@@ -531,13 +536,10 @@ export class NtfySecureSignaling {
   }
   if(m.type==="request"&&this.role==="A"){
    if(!p.identity||!p.sid||this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
-   if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись входящего запроса недействительна.");
-   await this.assertPeerKey(p.identity);
-   if(!await this.hasCallGrant(p)){
-    this.onDebug("[signaling] запрос вызова отклонён: нет действующего разрешения по приглашению");
+   if(!await this.verifyPeerEnvelope(m.type,p,m.sig,p.identity)){
+    this.onDebug("[signaling] запрос вызова отклонён: подпись, контакт или разрешение недействительны");
     return;
    }
-   await this.processIncomingKeyRotation(p.from,p);
    await this.recordConversationEvent("request",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);
    if(this.incomingSid!==p.sid){
@@ -557,13 +559,7 @@ export class NtfySecureSignaling {
     return;
    }
    if(this.ready)return;
-   if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись собеседника недействительна.");
-   await this.assertPeerKey(p.identity);
-   if(!await this.hasCallGrant(p)){
-    this.onDebug("[signaling] hello отклонён: нет действующего разрешения по приглашению");
-    return;
-   }
-   await this.processIncomingKeyRotation(p.from,p);
+   if(!await this.verifyPeerEnvelope(m.type,p,m.sig,p.identity))throw Error("Подпись hello, контакт или разрешение недействительны.");
    await this.recordConversationEvent("hello",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);
    if(this.cancelledSids.has(p.sid))return;
@@ -575,7 +571,7 @@ export class NtfySecureSignaling {
    }
    this.hello=p;
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-   const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),...(await this.outgoingKeyRotationFields(this.peer)),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
+   const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
    this.answer=answer;
    // Derive first so the same answer/session remains available for bounded POST retries.
    await this.derive(p,answer);
@@ -585,13 +581,7 @@ export class NtfySecureSignaling {
   }
   if(m.type==="answer"&&this.role==="A"&&!this.ready){
    if(!this.hello||p.sid!==this.hello.sid||p.helloEph!==this.hello.eph||p.helloNonce!==this.hello.nonce)return;
-   if(!await this.verify({type:m.type,payload:p},m.sig,p.identity))throw Error("Подпись ответа недействительна.");
-   await this.assertPeerKey(p.identity);
-   if(!await this.hasCallGrant(p)){
-    this.onDebug("[signaling] ответ вызова отклонён: нет действующего разрешения по приглашению");
-    return;
-   }
-   await this.processIncomingKeyRotation(p.from,p);
+   if(!await this.verifyPeerEnvelope(m.type,p,m.sig,p.identity))throw Error("Подпись ответа, контакт или разрешение недействительны.");
    await this.recordConversationEvent("answer",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);await this.derive(this.hello,p);return;
   }
