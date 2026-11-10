@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=20";
+import { WebRtcAudio } from "./webrtc.js?v=21";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=40";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=12";
@@ -692,7 +692,7 @@ async function onSecureReady(){
  state.peerPresent=true;state.role=state.secure.role==="A"?"initiator":"receiver";
  updateCallButtons();
  setStatus("Защищённый канал установлен","Запускаем голосовой канал.","wait");
- debug("Защищённый канал установлен.");
+ debug("Защищённый канал установлен; secure-role="+state.role+"; peer="+(state.secure?.peer||els.peer.value)+".");
  const peerId=state.secure?.peer||els.peer.value;
  if(NtfySecureSignaling.validUserId(peerId)){
   try{
@@ -703,7 +703,12 @@ async function onSecureReady(){
  if(state.role==="initiator")await startWebRtcOffer();
 }
 async function handleSignal(payload){
- await ensureWebRtc();await state.webrtc.handleSignal(payload);
+ const type=payload?.description?.type|| (payload?.candidate?"candidate":"unknown");
+ debug("SIGNAL receive: type="+type+"; peer="+(state.secure?.peer||els.peer.value)+".");
+ await ensureWebRtc();
+ debug("SIGNAL dispatch to WebRTC: type="+type+".");
+ await state.webrtc.handleSignal(payload);
+ debug("SIGNAL handled: type="+type+".");
 }
 async function startWebRtcOffer(){
  if(state.callStarted)return;state.callStarted=true;
