@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=21";
+import { WebRtcAudio } from "./webrtc.js?v=22";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=44";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=12";
@@ -647,7 +647,7 @@ function scheduleIcePrewarm(reason="input",force=false){
   const me=state.me,peer=els.peer.value;
   const names=me+"|"+peer;
   const eligible=NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&
-   me!==peer&&me<peer&&!els.pilot.checked&&navigator.onLine;
+   me!==peer&&me<peer&&navigator.onLine;
   if(state.connecting||state.secure?.active||state.callStarted)return;
   if(!eligible){
    if(state.webrtc?.prewarmed){
@@ -657,12 +657,13 @@ function scheduleIcePrewarm(reason="input",force=false){
    return;
   }
   if(state.prewarmPromise){
-   state.prewarmPending={reason,force};
+   // Repeated periodic/visibility checks must not queue a redundant second
+   // prewarm for the same peer while the current ICE gathering is still running.
+   if(state.prewarmTargetNames!==names)state.prewarmPending={reason,force};
    return;
   }
   const currentFresh=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===names);
-  const currentAge=currentFresh?Date.now()-state.webrtc.prewarmStartedAt:Infinity;
-  if(currentFresh&&(!force||currentAge<30000))return;
+  if(currentFresh)return;
 
   const candidate=createWebRtcInstance(false);
   const task=(async()=>{
@@ -670,7 +671,7 @@ function scheduleIcePrewarm(reason="input",force=false){
     debug("Предварительная подготовка ICE начата (причина: "+reason+"; без микрофона и без ntfy).");
     const count=await candidate.prepareIce();
     const latestMe=state.me,latestPeer=els.peer.value;
-    const stillEligible=!state.secure?.active&&!state.callStarted&&!els.pilot.checked&&navigator.onLine&&
+    const stillEligible=!state.secure?.active&&!state.callStarted&&navigator.onLine&&
      latestMe+"|"+latestPeer===names&&latestMe<latestPeer;
     if(!stillEligible){
      await candidate.close({stopTracks:true});
