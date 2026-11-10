@@ -15,7 +15,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
  async deriveEnvelopeKey(secret,from,to){
@@ -29,11 +29,11 @@ export class NtfySecureSignaling {
   if(!p||p.from===undefined||p.to===undefined)return false;
   if(p.rotation_request&&(!uuid(p.rotation_request.rotation_id)||typeof p.rotation_request.public_key!=="string"||p.rotation_request.public_key.length>1000))return false;
   if(type==="text")return uuid(p.message_id)&&Number.isSafeInteger(Number(p.created_at))&&Number(p.created_at)>=0&&Number(p.created_at)<=Date.now()+300000&&typeof p.text==="string"&&p.text.trim().length>0&&p.text.length<=2000;
-  if(type==="hello")return uuid(p.sid)&&typeof p.eph==="string"&&typeof p.nonce==="string"&&Number.isFinite(Number(p.expiresAt));
-  if(type==="answer")return uuid(p.sid)&&typeof p.eph==="string"&&typeof p.nonce==="string"&&typeof p.helloEph==="string"&&typeof p.helloNonce==="string";
+  if(type==="hello")return uuid(p.sid)&&Number.isFinite(Number(p.expiresAt));
+  if(type==="answer")return uuid(p.sid);
   if(type==="cancel"||type==="reject")return uuid(p.sid)&&Number.isFinite(Number(p.expiresAt));
   if(type==="rotation_response")return uuid(p.rotation_id)&&typeof p.encrypted_key==="string";
-  if(type==="data")return uuid(p.sid)&&typeof p.iv==="string"&&typeof p.data==="string";
+  if(type==="data")return uuid(p.sid)&&p.signal&&typeof p.signal==="object"&&!Array.isArray(p.signal);
   return false;
  }
  async verifyPeerEnvelope(type,payload,auth){
@@ -321,8 +321,7 @@ export class NtfySecureSignaling {
  }
  resetSession({preservePending=false}={}){
   this.active=false;this.answeringIncoming=false;this.clearHelloRetry();this.clearAnswerRetry();
-  this.hello=null;this.helloDirection=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;
-  this.sendKey=null;this.recvKey=null;this.ready=false;
+  this.hello=null;this.helloDirection=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;
   if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.acceptedSids.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
  }
  async rejectIncoming(){
@@ -348,8 +347,7 @@ export class NtfySecureSignaling {
  async sendHello(){
   if(this.closed||this.ready||this.rateLimited||this.helloDirection==="incoming")return;
   if(!this.hello){
-   this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-   this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),expiresAt:Date.now()+45000};
+   this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),expiresAt:Date.now()+45000};
    this.helloDirection="outgoing";
   }
   this.helloAttempts++;
@@ -419,9 +417,7 @@ export class NtfySecureSignaling {
   if(m.type==="rotation_response")return;
   if(m.type==="data"){
    if(!this.ready||p.sid!==this.session)return;
-   const dir=p.from<p.to?"A-to-B":"B-to-A";
-   const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(p.iv),additionalData:enc.encode(this.session+"|"+dir)},this.recvKey,un64(p.data));
-   const msg=JSON.parse(new TextDecoder().decode(plain));this.onPeerMessage(this.peer);if(msg.type==="signal")await this.onSignal(msg.payload);return;
+   this.onPeerMessage(this.peer);if(p.signal.type==="signal")await this.onSignal(p.signal.payload);return;
   }
   if(m.type==="reject"){
    const req=this.outgoingRequest||this.hello;if(!req||p.sid!==req.sid||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
@@ -448,40 +444,24 @@ export class NtfySecureSignaling {
    const pending=this.pendingCancels.get(p.sid);
    if(pending){this.pendingCancels.delete(p.sid);this.incomingSid=p.sid;this.incomingIdentity=true;await this.processCancel(pending);if(this.cancelledSids.has(p.sid))return;}
    this.hello=p;this.helloDirection="incoming";this.incomingSid=p.sid;this.incomingIdentity=true;
-   this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-   const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
-   this.answer=answer;await this.derive(p,answer);this.onDebug("[signaling] answer prepared; sending initial response");
+   const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{})};
+   this.answer=answer;this.activateSession(p.sid);this.onDebug("[signaling] answer prepared; sending initial response");
    try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000);}return;
   }
   if(m.type==="answer"&&!this.ready){
-   if(!this.hello||this.helloDirection!=="outgoing"||p.sid!==this.hello.sid||p.helloEph!==this.hello.eph||p.helloNonce!==this.hello.nonce)return;
+   if(!this.hello||this.helloDirection!=="outgoing"||p.sid!==this.hello.sid)return;
    await this.recordConversationEvent("answer",p,"incoming",Number(n.time)*1000||Date.now());this.onPeerMessage(this.peer);
-   await this.derive(this.hello,p);if(!this.readyNotified){this.readyNotified=true;this.onReady();}return;
+   this.activateSession(p.sid);if(!this.readyNotified){this.readyNotified=true;this.onReady();}return;
   }
  }
  async hasCallGrant(payload){
   const contact=await getPeerSignalingIdentity(payload.from);
   return payload.invitation_id===contact.invitation_id&&await hasActiveInvitationGrant(contact.invitation_id,payload.from);
  }
- async derive(hello,answer){
-  const parties=new Map([[hello.from,{eph:hello.eph,nonce:hello.nonce}],[answer.from,{eph:answer.eph,nonce:answer.nonce}]]);
-  const [a,b]=[hello.from,hello.to].sort();
-  const tr={v:2,sid:hello.sid,a,b,aEph:parties.get(a).eph,bEph:parties.get(b).eph,aNonce:parties.get(a).nonce,bNonce:parties.get(b).nonce};
-  const hash=await digest(enc.encode(stable(tr)));
-  const remoteEph=hello.from===this.me?answer.eph:hello.eph;
-  const pub=await crypto.subtle.importKey("raw",un64(remoteEph),{name:"ECDH",namedCurve:"P-256"},false,[]);
-  const shared=await crypto.subtle.deriveBits({name:"ECDH",public:pub},this.ecdh.privateKey,256);
-  const material=await crypto.subtle.importKey("raw",shared,"HKDF",false,["deriveKey"]);
-  const mk=dir=>crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt:hash,info:enc.encode("voice-link-v1|"+dir)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
-  const [ab,ba]=await Promise.all([mk("A-to-B"),mk("B-to-A")]);
-  this.sendKey=this.role==="A"?ab:ba;this.recvKey=this.role==="A"?ba:ab;this.session=hello.sid;this.ready=true;this.clearHelloRetry();
-  }
+ activateSession(sid){this.session=sid;this.ready=true;this.clearHelloRetry();}
  async sendSignal(payload){
   if(!this.ready)throw Error("Защищённый канал ещё не установлен.");
-  const dir=this.role==="A"?"A-to-B":"B-to-A",iv=crypto.getRandomValues(new Uint8Array(12));
-  const plain=enc.encode(JSON.stringify({type:"signal",payload}));
-  const data=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:enc.encode(this.session+"|"+dir)},this.sendKey,plain);
-  await this.publish(this.peer,await this.authenticated("data",{sid:this.session,from:this.me,to:this.peer,iv:b64u(iv),data:b64u(data)}));
+  await this.publish(this.peer,await this.authenticated("data",{sid:this.session,from:this.me,to:this.peer,signal:{type:"signal",payload}}));
  }
  close(){this.closed=true;this.active=false;this.clearHelloRetry();this.clearAnswerRetry();if(this.es){const before=this.es.readyState;this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван; readyState(before)=${before}`);this.es.close();this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() завершён; readyState(after)=${this.es.readyState}`)}else this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} close() вызван без EventSource`);}
 }
