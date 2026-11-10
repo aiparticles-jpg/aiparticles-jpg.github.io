@@ -14,6 +14,8 @@ const ALLOWED_EVENTS = new Set([
 ]);
 const WINDOW_MS = 60_000;
 const IDEMPOTENCY_TTL_MS = 120_000;
+const RECIPIENT_MESSAGE_LIMIT = 5;
+const RECIPIENT_OTHER_LIMIT = 2;
 const idempotencyCache = new Map();
 const rateCache = new Map();
 
@@ -149,10 +151,22 @@ app.post("/v1/push", async (req, res) => {
   if (!event) return res.status(400).json({ ok: false, error: "invalid_request" });
 
   const ip = req.ip || req.socket.remoteAddress || "unknown";
-  const ipLimit = event.event === "new_message" ? 60 : 10;
-  const userLimit = event.event === "new_message" ? 30 : 5;
-  if (!rateLimit("ip:" + ip, ipLimit, 60_000, now) ||
-      !rateLimit("user:" + event.user_id, userLimit, 60_000, now)) {
+  const isMessage = event.event === "new_message";
+  const ipLimit = isMessage ? 60 : 10;
+  const userLimit = isMessage ? 30 : 5;
+  const recipientLimit = isMessage ? RECIPIENT_MESSAGE_LIMIT : RECIPIENT_OTHER_LIMIT;
+  const recipientCategory = isMessage ? "messages" : "other";
+
+  const ipAllowed = rateLimit("ip:" + ip, ipLimit, 60_000, now);
+  const userAllowed = rateLimit("user:" + event.user_id, userLimit, 60_000, now);
+  const recipientAllowed = rateLimit(
+    "recipient:" + event.recipient_subscription_id + ":" + recipientCategory,
+    recipientLimit,
+    60_000,
+    now
+  );
+
+  if (!ipAllowed || !userAllowed || !recipientAllowed) {
     return res.status(429).json({ ok: false, error: "rate_limited" });
   }
 
