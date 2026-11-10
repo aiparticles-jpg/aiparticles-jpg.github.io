@@ -66,10 +66,17 @@ export class NtfySecureSignaling {
    if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
    const wait=Math.max(0,this.lastPublishAt+1100-Date.now());
    if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+   const body=JSON.stringify(msg);
+   const bodyBytes=enc.encode(body).byteLength;
+   if(msg.type==="data"){
+    const cipherChars=typeof msg.auth?.ciphertext==="string"?msg.auth.ciphertext.length:0;
+    this.onDebug(`[ntfy] data POST body size=${bodyBytes} bytes; AES-GCM ciphertext(base64url)=${cipherChars} chars; limit=4096 bytes`);
+    if(bodyBytes>4096)this.onDebug(`[ntfy] WARNING: data POST body exceeds 4096-byte message limit by ${bodyBytes-4096} bytes; ntfy may deliver it as an attachment, not a text message.`);
+   }
    this.onDebug(`[ntfy] POST → ${msg.type} (одна попытка)`);
    let r;
    try{
-    r=await fetch(BASE+await getNtfyTopic(to),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});
+    r=await fetch(BASE+await getNtfyTopic(to),{method:"POST",headers:{"Content-Type":"application/json"},body,cache:"no-store"});
    }catch(error){
     this.lastPublishAt=Date.now();
     const failure=Error("Сетевая ошибка при POST в ntfy ("+msg.type+"): "+(error.message||String(error)));
