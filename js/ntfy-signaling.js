@@ -101,7 +101,7 @@ export class NtfySecureSignaling {
  async authenticated(type,payload){
   const peer=payload?.to;let contact=await getContact(peer);
   if(!contact?.invitation_secret)throw Error("Не найден общий ключ контакта. Попросите собеседника повторно обменяться приглашениями.");
-  if(type!=="rotation_response"&&!contact.rotation_id&&!contact.pending_secret&&!contact.previous_secret&&Date.now()-(Number(contact.shared_secret_created_at)||Date.now())>=7*24*60*60*1000)contact=await this.beginKeyRotation(peer,contact)||contact;
+  if(type!=="rotation_response"&&!contact.rotation_id&&!contact.pending_secret&&!contact.previous_secret&&Date.now()-(Number(contact.shared_secret_created_at)||Date.now())>=24*60*60*1000)contact=await this.beginKeyRotation(peer,contact)||contact;
   const body={...payload,invitation_id:payload.invitation_id||contact.invitation_id};
   if(type!=="rotation_response"&&contact.rotation_id&&contact.rotation_public_key)body.rotation_request={rotation_id:contact.rotation_id,public_key:contact.rotation_public_key};
   const key=await this.deriveEnvelopeKey(contact.invitation_secret,this.me,peer),iv=crypto.getRandomValues(new Uint8Array(12));
