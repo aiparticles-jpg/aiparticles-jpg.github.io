@@ -168,19 +168,10 @@ export class WebRtcAudio {
       this.ensureControlChannel(pc);
       this.signalEnabled = true;
     }
-    pc.onicecandidate = async event => {
+    pc.onicecandidate = event => {
       if (event.candidate) {
-        const candidate = event.candidate.toJSON();
-        if (!this.signalEnabled) {
-          this.pendingLocalCandidates.push(candidate);
-          this.onState("ICE candidate собран заранее и сохранён локально.");
-          return;
-        }
-        try {
-          await this.sendSignal({ candidate });
-        } catch (error) {
-          this.onError(new Error("Не удалось передать ICE-кандидат: " + error.message));
-        }
+        this.pendingLocalCandidates.push(event.candidate.toJSON());
+        this.onState("ICE candidate собран и сохранён локально; отдельный POST не отправляется.");
       } else {
         this.onState("ice-gathering-complete");
       }
@@ -492,25 +483,38 @@ export class WebRtcAudio {
     return promise;
   }
 
+  async waitForIceGatheringComplete(pc, timeoutMs = 15000) {
+    if (pc.iceGatheringState === "complete") return;
+    await new Promise((resolve, reject) => {
+      let finished = false;
+      const cleanup = () => {
+        pc.removeEventListener("icegatheringstatechange", check);
+        clearTimeout(timer);
+      };
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        resolve();
+      };
+      const check = () => {
+        if (pc.iceGatheringState === "complete") finish();
+      };
+      const timer = setTimeout(() => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        reject(new Error("ICE gathering не завершился за " + timeoutMs / 1000 + " секунд; неполный SDP не отправлен."));
+      }, timeoutMs);
+      pc.addEventListener("icegatheringstatechange", check);
+      check();
+    });
+  }
+
   async prepareIce() {
     const pc = await this.createPeerConnection({ prewarm: true });
     if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
-    if (pc.iceGatheringState !== "complete") {
-      await new Promise(resolve => {
-        let done = false;
-        const finish = () => {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          pc.removeEventListener("icegatheringstatechange", check);
-          resolve();
-        };
-        const check = () => { if (pc.iceGatheringState === "complete") finish(); };
-        const timer = setTimeout(finish, 10000);
-        pc.addEventListener("icegatheringstatechange", check);
-        check();
-      });
-    }
+    await this.waitForIceGatheringComplete(pc);
     this.onState("ICE предварительно подготовлен; кандидатов: " + this.pendingLocalCandidates.length);
     return this.pendingLocalCandidates.length;
   }
@@ -525,11 +529,14 @@ export class WebRtcAudio {
     const stream = await this.prepareOutgoingStream();
     const track = stream.getAudioTracks()[0];
     if (track && this.audioSender) await this.audioSender.replaceTrack(track);
+    await this.waitForIceGatheringComplete(this.pc);
     this.signalEnabled = true;
+    const candidates = this.pendingLocalCandidates.length;
+    // A complete localDescription SDP already contains all gathered ICE candidates.
+    // Send it once; never trickle candidates as separate ntfy POSTs.
     await this.sendSignal({ description: this.pc.localDescription });
-    const candidates = this.pendingLocalCandidates.splice(0);
-    for (const candidate of candidates) await this.sendSignal({ candidate });
-    this.onState("Предварительно собранный ICE offer отправлен; кандидатов: " + candidates.length);
+    this.pendingLocalCandidates = [];
+    this.onState("Предварительно собранный ICE offer отправлен одним сообщением; кандидатов в SDP: " + candidates);
     return true;
   }
 
@@ -538,7 +545,12 @@ export class WebRtcAudio {
     if (this.prewarmed && await this.activatePreparedOffer()) return;
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    await this.waitForIceGatheringComplete(pc);
+    this.signalEnabled = true;
+    const candidates = this.pendingLocalCandidates.length;
     await this.sendSignal({ description: pc.localDescription });
+    this.pendingLocalCandidates = [];
+    this.onState("ICE offer отправлен одним сообщением после полного gathering; кандидатов в SDP: " + candidates);
   }
 
   async handleSignal(payload) {
@@ -553,7 +565,12 @@ export class WebRtcAudio {
       if (description.type === "offer") {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        await this.waitForIceGatheringComplete(pc);
+        this.signalEnabled = true;
+        const candidates = this.pendingLocalCandidates.length;
         await this.sendSignal({ description: pc.localDescription });
+        this.pendingLocalCandidates = [];
+        this.onState("ICE answer отправлен одним сообщением после полного gathering; кандидатов в SDP: " + candidates);
       }
     } else if (payload.candidate) {
       if (this.remoteDescriptionSet) await pc.addIceCandidate(payload.candidate);
