@@ -32,6 +32,8 @@ export class WebRtcAudio {
       }
     }
     this.pc = null;
+    this.pcDiagnosticId = null;
+    this.diagnosticStartedAt = Date.now();
     this.audioSender = null;
     this.prewarmed = false;
     this.prewarmStartedAt = 0;
@@ -161,6 +163,8 @@ export class WebRtcAudio {
       iceTransportPolicy: "all",
       iceCandidatePoolSize: prewarm ? 1 : 0
     });
+    this.pcDiagnosticId = Math.random().toString(36).slice(2, 8);
+    this.onState("PC["+this.pcDiagnosticId+"] created; initiator="+this.initiator+"; prewarm="+prewarm+".");
     if (prewarm) {
       this.audioSender = pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
       this.ensureControlChannel(pc);
@@ -174,17 +178,17 @@ export class WebRtcAudio {
     pc.onicecandidate = event => {
       if (event.candidate) {
         this.pendingLocalCandidates.push(event.candidate.toJSON());
-        this.onState("ICE candidate собран и сохранён локально; отдельный POST не отправляется.");
+        this.onState("PC["+this.pcDiagnosticId+"] ICE candidate #"+this.pendingLocalCandidates.length+" собран; отдельный POST не отправляется.");
       } else {
-        this.onState("ice-gathering-complete");
+        this.onState("PC["+this.pcDiagnosticId+"] ice-gathering-complete; candidates="+this.pendingLocalCandidates.length+"; elapsed="+((Date.now()-this.diagnosticStartedAt)/1000).toFixed(1)+"s.");
       }
     };
 
-    pc.onicegatheringstatechange = () => this.onState("ice-gathering-" + pc.iceGatheringState);
-    pc.onsignalingstatechange = () => this.onState("signaling-" + pc.signalingState);
+    pc.onicegatheringstatechange = () => this.onState("PC["+this.pcDiagnosticId+"] ice-gathering-"+pc.iceGatheringState+"; elapsed="+((Date.now()-this.diagnosticStartedAt)/1000).toFixed(1)+"s.");
+    pc.onsignalingstatechange = () => this.onState("PC["+this.pcDiagnosticId+"] signaling-"+pc.signalingState+".");
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
-      this.onState("ice-" + iceState);
+      this.onState("PC["+this.pcDiagnosticId+"] ice-"+iceState+".");
       if (this.signalEnabled) this.logSelectedCandidatePair("ice-" + iceState, pc);
     };
 
@@ -197,7 +201,7 @@ export class WebRtcAudio {
     };
 
     pc.onconnectionstatechange = () => {
-      this.onState("connection-" + pc.connectionState);
+      this.onState("PC["+this.pcDiagnosticId+"] connection-"+pc.connectionState+".");
     };
 
     this.pc = pc;
@@ -487,7 +491,9 @@ export class WebRtcAudio {
   }
 
   async waitForIceGatheringComplete(pc, timeoutMs = 60000) {
-    if (pc.iceGatheringState === "complete") return;
+    if (pc.iceGatheringState === "complete") { this.onState("PC["+this.pcDiagnosticId+"] ICE wait skipped: already complete."); return; }
+    const waitStartedAt=Date.now();
+    this.onState("PC["+this.pcDiagnosticId+"] ICE wait started; timeout="+(timeoutMs/1000)+"s; state="+pc.iceGatheringState+".");
     await new Promise((resolve, reject) => {
       let finished = false;
       const cleanup = () => {
@@ -498,6 +504,7 @@ export class WebRtcAudio {
         if (finished) return;
         finished = true;
         cleanup();
+        this.onState("PC["+this.pcDiagnosticId+"] ICE wait completed in "+((Date.now()-waitStartedAt)/1000).toFixed(1)+"s.");
         resolve();
       };
       const check = () => {
@@ -507,6 +514,7 @@ export class WebRtcAudio {
         if (finished) return;
         finished = true;
         cleanup();
+        this.onState("PC["+this.pcDiagnosticId+"] ICE wait TIMEOUT after "+((Date.now()-waitStartedAt)/1000).toFixed(1)+"s; state="+pc.iceGatheringState+"; candidates="+this.pendingLocalCandidates.length+".");
         reject(new Error("ICE gathering не завершился за " + timeoutMs / 1000 + " секунд; неполный SDP не отправлен."));
       }, timeoutMs);
       pc.addEventListener("icegatheringstatechange", check);
@@ -549,6 +557,7 @@ export class WebRtcAudio {
 
   async createOffer() {
     const pc = await this.createPeerConnection();
+    this.onState("PC["+this.pcDiagnosticId+"] createOffer started.");
     if (this.prewarmed && await this.activatePreparedOffer()) return;
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -562,19 +571,24 @@ export class WebRtcAudio {
 
   async handleSignal(payload) {
     const pc = await this.createPeerConnection();
+    this.onState("PC["+this.pcDiagnosticId+"] handleSignal entered; description="+(payload.description?.type||"none")+"; candidate="+!!payload.candidate+".");
     if (payload.description) {
       const description = payload.description;
+      this.onState("PC["+this.pcDiagnosticId+"] setRemoteDescription("+description.type+") started; SDP chars="+(description.sdp?.length||0)+".");
       await pc.setRemoteDescription(description);
+      this.onState("PC["+this.pcDiagnosticId+"] setRemoteDescription("+description.type+") completed.");
       this.remoteDescriptionSet = true;
       while (this.pendingCandidates.length) {
         await pc.addIceCandidate(this.pendingCandidates.shift());
       }
       if (description.type === "offer") {
+        this.onState("PC["+this.pcDiagnosticId+"] createAnswer started.");
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         await this.waitForIceGatheringComplete(pc);
         this.signalEnabled = true;
         const candidates = this.pendingLocalCandidates.length;
+        this.onState("PC["+this.pcDiagnosticId+"] sending ANSWER; SDP chars="+(pc.localDescription?.sdp?.length||0)+"; candidates="+candidates+".");
         await this.sendSignal({ description: pc.localDescription });
         this.pendingLocalCandidates = [];
         this.onState("ICE answer отправлен одним сообщением после полного gathering; кандидатов в SDP: " + candidates);
