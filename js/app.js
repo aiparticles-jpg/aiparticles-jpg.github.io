@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=22";
+import { WebRtcAudio } from "./webrtc.js?v=23";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=44";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=12";
@@ -665,7 +665,7 @@ function scheduleIcePrewarm(reason="input",force=false){
   const currentFresh=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===names);
   if(currentFresh)return;
 
-  const candidate=createWebRtcInstance(false);
+  const candidate=createWebRtcInstance(els.pilot.checked);
   const task=(async()=>{
    try{
     debug("Предварительная подготовка ICE начата (причина: "+reason+"; без микрофона и без ntfy).");
@@ -750,7 +750,7 @@ async function connect(){
  try{
   const me=state.me;
   if(state.prewarmPromise&&(state.prewarmTargetNames===me+"|"+peer||state.prewarmNames===me+"|"+peer)){try{await state.prewarmPromise}catch{}}
-  const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer&&!els.pilot.checked);
+  const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer);
   if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
   state.callStarted=false;state.peerPresent=false;
   if(!NtfySecureSignaling.validUserId(me)||!NtfySecureSignaling.validUserId(peer)||me===peer)throw Error("Выберите сохранённый контакт. Собеседник должен отличаться от вашей идентичности.");
