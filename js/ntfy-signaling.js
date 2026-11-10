@@ -190,6 +190,39 @@ export class NtfySecureSignaling {
   await updateContact(peer,{message_encryption_pending_public_key:update.public_key,message_encryption_pending_key_id:update.key_id,message_encryption_pending_generation:generation});
   return true;
  }
+ async outgoingKeyRotationFields(peer){
+  let ring=await getMessageEncryptionKeyRing();
+  const week=7*24*60*60*1000;
+  const activeAge=Date.now()-Date.parse(ring.active.activated_at||ring.active.created_at||new Date().toISOString());
+  if(!ring.pending&&!ring.previous&&Number.isFinite(activeAge)&&activeAge>=week){
+   await createPendingMessageEncryptionIdentity();
+   ring=await getMessageEncryptionKeyRing();
+  }
+  const contact=await getContact(peer);
+  const fields={};
+  if(ring.pending)fields.key_update={generation:Number(ring.pending.generation),key_id:ring.pending.key_id,public_key:ring.pending.public_key};
+  if(contact?.message_encryption_pending_key_id)fields.key_update_ack={generation:Number(contact.message_encryption_pending_generation),key_id:contact.message_encryption_pending_key_id};
+  return fields;
+ }
+ async processIncomingKeyRotation(peer,payload){
+  let switchedByAck=false;
+  if(payload?.key_update_ack&&typeof payload.key_update_ack.key_id==="string"&&Number.isSafeInteger(Number(payload.key_update_ack.generation))){
+   const ring=await getMessageEncryptionKeyRing();
+   if(ring.pending&&ring.pending.key_id===payload.key_update_ack.key_id&&Number(ring.pending.generation)===Number(payload.key_update_ack.generation)){
+    const contacts=await listContacts();
+    const requiredPeers=contacts.filter(item=>item.request_pending!==true&&item.message_encryption_key_id&&item.message_encryption_public_key).map(item=>item.user_id);
+    const allAcknowledged=await acknowledgePendingMessageEncryptionIdentity(ring.pending.key_id,ring.pending.generation,peer,requiredPeers);
+    if(allAcknowledged)switchedByAck=await activatePendingMessageEncryptionIdentity(ring.pending.key_id,ring.pending.generation);
+    else this.onDebug("[e2ee] подтверждение ключа получено; ждём подтверждений остальных сохранённых контактов");
+   }
+  }
+  if(payload?.key_update){
+   const accepted=await this.acceptPeerEncryptionKeyUpdate(peer,payload.key_update);
+   if(accepted)this.onDebug("[e2ee] получен новый ключ собеседника; подтверждение будет включено в следующее сообщение или сигнализацию звонка");
+   else this.onDebug("[e2ee] предложение нового ключа отклонено или уже обработано");
+  }
+  return switchedByAck;
+ }
  async recordConversationEvent(type,payload,direction,createdAt=Date.now()){
   const contactUserId=direction==="incoming"?payload.from:payload.to;
   if(!isUserId(contactUserId))return;
@@ -246,24 +279,7 @@ export class NtfySecureSignaling {
   }
   if(usedPeer.slot==="pending")await this.promotePendingPeerEncryptionKey(p.from,usedPeer.key_id);
 
-  let switchedByAck=false;
-  if(p.key_update_ack&&typeof p.key_update_ack.key_id==="string"&&Number.isSafeInteger(Number(p.key_update_ack.generation))){
-   const ring=await getMessageEncryptionKeyRing();
-   if(ring.pending&&ring.pending.key_id===p.key_update_ack.key_id&&Number(ring.pending.generation)===Number(p.key_update_ack.generation)){
-    const contacts=await listContacts();
-    const requiredPeers=contacts.filter(item=>item.request_pending!==true&&item.message_encryption_key_id&&item.message_encryption_public_key).map(item=>item.user_id);
-    const allAcknowledged=await acknowledgePendingMessageEncryptionIdentity(ring.pending.key_id,ring.pending.generation,p.from,requiredPeers);
-    if(allAcknowledged){
-     switchedByAck=await activatePendingMessageEncryptionIdentity(ring.pending.key_id,ring.pending.generation);
-     
-    }else this.onDebug("[e2ee] подтверждение ключа получено; ждём подтверждений остальных сохранённых контактов");
-   }
-  }
-  if(p.key_update){
-   const accepted=await this.acceptPeerEncryptionKeyUpdate(p.from,p.key_update);
-   if(accepted)this.onDebug("[e2ee] получен новый ключ собеседника; подтверждение будет включено в следующее сообщение");
-   else this.onDebug("[e2ee] предложение нового ключа отклонено или уже обработано");
-  }
+  const switchedByAck=await this.processIncomingKeyRotation(p.from,p);
   if(!switchedByUse&&!switchedByAck&&usedLocal.slot==="active"&&p.recipient_key_id===localRing.active.key_id&&localRing.previous){
    await markPreviousMessageEncryptionIdentityForDeletion(localRing.previous.key_id);
   }
@@ -331,6 +347,7 @@ export class NtfySecureSignaling {
    this.onDebug("[signaling] вызов отклонён: приглашение не активировано или отозвано");
    return;
   }
+  await this.processIncomingKeyRotation(p.from,p);
   if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
   await this.recordConversationEvent(m.type,p,"incoming",Number(n.time)*1000||Date.now());
   this.onPeerMessage(p.from);
@@ -395,7 +412,7 @@ export class NtfySecureSignaling {
  }
  async sendCallRequest(){
   if(this.closed||this.ready||this.rateLimited||this.role!=="B")return;
-  const request={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),identity:this.identity.publicJwk,expiresAt:Date.now()+45000};
+  const request={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),...(await this.outgoingKeyRotationFields(this.peer)),identity:this.identity.publicJwk,expiresAt:Date.now()+45000};
   this.outgoingRequest=request;
   await this.publish(this.peer,await this.signed("request",request));
   await this.recordConversationEvent("request",request,"outgoing",Date.now());
@@ -426,7 +443,7 @@ export class NtfySecureSignaling {
   if(this.closed||this.ready||this.rateLimited||this.role!=="A")return;
   if(!this.hello){
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-   this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),expiresAt:Date.now()+45000};
+   this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),...(await this.outgoingKeyRotationFields(this.peer)),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),expiresAt:Date.now()+45000};
   }
   this.helloAttempts++;
   this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
@@ -520,6 +537,7 @@ export class NtfySecureSignaling {
     this.onDebug("[signaling] запрос вызова отклонён: нет действующего разрешения по приглашению");
     return;
    }
+   await this.processIncomingKeyRotation(p.from,p);
    await this.recordConversationEvent("request",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);
    if(this.incomingSid!==p.sid){
@@ -545,6 +563,7 @@ export class NtfySecureSignaling {
     this.onDebug("[signaling] hello отклонён: нет действующего разрешения по приглашению");
     return;
    }
+   await this.processIncomingKeyRotation(p.from,p);
    await this.recordConversationEvent("hello",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);
    if(this.cancelledSids.has(p.sid))return;
@@ -556,7 +575,7 @@ export class NtfySecureSignaling {
    }
    this.hello=p;
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-   const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
+   const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),...(await this.outgoingKeyRotationFields(this.peer)),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
    this.answer=answer;
    // Derive first so the same answer/session remains available for bounded POST retries.
    await this.derive(p,answer);
@@ -572,6 +591,7 @@ export class NtfySecureSignaling {
     this.onDebug("[signaling] ответ вызова отклонён: нет действующего разрешения по приглашению");
     return;
    }
+   await this.processIncomingKeyRotation(p.from,p);
    await this.recordConversationEvent("answer",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);await this.derive(this.hello,p);return;
   }
