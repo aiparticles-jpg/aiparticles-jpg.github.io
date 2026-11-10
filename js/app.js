@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=34";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=35";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, getOrCreateMessageEncryptionIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=9";
 import { verifyContactPackage } from "./contact-exchange.js?v=9";
