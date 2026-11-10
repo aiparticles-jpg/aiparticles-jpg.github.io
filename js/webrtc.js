@@ -153,15 +153,18 @@ export class WebRtcAudio {
       return this.pc;
     }
     const stream = prewarm ? null : await this.prepareOutgoingStream();
+    // Prefetch one ICE candidate set only for the background-prepared caller PC.
+    // Normal call/answer connections keep the browser default (pool size 0).
+    if (prewarm) this.prewarmStartedAt = Date.now();
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: STUN_URL }],
-      iceTransportPolicy: "all"
+      iceTransportPolicy: "all",
+      iceCandidatePoolSize: prewarm ? 1 : 0
     });
     if (prewarm) {
       this.audioSender = pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
       this.ensureControlChannel(pc);
       this.prewarmed = true;
-      this.prewarmStartedAt = Date.now();
       this.signalEnabled = false;
     } else {
       for (const track of stream.getAudioTracks()) this.audioSender = pc.addTrack(track, stream);
@@ -515,7 +518,11 @@ export class WebRtcAudio {
     const pc = await this.createPeerConnection({ prewarm: true });
     if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
     await this.waitForIceGatheringComplete(pc);
-    this.onState("ICE предварительно подготовлен; кандидатов: " + this.pendingLocalCandidates.length);
+    const elapsedSeconds = this.prewarmStartedAt
+      ? ((Date.now() - this.prewarmStartedAt) / 1000).toFixed(1)
+      : "n/a";
+    this.onState("ICE предварительно подготовлен; кандидатов: " +
+      this.pendingLocalCandidates.length + "; время: " + elapsedSeconds + " с; pool=1");
     return this.pendingLocalCandidates.length;
   }
 
