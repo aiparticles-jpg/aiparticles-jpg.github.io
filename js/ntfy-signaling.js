@@ -16,7 +16,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
  async sign(payload){return b64u(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},this.identity.privateKey,enc.encode(stable(payload))))}
@@ -406,7 +406,7 @@ export class NtfySecureSignaling {
  }
  resetSession({preservePending=false}={}){
   this.active=false;this.answeringIncoming=false;this.clearHelloRetry();this.clearAnswerRetry();
-  this.hello=null;this.helloDirection=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;
+  this.hello=null;this.helloDirection=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;
   this.sendKey=null;this.recvKey=null;this.ready=false;
   if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.acceptedSids.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
  }
@@ -466,6 +466,7 @@ export class NtfySecureSignaling {
   await this.recordConversationEvent("answer",this.answer,"outgoing",Date.now());
   this.lastAnswerAt=Date.now();
   this.clearAnswerRetry();
+  if(!this.readyNotified){this.readyNotified=true;this.onReady();}
  }
  scheduleAnswerRetry(delay){
   this.clearAnswerRetry();
@@ -552,7 +553,7 @@ export class NtfySecureSignaling {
    if(!this.hello||this.helloDirection!=="outgoing"||p.sid!==this.hello.sid||p.helloEph!==this.hello.eph||p.helloNonce!==this.hello.nonce)return;
    if(!await this.verifyPeerEnvelope(m.type,p,m.sig,p.identity))throw Error("Подпись ответа, контакт или разрешение недействительны.");
    await this.recordConversationEvent("answer",p,"incoming",Number(n.time)*1000||Date.now());
-   this.onPeerMessage(this.peer);await this.derive(this.hello,p);return;
+   this.onPeerMessage(this.peer);await this.derive(this.hello,p);if(!this.readyNotified){this.readyNotified=true;this.onReady()}return;
   }
   if(m.type==="data"&&this.ready&&p.sid===this.session){
    const dir=p.from<p.to?"A-to-B":"B-to-A";
@@ -586,7 +587,6 @@ export class NtfySecureSignaling {
   const [ab,ba]=await Promise.all([mk("A-to-B"),mk("B-to-A")]);
   this.sendKey=this.role==="A"?ab:ba;this.recvKey=this.role==="A"?ba:ab;this.session=hello.sid;this.ready=true;this.clearHelloRetry();
   await this.assertPeerKey(remote);
-   this.onReady();
   }
  async sendSignal(payload){
   if(!this.ready)throw Error("Защищённый канал ещё не установлен.");
