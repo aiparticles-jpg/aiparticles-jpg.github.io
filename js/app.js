@@ -1,8 +1,8 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=35";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=36";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, signWithIdentity, getOrCreateMessageEncryptionIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=9";
-import { verifyContactPackage } from "./contact-exchange.js?v=9";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, getOrCreateMessageEncryptionIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=10";
+import { verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=10";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=5";
 import { sendPushEventToContact } from "./push-api.js?v=3";
 
@@ -163,7 +163,7 @@ function markContactRequestReceived(userId){
   updateReplyInviteStatus();
   updateCallButtons();
  }
- if(changed)debug("Получено корректно подписанное сообщение от контакта; обмен приглашениями подтверждён.");
+ if(changed)debug("Получено корректно аутентифицированное сообщение от контакта; обмен приглашениями подтверждён.");
 }
 function loadSentContactRequests(){
  try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_KEY)||"{}");return value&&typeof value==="object"&&!Array.isArray(value)?value:{}}
@@ -917,20 +917,16 @@ async function createContactInvitation({focusResult=true,expectedRevision=null}=
   const identity=await getCurrentSignalingIdentity();
   const encryptionIdentity=await getOrCreateMessageEncryptionIdentity();
   const unsigned={
-   version:1,
-   user_id:identity.user_id,
-   public_key:identity.public_key,
-   push_subscription_id:subscriptionId,
+   version:2,user_id:identity.user_id,push_subscription_id:subscriptionId,
    invitation_id:crypto.randomUUID(),
+   invitation_secret:toBase64UrlBytes(crypto.getRandomValues(new Uint8Array(32))),
    message_encryption_public_key:encryptionIdentity.public_key,
    message_encryption_key_id:encryptionIdentity.key_id,
-    message_encryption_generation:Number(encryptionIdentity.generation)||1,
+   message_encryption_generation:Number(encryptionIdentity.generation)||1,
    ...(displayName?{display_name:displayName}:{})
   };
-  await createIssuedInvitation({id:unsigned.invitation_id,created_at:unsigned.created_at,max_activations:1});
-  const canonical=JSON.stringify(unsigned);
-  const signature=await signWithIdentity(canonical);
-  const contactPackage={...unsigned,signature};
+  await createIssuedInvitation({id:unsigned.invitation_id,secret:unsigned.invitation_secret,created_at:Date.now(),max_activations:1});
+  const contactPackage=unsigned;
   const encoded=toBase64UrlBytes(new TextEncoder().encode(JSON.stringify(contactPackage)));
   const url=window.location.origin+window.location.pathname+"#contact="+encoded;
   if(profileRevision!==profileInviteRevision||displayName!==getProfileDisplayName()||
@@ -1045,17 +1041,16 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    }else{
     invitationId=crypto.randomUUID();
     createdAt=Date.now();
-    await createIssuedInvitation({id:invitationId,created_at:createdAt,max_activations:1});
+    var responseInvitationSecret=toBase64UrlBytes(crypto.getRandomValues(new Uint8Array(32)));
+    await createIssuedInvitation({id:invitationId,secret:responseInvitationSecret,created_at:createdAt,max_activations:1});
     // Persist the association before network I/O so an interrupted send can
     // still be retried later with this same invitation ID.
     rememberContactResponseInvitation(peer,invitationId,createdAt);
    }
    const encryptionIdentity=await getOrCreateMessageEncryptionIdentity();
-   const unsigned={version:1,user_id:identity.user_id,public_key:identity.public_key,push_subscription_id:subscriptionId,invitation_id:invitationId,message_encryption_public_key:encryptionIdentity.public_key,message_encryption_key_id:encryptionIdentity.key_id,message_encryption_generation:Number(encryptionIdentity.generation)||1,...(senderDisplayName?{display_name:senderDisplayName}:{})};
-   const contactPackage={...unsigned,signature:await signWithIdentity(JSON.stringify(unsigned))};
+   const contactPackage={version:2,user_id:identity.user_id,push_subscription_id:subscriptionId,invitation_id:invitationId,invitation_secret:responseInvitationSecret,message_encryption_public_key:encryptionIdentity.public_key,message_encryption_key_id:encryptionIdentity.key_id,message_encryption_generation:Number(encryptionIdentity.generation)||1,...(senderDisplayName?{display_name:senderDisplayName}:{})};
    const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER;
-   const payload={request_id:requestId,from:identity.user_id,to:peer,expires_at:expiresAt,invitation_id:contact.invitation_id,identity:identity.publicJwk,contact_package:contactPackage};
-   const message={v:1,type:"contact_request",payload,sig:await signWithIdentity({type:"contact_request",payload})};
+   const message=await createContactRequestEnvelope({contact,contactPackage,from:identity.user_id,to:peer,requestId,expiresAt});
    const topic=await getNtfyTopic(peer);
    const response=await fetch("https://ntfy.sh/"+topic,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(message),cache:"no-store"});
    if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
@@ -1064,6 +1059,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});
    if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
    markContactRequestSent(peer,invitationId,createdAt);
+   await updateContact(peer,{outbound_invitation_id:invitationId,outbound_invitation_secret:responseInvitationSecret});
    setContactReplyFailure(peer,false);
    updateCallButtons();
    try{
@@ -1122,7 +1118,9 @@ async function handleIncomingContactRequest(request){
    ...(existing?.request_received_at?{request_received_at:existing.request_received_at}:{request_received_at:receivedAt}),
    request_id:request.requestId,
    invitation_created_at:request.invitationCreatedAt,
-   authorized_by_invitation_id:request.invitationId
+   authorized_by_invitation_id:request.invitationId,
+   outbound_invitation_id:request.invitationId,
+   outbound_invitation_secret:request.outboundInvitationSecret
   });
   await refreshContactOptions(els.peer.value);
   debug(existing
