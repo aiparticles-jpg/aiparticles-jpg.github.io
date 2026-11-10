@@ -66,7 +66,7 @@ export class NtfySecureSignaling {
    if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
    const originalBody=JSON.stringify(msg),originalBytes=enc.encode(originalBody).byteLength,messages=[];
    if(msg.type==="data"&&originalBytes>3000){
-    if(!/^[\\x00-\\x7f]*$/.test(originalBody))throw Error("Нельзя безопасно фрагментировать не-ASCII data envelope.");
+    if([...originalBody].some(ch=>ch.charCodeAt(0)>127))throw Error("Нельзя безопасно фрагментировать не-ASCII data envelope.");
     const messageId=crypto.randomUUID(),chunkSize=2200,total=Math.ceil(originalBody.length/chunkSize);
     for(let index=0;index<total;index++)messages.push({v:3,type:"data_part",payload:{from:this.me,to,message_id:messageId,index,total,chunk:originalBody.slice(index*chunkSize,(index+1)*chunkSize)}});
     this.onDebug(`[ntfy] data envelope ${originalBytes} bytes split into ${total} parts; chunk=${chunkSize}; messageId=${messageId.slice(0,8)}`);
@@ -279,12 +279,7 @@ export class NtfySecureSignaling {
  async inspectIncoming(n){
   if(!n?.message||!n?.id)return;
   let m;try{m=JSON.parse(n.message)}catch{return;}
-  if(m.v===3&&m.type==="data_part"){
-   const assembled=this.acceptDataPart(m.payload);
-   if(assembled)await this.handle({data:JSON.stringify({...n,id:"assembled:"+m.payload.message_id,message:assembled})});
-   return;
-  }
-  if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
+if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){await this.inspectTextMessage(n,m);return;}
   if(m.v!==3||!m.payload)return;
   const p=m.payload;if(!isUserId(p.from)||p.from===this.me||p.to!==this.me)return;
@@ -447,7 +442,12 @@ export class NtfySecureSignaling {
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
   let m;try{m=JSON.parse(n.message)}catch{return;}
   if(m.type==="data")this.onDebug("[signaling] ntfy data envelope: v="+m.v+"; from="+String(m.payload?.from||"нет").slice(0,10)+"; expectedFrom="+this.peer.slice(0,10)+"; to="+String(m.payload?.to||"нет").slice(0,10)+"; expectedTo="+this.me.slice(0,10)+"; ntfyId="+String(n.id).slice(0,12));
-  if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
+  if(m.v===3&&m.type==="data_part"){
+    const assembled=this.acceptDataPart(m.payload);
+    if(assembled)await this.handle({data:JSON.stringify({...n,id:"assembled:"+m.payload.message_id,message:assembled})});
+    return;
+   }
+   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){if(m.v===3&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
   if(m.v!==3||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me){
    if(m.type==="data")this.onDebug("[signaling] data отклонено до AES-GCM: неверная версия, payload, from или to.");
