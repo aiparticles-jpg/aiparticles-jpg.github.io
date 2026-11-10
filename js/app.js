@@ -648,7 +648,7 @@ function scheduleIcePrewarm(reason="input",force=false){
   const names=me+"|"+peer;
   const eligible=NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&
    me!==peer&&me<peer&&navigator.onLine;
-  if(state.connecting||state.secure?.active||state.callStarted)return;
+  if(state.connecting||state.incomingCall||state.answeringCall||state.outgoingCall||state.peerPresent||state.secure?.active||state.callStarted)return;
   if(!eligible){
    if(state.webrtc?.prewarmed){
     const old=state.webrtc;state.webrtc=null;state.prewarmNames=null;
@@ -671,7 +671,7 @@ function scheduleIcePrewarm(reason="input",force=false){
     debug("Предварительная подготовка ICE начата (причина: "+reason+"; без микрофона и без ntfy).");
     const count=await candidate.prepareIce();
     const latestMe=state.me,latestPeer=els.peer.value;
-    const stillEligible=!state.secure?.active&&!state.callStarted&&navigator.onLine&&
+    const stillEligible=!state.connecting&&!state.incomingCall&&!state.answeringCall&&!state.outgoingCall&&!state.peerPresent&&!state.secure?.active&&!state.callStarted&&navigator.onLine&&
      latestMe+"|"+latestPeer===names&&latestMe<latestPeer;
     if(!stillEligible){
      await candidate.close({stopTracks:true});
@@ -749,7 +749,7 @@ async function connect(){
  clearError();setBusy(true);
  try{
   const me=state.me;
-  if(state.prewarmPromise&&(state.prewarmTargetNames===me+"|"+peer||state.prewarmNames===me+"|"+peer)){try{await state.prewarmPromise}catch{}}
+  // Do not wait for a background ICE gather before starting call signaling.
   const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer);
   if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
   state.callStarted=false;state.peerPresent=false;
