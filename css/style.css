@@ -617,3 +617,7 @@ body.contact-screen-open{overflow:hidden}
  .call-screen-content{padding:18px 12px}
  .call-screen-stage{gap:14px}
 }
+
+
+/* Diagnostics must appear above the dedicated call screen when opened during a call. */
+#diagnostic-screen{z-index:230}
