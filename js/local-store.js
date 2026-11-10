@@ -1,5 +1,5 @@
 const DB_NAME = "voicelink-local";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const HISTORY_LIMIT = 10;
 
 let databasePromise;
@@ -51,15 +51,16 @@ function openDatabase() {
 }
 
 
-export async function createIssuedInvitation({ id, created_at = Date.now(), max_activations = 1 }) {
+export async function createIssuedInvitation({ id, secret, created_at = Date.now(), max_activations = 1 }) {
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id) ||
+      typeof secret !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(secret) ||
       !Number.isFinite(Number(created_at)) || !Number.isInteger(max_activations) || max_activations < 1) {
-    throw new TypeError("A valid invitation ID, creation time, and activation limit are required.");
+    throw new TypeError("A valid invitation ID, 256-bit secret, creation time, and activation limit are required.");
   }
   const db = await openDatabase();
   const tx = db.transaction("invitations", "readwrite");
   const done = transactionDone(tx);
-  tx.objectStore("invitations").add({ id, created_at: Number(created_at), max_activations, activations: [], revoked: false });
+  tx.objectStore("invitations").add({ id, secret, created_at: Number(created_at), max_activations, activations: [], revoked: false });
   await done;
 }
 
@@ -171,219 +172,185 @@ function toHex(buffer) {
   return Array.from(new Uint8Array(buffer), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function getOrCreateIdentity() {
-  const db = await openDatabase();
+// TEMPORARY COMPATIBILITY MIGRATION (remove only after legacy installations are no longer supported).
+// Older installations stored one ECDSA public identity key per participant.
+// For each saved legacy contact, both devices derive the same shared secret
+// and the same pair invitation ID from the two exchanged public identities.
+const LEGACY_SHARED_SECRET_MIGRATION = "legacy_public_key_shared_secret_v3";
 
-  {
-    const tx = db.transaction("meta", "readonly");
-    const done = transactionDone(tx);
-    const record = await requestValue(tx.objectStore("meta").get("identity"));
-    await done;
-    if (record?.value?.privateKey && record.value.user_id && record.value.public_key) {
-      return record.value;
+function decodeLegacyPublicKey(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error("Legacy public key is missing or malformed.");
+  }
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(base64 + "=".repeat((4 - value.length % 4) % 4));
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+async function deriveLegacySharedSecret(identity, contact) {
+  if (!identity || !contact ||
+      !/^[a-f0-9]{64}$/.test(identity.user_id || "") ||
+      !/^[a-f0-9]{64}$/.test(contact.user_id || "")) {
+    throw new Error("Legacy participant IDs are invalid.");
+  }
+  const localBytes = decodeLegacyPublicKey(identity.public_key);
+  const peerBytes = decodeLegacyPublicKey(contact.public_key);
+  if (toHex(await crypto.subtle.digest("SHA-256", localBytes)) !== identity.user_id ||
+      toHex(await crypto.subtle.digest("SHA-256", peerBytes)) !== contact.user_id) {
+    throw new Error("Legacy public key fingerprint does not match user_id.");
+  }
+  const pair = [
+    { user_id: identity.user_id, public_key: identity.public_key },
+    { user_id: contact.user_id, public_key: contact.public_key }
+  ].sort((a, b) => a.user_id < b.user_id ? -1 : a.user_id > b.user_id ? 1 : 0);
+  const canonical = "voicelink-legacy-pair-secret-v1|" +
+    pair.map(item => item.user_id + ":" + item.public_key).join("|");
+  return toBase64Url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical)));
+}
+
+// The oldest contacts predate invitation IDs. Use one symmetric pair ID,
+// rather than depending on which side originally created an invitation.
+async function deriveLegacyInvitationId(firstUserId, secondUserId) {
+  const pair = [firstUserId, secondUserId].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  const input = "voicelink-legacy-invitation-id-v1|" + pair.join("|");
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input)));
+  hash[6] = (hash[6] & 0x0f) | 0x50;
+  hash[8] = (hash[8] & 0x3f) | 0x80;
+  const hex = toHex(hash.slice(0, 16));
+  return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) +
+    "-" + hex.slice(16, 20) + "-" + hex.slice(20, 32);
+}
+
+async function migrateLegacyPublicKeyContacts(db, storedIdentity, storedContacts) {
+  let identity = storedIdentity;
+  if (!identity?.user_id || !/^[a-f0-9]{64}$/.test(identity.user_id)) {
+    const random = crypto.getRandomValues(new Uint8Array(32));
+    identity = {
+      version: 3,
+      user_id: toHex(await crypto.subtle.digest("SHA-256", random)),
+      created_at: new Date().toISOString()
+    };
+    random.fill(0);
+  } else {
+    // Keep the existing user_id and ECDSA identity material. Changing user_id
+    // would change the ntfy topic and disconnect every existing contact.
+    identity = { ...identity, version: 3 };
+  }
+
+  const migratedContacts = [];
+  const migratedInvitations = [];
+  for (const contact of Array.isArray(storedContacts) ? storedContacts : []) {
+    // New v3 contacts already carry a random invitation secret and have no
+    // legacy ECDSA public_key field. Do not alter those records.
+    if (typeof contact.public_key !== "string") continue;
+    try {
+      const secret = await deriveLegacySharedSecret(identity, contact);
+      const invitationId = await deriveLegacyInvitationId(identity.user_id, contact.user_id);
+      const migrated = {
+        ...contact,
+        invitation_id: invitationId,
+        invitation_secret: secret,
+        shared_secret_created_at: Number(contact.shared_secret_created_at) || Date.now()
+      };
+      migratedContacts.push(migrated);
+
+      // Each device creates the same local grant for this trusted pair.
+      // This also upgrades contacts from versions that had no invitations store.
+      migratedInvitations.push({
+        id: invitationId,
+        secret,
+        created_at: Date.now(),
+        max_activations: 1,
+        activations: [{
+          user_id: contact.user_id,
+          request_id: crypto.randomUUID(),
+          activated_at: Date.now(),
+          status: "active"
+        }],
+        revoked: false
+      });
+    } catch {
+      // Keep incomplete contacts and their history intact. They can be paired
+      // again by importing a fresh invitation; never invent a secret for them.
     }
   }
 
-  if (!globalThis.crypto?.subtle) {
-    throw new Error("This browser does not support the Web Crypto API.");
-  }
-
-  const keyPair = await crypto.subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["sign", "verify"]
-  );
-  const publicBytes = await crypto.subtle.exportKey("raw", keyPair.publicKey);
-  const fingerprint = await crypto.subtle.digest("SHA-256", publicBytes);
-  const identity = {
-    user_id: toHex(fingerprint),
-    public_key: toBase64Url(publicBytes),
-    privateKey: keyPair.privateKey,
-    created_at: new Date().toISOString()
-  };
-
-  // Re-check in a read/write transaction so simultaneous first-run tabs
-  // do not overwrite an identity that another tab has just saved.
-  const tx = db.transaction("meta", "readwrite");
+  const tx = db.transaction(["meta", "contacts", "invitations"], "readwrite");
   const done = transactionDone(tx);
-  const store = tx.objectStore("meta");
-  const existing = await requestValue(store.get("identity"));
-  if (existing?.value?.privateKey && existing.value.user_id && existing.value.public_key) {
-    await done;
-    return existing.value;
+  tx.objectStore("meta").put({ key: "identity", value: identity });
+  // The saved pre-v3 invitation URL has an obsolete package format; a fresh
+  // v3 invitation is generated when push permission is available.
+  tx.objectStore("meta").delete("my_invitation");
+  for (const contact of migratedContacts) tx.objectStore("contacts").put(contact);
+
+  const invitationStore = tx.objectStore("invitations");
+  for (const invitation of migratedInvitations) {
+    const request = invitationStore.get(invitation.id);
+    request.onsuccess = () => {
+      const existing = request.result;
+      if (existing?.revoked) return;
+      const activations = Array.isArray(existing?.activations) ? [...existing.activations] : [];
+      if (!activations.some(item => item.user_id === invitation.activations[0].user_id)) {
+        activations.push(invitation.activations[0]);
+      }
+      invitationStore.put({
+        ...existing,
+        ...invitation,
+        created_at: Number(existing?.created_at) || invitation.created_at,
+        activations
+      });
+    };
   }
-  store.put({ key: "identity", value: identity });
+  tx.objectStore("meta").put({
+    key: LEGACY_SHARED_SECRET_MIGRATION,
+    value: {
+      version: 3,
+      completed_at: new Date().toISOString(),
+      migrated_contacts: migratedContacts.length,
+      migrated_invitations: migratedInvitations.length
+    }
+  });
   await done;
   return identity;
 }
 
-export async function getOrCreateMessageEncryptionIdentity() {
-  const db = await openDatabase();
-  const read = db.transaction("meta", "readonly");
-  const readDone = transactionDone(read);
-  const existing = await requestValue(read.objectStore("meta").get("message_encryption_identity"));
-  await readDone;
-  if (existing?.value?.privateKey && existing.value.public_key && existing.value.key_id) return existing.value;
-  if (!globalThis.crypto?.subtle) throw new Error("Web Crypto API is required.");
-  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
-  const publicBytes = await crypto.subtle.exportKey("raw", pair.publicKey);
-  const privateBytes = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
-  const privateKey = await crypto.subtle.importKey("pkcs8", privateBytes, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
-  new Uint8Array(privateBytes).fill(0);
-  const value = { privateKey, public_key: toBase64Url(publicBytes), key_id: toHex(await crypto.subtle.digest("SHA-256", publicBytes)), created_at: new Date().toISOString() };
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const store = tx.objectStore("meta");
-  const current = await requestValue(store.get("message_encryption_identity"));
-  if (current?.value?.privateKey) { await done; return current.value; }
-  store.put({ key: "message_encryption_identity", value });
-  await done;
-  return value;
-}
-
-
-export async function getMessageEncryptionKeyRing() {
-  const fallback = await getOrCreateMessageEncryptionIdentity();
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readonly");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const [activeRecord, pending, previous] = await Promise.all([
-    requestValue(meta.get("message_encryption_identity")),
-    requestValue(meta.get("message_encryption_pending_identity")),
-    requestValue(meta.get("message_encryption_previous_identity"))
-  ]);
-  await done;
-  const active = activeRecord?.value || fallback;
-  let previousValue = previous?.value || null;
-  if (previousValue?.peer_switched_at && Date.now() - Number(previousValue.peer_switched_at) >= 12 * 60 * 60 * 1000) {
-    await clearPreviousMessageEncryptionIdentity(previousValue.key_id);
-    previousValue = null;
+export async function getOrCreateIdentity() {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("This browser does not support the Web Crypto API.");
   }
-  return { active: { ...active, generation: Number(active.generation) || 1 }, pending: pending?.value || null, previous: previousValue };
-}
-
-export async function createPendingMessageEncryptionIdentity() {
-  const ring = await getMessageEncryptionKeyRing();
-  if (ring.pending) return ring.pending;
-  if (ring.previous) return null;
-  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
-  const publicBytes = await crypto.subtle.exportKey("raw", pair.publicKey);
-  const privateBytes = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
-  const privateKey = await crypto.subtle.importKey("pkcs8", privateBytes, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
-  new Uint8Array(privateBytes).fill(0);
-  const value = { privateKey, public_key: toBase64Url(publicBytes), key_id: toHex(await crypto.subtle.digest("SHA-256", publicBytes)), generation: ring.active.generation + 1, created_at: new Date().toISOString() };
   const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
+  const tx = db.transaction(["meta", "contacts", "invitations"], "readonly");
   const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const [activeRecord, pendingRecord, previousRecord] = await Promise.all([
-    requestValue(meta.get("message_encryption_identity")),
-    requestValue(meta.get("message_encryption_pending_identity")),
-    requestValue(meta.get("message_encryption_previous_identity"))
+  const [identityRecord, migrationRecord, contacts] = await Promise.all([
+    requestValue(tx.objectStore("meta").get("identity")),
+    requestValue(tx.objectStore("meta").get(LEGACY_SHARED_SECRET_MIGRATION)),
+    requestValue(tx.objectStore("contacts").getAll())
   ]);
-  if (pendingRecord?.value) { await done; return pendingRecord.value; }
-  if (previousRecord?.value || activeRecord?.value?.key_id !== ring.active.key_id) { await done; return null; }
-  meta.put({ key: "message_encryption_pending_identity", value });
   await done;
-  return value;
-}
 
-export async function activatePendingMessageEncryptionIdentity(keyId, generation) {
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const [activeRecord, pendingRecord, previousRecord] = await Promise.all([
-    requestValue(meta.get("message_encryption_identity")),
-    requestValue(meta.get("message_encryption_pending_identity")),
-    requestValue(meta.get("message_encryption_previous_identity"))
-  ]);
-  const active = activeRecord?.value, pending = pendingRecord?.value;
-  if (!active || !pending || pending.key_id !== keyId || Number(pending.generation) !== Number(generation) || previousRecord?.value) { await done; return false; }
-  meta.put({ key: "message_encryption_previous_identity", value: { ...active, generation: Number(active.generation) || 1 } });
-  meta.put({ key: "message_encryption_identity", value: { ...pending, activated_at: new Date().toISOString() } });
-  meta.delete("message_encryption_pending_identity");
-  await done;
-  return true;
-}
-
-
-export async function acknowledgePendingMessageEncryptionIdentity(keyId, generation, peerId, requiredPeerIds) {
-  if (typeof keyId !== "string" || typeof peerId !== "string" || !Array.isArray(requiredPeerIds)) return false;
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const record = await requestValue(meta.get("message_encryption_pending_identity"));
-  const pending = record?.value;
-  if (!pending || pending.key_id !== keyId || Number(pending.generation) !== Number(generation)) { await done; return false; }
-  const acknowledged = new Set(Array.isArray(pending.acknowledged_peers) ? pending.acknowledged_peers : []);
-  acknowledged.add(peerId);
-  meta.put({ key: "message_encryption_pending_identity", value: { ...pending, acknowledged_peers: [...acknowledged] } });
-  await done;
-  const required = [...new Set(requiredPeerIds.filter(id => typeof id === "string" && id))];
-  return required.includes(peerId) && required.every(id => acknowledged.has(id));
-}
-
-
-export async function markPreviousMessageEncryptionIdentityForDeletion(keyId) {
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const record = await requestValue(meta.get("message_encryption_previous_identity"));
-  if (record?.value?.key_id === keyId && !record.value.peer_switched_at) {
-    meta.put({ key: "message_encryption_previous_identity", value: { ...record.value, peer_switched_at: Date.now() } });
+  if (identityRecord?.value?.version === 3 &&
+      migrationRecord?.value?.version === 3 &&
+      identityRecord.value.user_id) {
+    return identityRecord.value;
   }
-  await done;
-  return record?.value?.key_id === keyId;
-}
-
-export async function clearPreviousMessageEncryptionIdentity(keyId) {
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const record = await requestValue(meta.get("message_encryption_previous_identity"));
-  if (record?.value?.key_id === keyId) meta.delete("message_encryption_previous_identity");
-  await done;
-  return record?.value?.key_id === keyId;
-}
-
-export async function signWithIdentity(payload) {
-  const identity = await getOrCreateIdentity();
-  const data = new TextEncoder().encode(
-    typeof payload === "string" ? payload : JSON.stringify(payload)
+  return migrateLegacyPublicKeyContacts(
+    db,
+    identityRecord?.value || null,
+    contacts
   );
-  const signature = await crypto.subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
-    identity.privateKey,
-    data
-  );
-  return toBase64Url(signature);
 }
 
 export async function saveContact(contact) {
   if (!contact || typeof contact !== "object" ||
-      !contact.user_id || !contact.public_key || !contact.push_subscription_id ||
-      !contact.name) {
-    throw new TypeError("A contact requires a local name, user_id, public_key, and push_subscription_id.");
-  }
-
-  const record = {
-    ...contact,
-    name: String(contact.name).trim(),
-    updated_at: new Date().toISOString()
-  };
-  if (!record.name) throw new TypeError("Contact name cannot be empty.");
-
-  const db = await openDatabase();
-  const tx = db.transaction("contacts", "readwrite");
-  const done = transactionDone(tx);
-  tx.objectStore("contacts").put(record);
-  await done;
-  return record;
+      typeof contact.user_id !== "string" || !/^[a-f0-9]{64}$/.test(contact.user_id) ||
+      typeof contact.invitation_id !== "string" || !/^[0-9a-f-]{36}$/i.test(contact.invitation_id) ||
+      typeof contact.invitation_secret !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(contact.invitation_secret) ||
+      typeof contact.push_subscription_id !== "string" || !contact.push_subscription_id.trim() || !contact.name)
+    throw new TypeError("A contact requires a local name, shared 256-bit secret, invitation ID, and push subscription ID.");
+  const record={...contact,name:String(contact.name).trim(),updated_at:new Date().toISOString()};
+  if(!record.name)throw new TypeError("Contact name cannot be empty.");
+  const db=await openDatabase(),tx=db.transaction("contacts","readwrite"),done=transactionDone(tx);
+  tx.objectStore("contacts").put(record);await done;return record;
 }
 
 export async function listContacts() {
