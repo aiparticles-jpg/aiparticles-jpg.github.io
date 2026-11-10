@@ -15,7 +15,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();this.dataAssemblies=new Map();
  }
  static validUserId(s){return isUserId(s)}
  async deriveEnvelopeKey(secret,from,to){
@@ -64,37 +64,34 @@ export class NtfySecureSignaling {
  async publish(to,msg){
   const task=async()=>{
    if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
-   const wait=Math.max(0,this.lastPublishAt+1100-Date.now());
-   if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
-   const body=JSON.stringify(msg);
-   const bodyBytes=enc.encode(body).byteLength;
-   if(msg.type==="data"){
-    const cipherChars=typeof msg.auth?.ciphertext==="string"?msg.auth.ciphertext.length:0;
-    this.onDebug(`[ntfy] data POST body size=${bodyBytes} bytes; AES-GCM ciphertext(base64url)=${cipherChars} chars; limit=4096 bytes`);
-    if(bodyBytes>4096)this.onDebug(`[ntfy] WARNING: data POST body exceeds 4096-byte message limit by ${bodyBytes-4096} bytes; ntfy may deliver it as an attachment, not a text message.`);
+   const originalBody=JSON.stringify(msg),originalBytes=enc.encode(originalBody).byteLength,messages=[];
+   if(msg.type==="data"&&originalBytes>3000){
+    if([...originalBody].some(ch=>ch.charCodeAt(0)>127))throw Error("Нельзя безопасно фрагментировать не-ASCII data envelope.");
+    const messageId=crypto.randomUUID(),chunkSize=2200,total=Math.ceil(originalBody.length/chunkSize);
+    if(total>16)throw Error("Зашифрованное data-сообщение слишком велико для безопасной отправки через ntfy.");
+    for(let index=0;index<total;index++)messages.push({v:3,type:"data_part",payload:{from:this.me,to,message_id:messageId,index,total,chunk:originalBody.slice(index*chunkSize,(index+1)*chunkSize)}});
+    this.onDebug(`[ntfy] data envelope ${originalBytes} bytes split into ${total} parts; chunk=${chunkSize}; messageId=${messageId.slice(0,8)}`);
+   }else messages.push(msg);
+   for(let i=0;i<messages.length;i++){
+    if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
+    const current=messages[i],body=JSON.stringify(current),bodyBytes=enc.encode(body).byteLength,wait=Math.max(0,this.lastPublishAt+1100-Date.now());
+    if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+    if(current.type==="data")this.onDebug(`[ntfy] data POST body size=${bodyBytes} bytes; AES-GCM ciphertext(base64url)=${current.auth?.ciphertext?.length||0} chars; limit=4096 bytes`);
+    if(current.type==="data_part")this.onDebug(`[ntfy] data part POST ${i+1}/${messages.length}; body=${bodyBytes} bytes; messageId=${current.payload.message_id.slice(0,8)}; part=${current.payload.index+1}/${current.payload.total}`);
+    this.onDebug(`[ntfy] POST → ${current.type} (одна попытка)`);
+    let response;
+    try{response=await fetch(BASE+await getNtfyTopic(to),{method:"POST",headers:{"Content-Type":"application/json"},body,cache:"no-store"});}
+    catch(error){this.lastPublishAt=Date.now();const failure=Error("Сетевая ошибка при POST в ntfy ("+current.type+"): "+(error.message||String(error)));failure.retryable=true;throw failure;}
+    this.onDebug(`[ntfy] POST ← ${response.status} (${current.type})`);this.lastPublishAt=Date.now();
+    if(!response.ok){
+     const retryAfter=response.headers.get("Retry-After");
+     if(response.status===429){this.rateLimited=true;this.clearHelloRetry();this.clearAnswerRetry();}
+     const failure=Error("ntfy HTTP "+response.status+(response.status===429?"; сервер ограничил частоту запросов"+(retryAfter?"; Retry-After: "+retryAfter:""):""));
+     failure.retryable=response.status===408||response.status>=500;throw failure;
+    }
    }
-   this.onDebug(`[ntfy] POST → ${msg.type} (одна попытка)`);
-   let r;
-   try{
-    r=await fetch(BASE+await getNtfyTopic(to),{method:"POST",headers:{"Content-Type":"application/json"},body,cache:"no-store"});
-   }catch(error){
-    this.lastPublishAt=Date.now();
-    const failure=Error("Сетевая ошибка при POST в ntfy ("+msg.type+"): "+(error.message||String(error)));
-    failure.retryable=true;
-    throw failure;
-   }
-   this.onDebug(`[ntfy] POST ← ${r.status} (${msg.type})`);
-   this.lastPublishAt=Date.now();
-   if(r.ok)return;
-   const retryAfter=r.headers.get("Retry-After");
-   if(r.status===429){this.rateLimited=true;this.clearHelloRetry();this.clearAnswerRetry();}
-   const failure=Error("ntfy HTTP "+r.status+(r.status===429?"; сервер ограничил частоту запросов"+(retryAfter?"; Retry-After: "+retryAfter:""):""));
-   failure.retryable=r.status===408||r.status>=500;
-   throw failure;
   };
-  const result=this.publishQueue.then(task,task);
-  this.publishQueue=result.catch(()=>{});
-  return result;
+  const result=this.publishQueue.then(task,task);this.publishQueue=result.catch(()=>{});return result;
  }
  async beginKeyRotation(peer,contact){
   if(contact.rotation_id&&contact.rotation_private_key)return contact;
@@ -336,7 +333,7 @@ export class NtfySecureSignaling {
   for(const n of this.pendingEvents)await this.inspectIncoming(n);
  }
  resetSession({preservePending=false}={}){
-  this.active=false;this.answeringIncoming=false;this.clearHelloRetry();this.clearAnswerRetry();
+  this.active=false;this.answeringIncoming=false;this.clearHelloRetry();this.clearAnswerRetry();this.dataAssemblies.clear();
   this.hello=null;this.helloDirection=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.incomingHello=null;
   if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.acceptedSids.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
  }
@@ -413,6 +410,28 @@ export class NtfySecureSignaling {
   this.messageQueue=task.catch(error=>this.onError(error));
   return this.messageQueue;
  }
+ acceptDataPart(payload){
+  const now=Date.now();
+  for(const [key,value] of this.dataAssemblies)if(now-value.createdAt>120000)this.dataAssemblies.delete(key);
+  const validId=value=>typeof value==="string"&&/^[0-9a-f-]{36}$/i.test(value);
+  if(!payload||payload.from!==this.peer||payload.to!==this.me||!validId(payload.message_id)||!Number.isInteger(payload.index)||!Number.isInteger(payload.total)||payload.total<2||payload.total>16||payload.index<0||payload.index>=payload.total||typeof payload.chunk!=="string"||payload.chunk.length<1||payload.chunk.length>2200){
+   this.onDebug("[ntfy] data part отклонён: некорректные метаданные или размер.");return null;
+  }
+  const key=payload.from+":"+payload.message_id;let entry=this.dataAssemblies.get(key);
+  if(!entry){if(this.dataAssemblies.size>=8)this.dataAssemblies.delete(this.dataAssemblies.keys().next().value);entry={createdAt:now,total:payload.total,parts:new Map(),size:0};this.dataAssemblies.set(key,entry);}
+  if(entry.total!==payload.total){this.dataAssemblies.delete(key);this.onDebug("[ntfy] сборка data отменена: totalParts не совпадает.");return null;}
+  const previous=entry.parts.get(payload.index);
+  if(previous!==undefined){if(previous!==payload.chunk){this.dataAssemblies.delete(key);this.onDebug("[ntfy] сборка data отменена: повторный фрагмент содержит другие данные.");}return null;}
+  entry.parts.set(payload.index,payload.chunk);entry.size+=payload.chunk.length;
+  if(entry.size>40000){this.dataAssemblies.delete(key);this.onDebug("[ntfy] сборка data отменена: превышен максимальный размер.");return null;}
+  this.onDebug(`[ntfy] data part получен: ${entry.parts.size}/${entry.total}; messageId=${payload.message_id.slice(0,8)}; index=${payload.index+1}`);
+  if(entry.parts.size!==entry.total)return null;
+  let body="";for(let index=0;index<entry.total;index++){const part=entry.parts.get(index);if(part===undefined)return null;body+=part;}
+  this.dataAssemblies.delete(key);
+  try{const envelope=JSON.parse(body);if(envelope?.v!==3||envelope?.type!=="data"||envelope?.payload?.from!==this.peer||envelope?.payload?.to!==this.me||typeof envelope?.auth?.ciphertext!=="string")throw Error("invalid envelope");}
+  catch{this.onDebug("[ntfy] собранные data-фрагменты отклонены: исходный конверт некорректен.");return null;}
+  this.onDebug(`[ntfy] data envelope собран полностью: ${entry.total} частей, ${entry.size} символов; messageId=${payload.message_id.slice(0,8)}`);return body;
+ }
  async handle(event){
   if(!this.active){
    let q;try{q=JSON.parse(event.data)}catch{return;}
@@ -424,7 +443,12 @@ export class NtfySecureSignaling {
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
   let m;try{m=JSON.parse(n.message)}catch{return;}
   if(m.type==="data")this.onDebug("[signaling] ntfy data envelope: v="+m.v+"; from="+String(m.payload?.from||"нет").slice(0,10)+"; expectedFrom="+this.peer.slice(0,10)+"; to="+String(m.payload?.to||"нет").slice(0,10)+"; expectedTo="+this.me.slice(0,10)+"; ntfyId="+String(n.id).slice(0,12));
-  if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
+  if(m.v===3&&m.type==="data_part"){
+    const assembled=this.acceptDataPart(m.payload);
+    if(assembled)await this.handle({data:JSON.stringify({...n,id:"assembled:"+m.payload.message_id,message:assembled})});
+    return;
+   }
+   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){if(m.v===3&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
   if(m.v!==3||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me){
    if(m.type==="data")this.onDebug("[signaling] data отклонено до AES-GCM: неверная версия, payload, from или to.");
