@@ -1029,11 +1029,12 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    const subscriptionId=await enableOneSignalPush();
    const identity=await getCurrentSignalingIdentity();
    if(!contact.invitation_id)throw Error("У сохранённого контакта старое приглашение без идентификатора. Попросите его прислать новую ссылку и импортируйте её заново.");
-   let invitationId,createdAt;
+   let invitationId,createdAt,responseInvitationSecret;
    if(options.reuseInvitation){
     const existingInvitation=options.reuseInvitation;
     invitationId=existingInvitation.id;
     createdAt=Number(existingInvitation.created_at);
+    responseInvitationSecret=existingInvitation.secret;
     if(!invitationId||existingInvitation.revoked||
        (Array.isArray(existingInvitation.activations)&&existingInvitation.activations.some(item=>item.user_id!==peer))){
      throw Error("Ранее выданное ответное приглашение нельзя безопасно использовать повторно. Ничего нового не создано.");
@@ -1041,7 +1042,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    }else{
     invitationId=crypto.randomUUID();
     createdAt=Date.now();
-    var responseInvitationSecret=toBase64UrlBytes(crypto.getRandomValues(new Uint8Array(32)));
+    responseInvitationSecret=toBase64UrlBytes(crypto.getRandomValues(new Uint8Array(32)));
     await createIssuedInvitation({id:invitationId,secret:responseInvitationSecret,created_at:createdAt,max_activations:1});
     // Persist the association before network I/O so an interrupted send can
     // still be retried later with this same invitation ID.
