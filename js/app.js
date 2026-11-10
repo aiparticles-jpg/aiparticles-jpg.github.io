@@ -2,7 +2,7 @@ import { WebRtcAudio } from "./webrtc.js?v=17";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=37";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=12";
-import { verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=11";
+import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=12";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=5";
 import { sendPushEventToContact } from "./push-api.js?v=3";
 
@@ -916,7 +916,7 @@ async function createContactInvitation({focusResult=true,expectedRevision=null}=
   const subscriptionId=await enableOneSignalPush();
   const identity=await getCurrentSignalingIdentity();
   const unsigned={
-   version:3,user_id:identity.user_id,push_subscription_id:subscriptionId,
+   version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,push_subscription_id:subscriptionId,
    invitation_id:crypto.randomUUID(),
    invitation_secret:toBase64UrlBytes(crypto.getRandomValues(new Uint8Array(32))),
    shared_secret_created_at:Date.now(),
@@ -1017,7 +1017,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
  try{
   const contact=await getContact(peer);if(!contact?.push_subscription_id||!contact?.invitation_secret||!contact?.invitation_id)throw Error("У контакта отсутствуют данные приглашения. Попросите его прислать новую ссылку.");
   const subscriptionId=await enableOneSignalPush(),identity=await getCurrentSignalingIdentity(),invitationId=contact.invitation_id,createdAt=Number(contact.shared_secret_created_at)||Date.now();
-  const pack={version:3,user_id:identity.user_id,push_subscription_id:subscriptionId,invitation_id:invitationId,invitation_secret:contact.invitation_secret,shared_secret_created_at:createdAt,...(senderDisplayName?{display_name:senderDisplayName}:{})};
+  const pack={version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,push_subscription_id:subscriptionId,invitation_id:invitationId,invitation_secret:contact.invitation_secret,shared_secret_created_at:createdAt,...(senderDisplayName?{display_name:senderDisplayName}:{})};
   const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER,msg=await createContactRequestEnvelope({contact,contactPackage:pack,from:identity.user_id,to:peer,requestId,expiresAt});
   const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
@@ -1199,7 +1199,7 @@ async function importContactFromInput(){
   }
  }catch(error){
   showError(error.message||String(error));
-  setInlineStatus(els.qrStatus,"Не удалось импортировать контакт.",true);
+  setInlineStatus(els.qrStatus,error.message||"Не удалось импортировать контакт.",true);
  }finally{importingContact=false;updateImportContactButton()}
 }
 async function stopQrScan(){
@@ -1763,7 +1763,18 @@ async function initializeApp(){
    }
   }
   const fragment=new URLSearchParams(window.location.hash.slice(1));
-  if(fragment.has("contact")){els.contactPackage.value=window.location.hash;updatePasteContactButton();suggestContactNameFromInvitation(window.location.hash);openAddContactScreen(false,{preserveInput:true});els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта и проверьте пакет.";}
+  if(fragment.has("contact")){
+    els.contactPackage.value=window.location.hash;
+    updatePasteContactButton();
+    suggestContactNameFromInvitation(window.location.hash);
+    openAddContactScreen(false,{preserveInput:true});
+    try{
+     await verifyContactPackage(window.location.hash);
+     els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта.";
+    }catch(invitationError){
+     setInlineStatus(els.qrStatus,invitationError.message||"Не удалось проверить версию приглашения.",true);
+    }
+   }
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
