@@ -68,6 +68,7 @@ export class NtfySecureSignaling {
    if(msg.type==="data"&&originalBytes>3000){
     if([...originalBody].some(ch=>ch.charCodeAt(0)>127))throw Error("Нельзя безопасно фрагментировать не-ASCII data envelope.");
     const messageId=crypto.randomUUID(),chunkSize=2200,total=Math.ceil(originalBody.length/chunkSize);
+    if(total>16)throw Error("Зашифрованное data-сообщение слишком велико для безопасной отправки через ntfy.");
     for(let index=0;index<total;index++)messages.push({v:3,type:"data_part",payload:{from:this.me,to,message_id:messageId,index,total,chunk:originalBody.slice(index*chunkSize,(index+1)*chunkSize)}});
     this.onDebug(`[ntfy] data envelope ${originalBytes} bytes split into ${total} parts; chunk=${chunkSize}; messageId=${messageId.slice(0,8)}`);
    }else messages.push(msg);
@@ -279,7 +280,7 @@ export class NtfySecureSignaling {
  async inspectIncoming(n){
   if(!n?.message||!n?.id)return;
   let m;try{m=JSON.parse(n.message)}catch{return;}
-if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
+  if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){await this.inspectTextMessage(n,m);return;}
   if(m.v!==3||!m.payload)return;
   const p=m.payload;if(!isUserId(p.from)||p.from===this.me||p.to!==this.me)return;
