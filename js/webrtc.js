@@ -559,7 +559,7 @@ export class WebRtcAudio {
 
   isPrewarmed() {
     return this.prewarmed && !!this.pc && !!this.pc.localDescription &&
-      !!this.prewarmCompletedAt && Date.now() - this.prewarmCompletedAt < 60000;
+      !!this.prewarmCompletedAt && Date.now() - this.prewarmCompletedAt < 120000;
   }
 
   async activatePreparedOffer() {
