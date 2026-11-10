@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=21";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=40";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=41";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=12";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=12";
@@ -312,10 +312,14 @@ function stopRinging(){
 function unlockRingingAudio(){
  try{
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
-  if(!AudioContextClass)return;
+  if(!AudioContextClass){debug("[ring] Web Audio API недоступен при разблокировке.");return}
   if(!state.ringContext)state.ringContext=new AudioContextClass();
-  if(state.ringContext.state==="suspended")state.ringContext.resume().catch(error=>debug("Браузер не разрешил звук: "+error.message));
- }catch(error){debug("Не удалось подготовить звук звонка: "+error.message)}
+  const context=state.ringContext;
+  if(context.state==="suspended"){
+   debug("[ring] пользовательское действие: пробуем разблокировать AudioContext; visibility="+document.visibilityState+".");
+   context.resume().then(()=>debug("[ring] AudioContext после пользовательского действия: "+context.state+".")).catch(error=>debug("[ring] resume после пользовательского действия отклонён: "+(error.message||String(error))));
+  }
+ }catch(error){debug("[ring] ошибка подготовки AudioContext: "+(error.message||String(error)))}
 }
 async function startRinging(kind){
  stopRinging();state.ringingKind=kind;
@@ -323,9 +327,18 @@ async function startRinging(kind){
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
   if(!AudioContextClass)throw Error("Web Audio API недоступен");
   if(!state.ringContext)state.ringContext=new AudioContextClass();
-  if(state.ringContext.state==="suspended")await state.ringContext.resume();
-  if(state.ringingKind!==kind)return;
-  if(state.ringContext.state!=="running"){debug("Звук звонка заблокирован браузером; используйте экранные кнопки.");return}
+  if(!state.ringContext.__vlStateLogger){
+   state.ringContext.__vlStateLogger=true;
+   state.ringContext.addEventListener("statechange",()=>debug("[ring] AudioContext statechange: "+state.ringContext.state+"."));
+  }
+  debug("[ring] start kind="+kind+"; AudioContext="+state.ringContext.state+"; visibility="+document.visibilityState+"; notificationPermission="+(window.Notification?.permission||"unsupported")+".");
+  if(state.ringContext.state==="suspended"){
+   debug("[ring] AudioContext suspended: запрашиваем resume; incoming UI уже показан.");
+   await state.ringContext.resume();
+  }
+  if(state.ringingKind!==kind){debug("[ring] запуск отменён: тип звонка уже изменился.");return}
+  if(state.ringContext.state!=="running"){debug("[ring] мелодия не запущена: AudioContext="+state.ringContext.state+"; браузер заблокировал воспроизведение.");return}
+  debug("[ring] AudioContext running; запускаем мелодию.");
   const duration=2,cycle=6;
   const pulse=()=>{
    if(state.ringingKind!==kind)return;
@@ -354,9 +367,10 @@ async function startRinging(kind){
     state.ringPulseTimer=setTimeout(pulse,cycle*1000);
    }
    state.ringOscillators=nodes;
+   if(kind==="incoming")debug("[ring] входная мелодия запущена; следующий повтор через 3.2s.");
   };
   pulse();
- }catch(error){debug("Не удалось включить звук звонка: "+(error.message||String(error)));}
+ }catch(error){debug("[ring] не удалось включить звук звонка: "+(error.message||String(error))+"; AudioContext="+(state.ringContext?.state||"нет")+".");}
 }
 function clearIncomingUi(){
  if(state.incomingTimer){clearTimeout(state.incomingTimer);state.incomingTimer=null}

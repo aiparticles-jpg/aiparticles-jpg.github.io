@@ -416,17 +416,44 @@ export class NtfySecureSignaling {
   const n=JSON.parse(event.data);if(!n.message||!n.id||this.seen.has(n.id))return;
   this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
   let m;try{m=JSON.parse(n.message)}catch{return;}
+  if(m.type==="data")this.onDebug("[signaling] ntfy data envelope: v="+m.v+"; from="+String(m.payload?.from||"нет").slice(0,10)+"; expectedFrom="+this.peer.slice(0,10)+"; to="+String(m.payload?.to||"нет").slice(0,10)+"; expectedTo="+this.me.slice(0,10)+"; ntfyId="+String(n.id).slice(0,12));
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){if(m.v===3&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
-  if(m.v!==3||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me)return;
+  if(m.v!==3||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me){
+   if(m.type==="data")this.onDebug("[signaling] data отклонено до AES-GCM: неверная версия, payload, from или to.");
+   return;
+  }
   const p=m.payload;
   if(m.type==="cancel"){await this.processCancel(m);return;}
   if(!["rotation_response","reject","hello","answer","data"].includes(m.type))return;
-  if(!await this.verifyPeerEnvelope(m.type,p,m.auth))return;
+  if(m.type==="data"){
+   const sidShort=value=>typeof value==="string"?value.slice(0,8):"нет";
+   this.onDebug("[signaling] получено data: sid="+sidShort(p.sid)+"; ready="+this.ready+"; session="+sidShort(this.session)+"; signal="+(p.signal?.type||"нет")+"; ntfyId="+String(n.id).slice(0,12));
+  }
+  const verified=await this.verifyPeerEnvelope(m.type,p,m.auth);
+  if(!verified){
+   if(m.type==="data")this.onDebug("[signaling] data отклонено: AES-GCM/аутентификация или проверка отправителя не пройдена.");
+   return;
+  }
+  if(m.type==="data")this.onDebug("[signaling] data: аутентификация AES-GCM успешна.");
   if(m.type==="rotation_response")return;
   if(m.type==="data"){
-   if(!this.ready||p.sid!==this.session)return;
-   this.onPeerMessage(this.peer);if(p.signal.type==="signal")await this.onSignal(p.signal.payload);return;
+   if(!this.ready||p.sid!==this.session){
+    this.onDebug("[signaling] data отброшено: "+(!this.ready?"secure-сессия ещё не ready":"sid не совпадает")+"; incoming="+sidShort(p.sid)+"; current="+sidShort(this.session)+".");
+    return;
+   }
+   this.onDebug("[signaling] data принято; вызываем onSignal.");
+   this.onPeerMessage(this.peer);
+   if(p.signal.type==="signal"){
+    try{
+     await this.onSignal(p.signal.payload);
+     this.onDebug("[signaling] onSignal завершился успешно.");
+    }catch(error){
+     this.onDebug("[signaling] onSignal завершился ошибкой: "+(error?.message||String(error)));
+     throw error;
+    }
+   }else this.onDebug("[signaling] data принято, но signal.type не равен signal.");
+   return;
   }
   if(m.type==="reject"){
    const req=this.outgoingRequest||this.hello;if(!req||p.sid!==req.sid||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
