@@ -16,7 +16,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.helloDirection=null;this.answeringIncoming=false;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;this.sendKey=null;this.recvKey=null;this.ready=false;this.seen=new Set();this.pendingEvents=[];this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
  async sign(payload){return b64u(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},this.identity.privateKey,enc.encode(stable(payload))))}
@@ -133,15 +133,14 @@ export class NtfySecureSignaling {
   this.peerInvitationId=peerContact.invitation_id;
   await this.subscribe();
   this.active=true;
+  if(!this.answeringIncoming&&!this.hello){
+   try{await this.sendHello()}catch(err){this.onError(err);if(err.retryable)this.scheduleHelloRetry(5000)}
+  }
   const pending=this.pendingEvents.splice(0);
   const pendingBatch=[];
   for(const n of pending)pendingBatch.push({data:JSON.stringify(n)});
   if(pendingBatch.length)await this.enqueueMessages(pendingBatch);
-  if(this.role==="A"){
-   try{await this.sendHello()}catch(err){this.onError(err);if(err.retryable)this.scheduleHelloRetry(5000)}
-  } else if(!this.ready){
-   try{await this.sendCallRequest()}catch(err){this.onError(err)}
-  }
+  this.answeringIncoming=false;
  }
  setPeer(peer){
   if(peer!==""&&(!isUserId(peer)||peer===this.me))throw Error("Выберите корректный локальный контакт.");
@@ -152,17 +151,14 @@ export class NtfySecureSignaling {
  acceptIncoming(){
   const sid=this.incomingSid;
   if(sid){this.acceptedSids.add(sid);if(this.acceptedSids.size>100)this.acceptedSids.delete(this.acceptedSids.values().next().value)}
-  if(this.role==="A"&&this.incomingEventId){
-   this.seen.add(this.incomingEventId);
-   this.pendingEvents=this.pendingEvents.filter(n=>n.id!==this.incomingEventId);
-  }
+  this.answeringIncoming=true;
   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
  }
  dismissIncoming(){
   if(this.incomingEventId){this.seen.add(this.incomingEventId);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value)}
   const peer=this.peer;
   this.pendingEvents=this.pendingEvents.filter(n=>{
-   try{const m=JSON.parse(n.message);return !((m.type==="hello"||m.type==="request")&&m.payload?.from===peer&&m.payload?.to===this.me)}catch{return true}
+   try{const m=JSON.parse(n.message);return !(m.type==="hello"&&m.payload?.from===peer&&m.payload?.to===this.me)}catch{return true}
   });
   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
  }
@@ -338,15 +334,13 @@ export class NtfySecureSignaling {
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){await this.inspectTextMessage(n,m);return;}
   if(m.type==="cancel"){if(this.peer&&p.from===this.peer)await this.processCancel(m);return;}
-  if(!["hello","request"].includes(m.type)||p.to!==this.me||!isUserId(p.from)||p.from===this.me||!p.identity)return;
+  if(m.type!=="hello"||p.to!==this.me||!isUserId(p.from)||p.from===this.me||!p.identity)return;
   // Older saved contacts predate invitation IDs; preserve their existing trust relationship.
 
   if(this.active||this.ready||(this.incomingSid&&this.incomingSid!==p.sid)||this.outgoingRequest||this.hello)return;
   let contact;
   try{contact=await getPeerSignalingIdentity(p.from)}catch{return;}
   const incomingRole=this.me<p.from?"A":"B";
-  const expectedType=incomingRole==="A"?"request":"hello";
-  if(m.type!==expectedType)return;
   if(this.peer!==p.from){this.peer=p.from;this.peerName=contact.name;this.role=incomingRole;}
   else if(!this.peerName)this.peerName=contact.name;
   const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
@@ -411,19 +405,10 @@ export class NtfySecureSignaling {
   for(const n of this.pendingEvents)await this.inspectIncoming(n);
  }
  resetSession({preservePending=false}={}){
-  this.active=false;this.clearHelloRetry();this.clearAnswerRetry();
+  this.active=false;this.answeringIncoming=false;this.clearHelloRetry();this.clearAnswerRetry();
   this.hello=null;this.answer=null;this.lastAnswerAt=0;this.ecdh=null;this.session=null;
   this.sendKey=null;this.recvKey=null;this.ready=false;
   if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.acceptedSids.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
- }
- async sendCallRequest(){
-  if(this.closed||this.ready||this.rateLimited||this.role!=="B")return;
-  const request={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),identity:this.identity.publicJwk,expiresAt:Date.now()+45000};
-  this.outgoingRequest=request;
-  await this.publish(this.peer,await this.signed("request",request));
-  await this.recordConversationEvent("request",request,"outgoing",Date.now());
-  this.onStatus("Запрос на звонок отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
-  this.onDialing({peer:this.peerName||"контакт",expiresAt:request.expiresAt,callId:request.sid});
  }
  async rejectIncoming(){
   const sid=this.incomingSid;
@@ -446,10 +431,11 @@ export class NtfySecureSignaling {
   return true;
  }
  async sendHello(){
-  if(this.closed||this.ready||this.rateLimited||this.role!=="A")return;
+  if(this.closed||this.ready||this.rateLimited||this.helloDirection==="incoming")return;
   if(!this.hello){
    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
    this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),expiresAt:Date.now()+45000};
+   this.helloDirection="outgoing";
   }
   this.helloAttempts++;
   this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
@@ -460,7 +446,7 @@ export class NtfySecureSignaling {
  }
  scheduleHelloRetry(delay){
   this.clearHelloRetry();
-  if(this.closed||this.ready||this.rateLimited||this.role!=="A"||this.helloAttempts>=3)return;
+  if(this.closed||this.ready||this.rateLimited||this.helloDirection!=="outgoing"||this.helloAttempts>=3)return;
   this.helloRetryTimer=setTimeout(async()=>{
    this.helloRetryTimer=null;
    if(this.closed||this.ready||this.rateLimited)return;
@@ -473,7 +459,7 @@ export class NtfySecureSignaling {
  clearHelloRetry(){if(this.helloRetryTimer!==null){clearTimeout(this.helloRetryTimer);this.helloRetryTimer=null}}
  clearAnswerRetry(){if(this.answerRetryTimer!==null){clearTimeout(this.answerRetryTimer);this.answerRetryTimer=null}}
  async sendAnswer(){
-  if(this.closed||this.rateLimited||this.role!=="B"||!this.answer)return;
+  if(this.closed||this.rateLimited||!this.answer)return;
   this.answerAttempts++;
   this.onDebug(`[signaling] answer POST attempt ${this.answerAttempts}/3`);
   await this.publish(this.peer,await this.signed("answer",this.answer));
@@ -483,7 +469,7 @@ export class NtfySecureSignaling {
  }
  scheduleAnswerRetry(delay){
   this.clearAnswerRetry();
-  if(this.closed||this.rateLimited||this.role!=="B"||!this.answer||this.answerAttempts>=3)return;
+  if(this.closed||this.rateLimited||!this.answer||this.answerAttempts>=3)return;
   this.answerRetryTimer=setTimeout(async()=>{
    this.answerRetryTimer=null;
    try{await this.sendAnswer()}catch(err){
@@ -534,53 +520,36 @@ export class NtfySecureSignaling {
    this.onRejectOutgoing({peer:this.peerName||"контакт",sid:p.sid});
    return;
   }
-  if(m.type==="request"&&this.role==="A"){
-   if(!p.identity||!p.sid||this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
-   if(!await this.verifyPeerEnvelope(m.type,p,m.sig,p.identity)){
-    this.onDebug("[signaling] запрос вызова отклонён: подпись, контакт или разрешение недействительны");
-    return;
-   }
-   await this.recordConversationEvent("request",p,"incoming",Number(n.time)*1000||Date.now());
-   this.onPeerMessage(this.peer);
-   if(this.incomingSid!==p.sid){
-    this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=p.identity;
-    const pendingCancel=this.pendingCancels.get(p.sid);
-    if(pendingCancel){this.pendingCancels.delete(p.sid);await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
-    this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer,sid:p.sid,expiresAt:Number(p.expiresAt)});
-   }
-   return;
-  }
-  if(m.type==="hello"&&this.role==="B"){
-   if(this.hello){
-    if(p.sid===this.hello.sid&&this.answer&&Date.now()-this.lastAnswerAt>=10000){
-     this.onDebug("[signaling] answer resend after repeated hello");
-     try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000)}
+   if(m.type==="hello"){
+    if(this.hello&&this.helloDirection==="incoming"){
+     if(p.sid===this.hello.sid&&this.answer&&Date.now()-this.lastAnswerAt>=10000){
+      this.onDebug("[signaling] answer resend after repeated hello");
+      try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000)}
+     }
+     return;
     }
+    if(this.ready)return;
+    if(this.hello&&this.helloDirection==="outgoing"){
+     if(this.me<p.from)return;
+     this.cancelledSids.add(this.hello.sid);this.clearHelloRetry();
+     this.hello=null;this.helloDirection=null;this.outgoingRequest=null;
+     this.onDebug("[signaling] crossed call: уступаем hello участника с меньшим ID");
+    }
+    if(!await this.verifyPeerEnvelope(m.type,p,m.sig,p.identity))throw Error("Подпись hello, контакт или разрешение недействительны.");
+    if(this.cancelledSids.has(p.sid))return;
+    await this.recordConversationEvent("hello",p,"incoming",Number(n.time)*1000||Date.now());this.onPeerMessage(this.peer);
+    const pendingCancel=this.pendingCancels.get(p.sid);
+    if(pendingCancel){this.pendingCancels.delete(p.sid);this.incomingSid=p.sid;this.incomingIdentity=p.identity;await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
+    this.hello=p;this.helloDirection="incoming";this.incomingSid=p.sid;this.incomingIdentity=p.identity;
+    this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
+    const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
+    this.answer=answer;await this.derive(p,answer);
+    this.onDebug("[signaling] answer prepared; sending initial response");
+    try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000)}
     return;
    }
-   if(this.ready)return;
-   if(!await this.verifyPeerEnvelope(m.type,p,m.sig,p.identity))throw Error("Подпись hello, контакт или разрешение недействительны.");
-   await this.recordConversationEvent("hello",p,"incoming",Number(n.time)*1000||Date.now());
-   this.onPeerMessage(this.peer);
-   if(this.cancelledSids.has(p.sid))return;
-   const pendingCancel=this.pendingCancels.get(p.sid);
-   if(pendingCancel){
-    this.pendingCancels.delete(p.sid);this.incomingSid=p.sid;this.incomingIdentity=p.identity;
-    await this.processCancel(pendingCancel);
-    if(this.cancelledSids.has(p.sid))return;
-   }
-   this.hello=p;
-   this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-   const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),identity:this.identity.publicJwk,nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
-   this.answer=answer;
-   // Derive first so the same answer/session remains available for bounded POST retries.
-   await this.derive(p,answer);
-   this.onDebug("[signaling] answer prepared; sending initial response");
-   try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000)}
-   return;
-  }
-  if(m.type==="answer"&&this.role==="A"&&!this.ready){
-   if(!this.hello||p.sid!==this.hello.sid||p.helloEph!==this.hello.eph||p.helloNonce!==this.hello.nonce)return;
+  if(m.type==="answer"&&!this.ready){
+   if(!this.hello||this.helloDirection!=="outgoing"||p.sid!==this.hello.sid||p.helloEph!==this.hello.eph||p.helloNonce!==this.hello.nonce)return;
    if(!await this.verifyPeerEnvelope(m.type,p,m.sig,p.identity))throw Error("Подпись ответа, контакт или разрешение недействительны.");
    await this.recordConversationEvent("answer",p,"incoming",Number(n.time)*1000||Date.now());
    this.onPeerMessage(this.peer);await this.derive(this.hello,p);return;
@@ -603,10 +572,13 @@ export class NtfySecureSignaling {
    if(!samePublicKey(contact.publicJwk,jwk))throw Error("Ключ сохранённого контакта не совпадает с ключом в запросе. Соединение остановлено.");
   }
  async derive(hello,answer){
-  const tr={v:1,sid:hello.sid,a:hello.from,b:hello.to,aIdentity:hello.identity,bIdentity:answer.identity,aEph:hello.eph,bEph:answer.eph,aNonce:hello.nonce,bNonce:answer.nonce};
+  const helloParty={identity:hello.identity,eph:hello.eph,nonce:hello.nonce},answerParty={identity:answer.identity,eph:answer.eph,nonce:answer.nonce};
+  const parties=new Map([[hello.from,helloParty],[answer.from,answerParty]]);
+  const [a,b]=[hello.from,hello.to].sort();
+  const tr={v:1,sid:hello.sid,a,b,aIdentity:parties.get(a).identity,bIdentity:parties.get(b).identity,aEph:parties.get(a).eph,bEph:parties.get(b).eph,aNonce:parties.get(a).nonce,bNonce:parties.get(b).nonce};
   const hash=await digest(enc.encode(stable(tr)));
-  const remote=this.role==="A"?answer.identity:hello.identity;
-  const remoteEph=this.role==="A"?answer.eph:hello.eph;
+  const remote=hello.from===this.me?answer.identity:hello.identity;
+  const remoteEph=hello.from===this.me?answer.eph:hello.eph;
   const pub=await crypto.subtle.importKey("raw",un64(remoteEph),{name:"ECDH",namedCurve:"P-256"},false,[]);
   const shared=await crypto.subtle.deriveBits({name:"ECDH",public:pub},this.ecdh.privateKey,256);
   const material=await crypto.subtle.importKey("raw",shared,"HKDF",false,["deriveKey"]);
