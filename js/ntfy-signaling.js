@@ -526,8 +526,8 @@ export class NtfySecureSignaling {
     if(this.cancelledSids.has(p.sid))return;
     await this.recordConversationEvent("hello",p,"incoming",Number(n.time)*1000||Date.now());this.onPeerMessage(this.peer);
     const pendingCancel=this.pendingCancels.get(p.sid);
-    if(pendingCancel){this.pendingCancels.delete(p.sid);this.incomingSid=p.sid;this.incomingIdentity=p.identity;await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
-    this.hello=p;this.helloDirection="incoming";this.incomingSid=p.sid;this.incomingIdentity=p.identity;
+    if(pendingCancel){this.pendingCancels.delete(p.sid);this.incomingSid=p.sid;this.incomingIdentity=true;await this.processCancel(pendingCancel);if(this.cancelledSids.has(p.sid))return;}
+    this.hello=p;this.helloDirection="incoming";this.incomingSid=p.sid;this.incomingIdentity=true;
     this.ecdh=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
     const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),eph:b64u(await crypto.subtle.exportKey("raw",this.ecdh.publicKey)),nonce:b64u(crypto.getRandomValues(new Uint8Array(16))),helloEph:p.eph,helloNonce:p.nonce};
     this.answer=answer;await this.derive(p,answer);
