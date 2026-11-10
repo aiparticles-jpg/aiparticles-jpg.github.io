@@ -483,7 +483,7 @@ export class WebRtcAudio {
     return promise;
   }
 
-  async waitForIceGatheringComplete(pc, timeoutMs = 15000) {
+  async waitForIceGatheringComplete(pc, timeoutMs = 60000) {
     if (pc.iceGatheringState === "complete") return;
     await new Promise((resolve, reject) => {
       let finished = false;
