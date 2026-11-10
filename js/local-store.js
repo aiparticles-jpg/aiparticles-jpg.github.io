@@ -1,5 +1,5 @@
 const DB_NAME = "voicelink-local";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const HISTORY_LIMIT = 10;
 
 let databasePromise;
@@ -178,10 +178,9 @@ export async function getOrCreateIdentity() {
   const readDone = transactionDone(read);
   const record = await requestValue(read.objectStore("meta").get("identity"));
   await readDone;
-  if (record?.value?.version === 2 && typeof record.value.user_id === "string" && /^[a-f0-9]{64}$/.test(record.value.user_id)) return record.value;
+  if (record?.value?.version === 3 && typeof record.value.user_id === "string" && /^[a-f0-9]{64}$/.test(record.value.user_id)) return record.value;
 
-  // One-time protocol migration: old ECDSA identities and their contact trust
-  // records cannot be mixed with the capability/HMAC protocol.
+  // One-time migration: old ECDH/HMAC contacts cannot be mixed with the shared-key protocol.
   if (record?.value) {
     const tx = db.transaction(["meta", "contacts", "history", "conversation", "invitations"], "readwrite");
     const done = transactionDone(tx);
@@ -201,171 +200,28 @@ export async function getOrCreateIdentity() {
   const random = crypto.getRandomValues(new Uint8Array(32));
   const userId = toHex(await crypto.subtle.digest("SHA-256", random));
   random.fill(0);
-  const identity = { version: 2, user_id: userId, created_at: new Date().toISOString() };
+  const identity = { version: 3, user_id: userId, created_at: new Date().toISOString() };
   const tx = db.transaction("meta", "readwrite");
   const done = transactionDone(tx);
   const store = tx.objectStore("meta");
   const current = await requestValue(store.get("identity"));
-  if (current?.value?.version === 2 && current.value.user_id) { await done; return current.value; }
+  if (current?.value?.version === 3 && current.value.user_id) { await done; return current.value; }
   store.put({ key: "identity", value: identity });
   await done;
   return identity;
 }
 
-export async function getOrCreateMessageEncryptionIdentity() {
-  const db = await openDatabase();
-  const read = db.transaction("meta", "readonly");
-  const readDone = transactionDone(read);
-  const existing = await requestValue(read.objectStore("meta").get("message_encryption_identity"));
-  await readDone;
-  if (existing?.value?.privateKey && existing.value.public_key && existing.value.key_id) return existing.value;
-  if (!globalThis.crypto?.subtle) throw new Error("Web Crypto API is required.");
-  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
-  const publicBytes = await crypto.subtle.exportKey("raw", pair.publicKey);
-  const privateBytes = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
-  const privateKey = await crypto.subtle.importKey("pkcs8", privateBytes, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
-  new Uint8Array(privateBytes).fill(0);
-  const value = { privateKey, public_key: toBase64Url(publicBytes), key_id: toHex(await crypto.subtle.digest("SHA-256", publicBytes)), created_at: new Date().toISOString() };
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const store = tx.objectStore("meta");
-  const current = await requestValue(store.get("message_encryption_identity"));
-  if (current?.value?.privateKey) { await done; return current.value; }
-  store.put({ key: "message_encryption_identity", value });
-  await done;
-  return value;
-}
-
-
-export async function getMessageEncryptionKeyRing() {
-  const fallback = await getOrCreateMessageEncryptionIdentity();
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readonly");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const [activeRecord, pending, previous] = await Promise.all([
-    requestValue(meta.get("message_encryption_identity")),
-    requestValue(meta.get("message_encryption_pending_identity")),
-    requestValue(meta.get("message_encryption_previous_identity"))
-  ]);
-  await done;
-  const active = activeRecord?.value || fallback;
-  let previousValue = previous?.value || null;
-  if (previousValue?.peer_switched_at && Date.now() - Number(previousValue.peer_switched_at) >= 12 * 60 * 60 * 1000) {
-    await clearPreviousMessageEncryptionIdentity(previousValue.key_id);
-    previousValue = null;
-  }
-  return { active: { ...active, generation: Number(active.generation) || 1 }, pending: pending?.value || null, previous: previousValue };
-}
-
-export async function createPendingMessageEncryptionIdentity() {
-  const ring = await getMessageEncryptionKeyRing();
-  if (ring.pending) return ring.pending;
-  if (ring.previous) return null;
-  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
-  const publicBytes = await crypto.subtle.exportKey("raw", pair.publicKey);
-  const privateBytes = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
-  const privateKey = await crypto.subtle.importKey("pkcs8", privateBytes, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
-  new Uint8Array(privateBytes).fill(0);
-  const value = { privateKey, public_key: toBase64Url(publicBytes), key_id: toHex(await crypto.subtle.digest("SHA-256", publicBytes)), generation: ring.active.generation + 1, created_at: new Date().toISOString() };
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const [activeRecord, pendingRecord, previousRecord] = await Promise.all([
-    requestValue(meta.get("message_encryption_identity")),
-    requestValue(meta.get("message_encryption_pending_identity")),
-    requestValue(meta.get("message_encryption_previous_identity"))
-  ]);
-  if (pendingRecord?.value) { await done; return pendingRecord.value; }
-  if (previousRecord?.value || activeRecord?.value?.key_id !== ring.active.key_id) { await done; return null; }
-  meta.put({ key: "message_encryption_pending_identity", value });
-  await done;
-  return value;
-}
-
-export async function activatePendingMessageEncryptionIdentity(keyId, generation) {
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const [activeRecord, pendingRecord, previousRecord] = await Promise.all([
-    requestValue(meta.get("message_encryption_identity")),
-    requestValue(meta.get("message_encryption_pending_identity")),
-    requestValue(meta.get("message_encryption_previous_identity"))
-  ]);
-  const active = activeRecord?.value, pending = pendingRecord?.value;
-  if (!active || !pending || pending.key_id !== keyId || Number(pending.generation) !== Number(generation) || previousRecord?.value) { await done; return false; }
-  meta.put({ key: "message_encryption_previous_identity", value: { ...active, generation: Number(active.generation) || 1 } });
-  meta.put({ key: "message_encryption_identity", value: { ...pending, activated_at: new Date().toISOString() } });
-  meta.delete("message_encryption_pending_identity");
-  await done;
-  return true;
-}
-
-
-export async function acknowledgePendingMessageEncryptionIdentity(keyId, generation, peerId, requiredPeerIds) {
-  if (typeof keyId !== "string" || typeof peerId !== "string" || !Array.isArray(requiredPeerIds)) return false;
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const record = await requestValue(meta.get("message_encryption_pending_identity"));
-  const pending = record?.value;
-  if (!pending || pending.key_id !== keyId || Number(pending.generation) !== Number(generation)) { await done; return false; }
-  const acknowledged = new Set(Array.isArray(pending.acknowledged_peers) ? pending.acknowledged_peers : []);
-  acknowledged.add(peerId);
-  meta.put({ key: "message_encryption_pending_identity", value: { ...pending, acknowledged_peers: [...acknowledged] } });
-  await done;
-  const required = [...new Set(requiredPeerIds.filter(id => typeof id === "string" && id))];
-  return required.includes(peerId) && required.every(id => acknowledged.has(id));
-}
-
-
-export async function markPreviousMessageEncryptionIdentityForDeletion(keyId) {
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const record = await requestValue(meta.get("message_encryption_previous_identity"));
-  if (record?.value?.key_id === keyId && !record.value.peer_switched_at) {
-    meta.put({ key: "message_encryption_previous_identity", value: { ...record.value, peer_switched_at: Date.now() } });
-  }
-  await done;
-  return record?.value?.key_id === keyId;
-}
-
-export async function clearPreviousMessageEncryptionIdentity(keyId) {
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
-  const done = transactionDone(tx);
-  const meta = tx.objectStore("meta");
-  const record = await requestValue(meta.get("message_encryption_previous_identity"));
-  if (record?.value?.key_id === keyId) meta.delete("message_encryption_previous_identity");
-  await done;
-  return record?.value?.key_id === keyId;
-}
-
 export async function saveContact(contact) {
   if (!contact || typeof contact !== "object" ||
-      !contact.user_id || !contact.message_encryption_public_key || !contact.message_encryption_key_id ||
-      !contact.invitation_secret || !contact.push_subscription_id || !contact.name) {
-    throw new TypeError("A contact requires a local name, ECDH key, invitation secret, and push subscription ID.");
-  }
-
-  const record = {
-    ...contact,
-    name: String(contact.name).trim(),
-    updated_at: new Date().toISOString()
-  };
-  if (!record.name) throw new TypeError("Contact name cannot be empty.");
-
-  const db = await openDatabase();
-  const tx = db.transaction("contacts", "readwrite");
-  const done = transactionDone(tx);
-  tx.objectStore("contacts").put(record);
-  await done;
-  return record;
+      typeof contact.user_id !== "string" || !/^[a-f0-9]{64}$/.test(contact.user_id) ||
+      typeof contact.invitation_id !== "string" || !/^[0-9a-f-]{36}$/i.test(contact.invitation_id) ||
+      typeof contact.invitation_secret !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(contact.invitation_secret) ||
+      typeof contact.push_subscription_id !== "string" || !contact.push_subscription_id.trim() || !contact.name)
+    throw new TypeError("A contact requires a local name, shared 256-bit secret, invitation ID, and push subscription ID.");
+  const record={...contact,name:String(contact.name).trim(),updated_at:new Date().toISOString()};
+  if(!record.name)throw new TypeError("Contact name cannot be empty.");
+  const db=await openDatabase(),tx=db.transaction("contacts","readwrite"),done=transactionDone(tx);
+  tx.objectStore("contacts").put(record);await done;return record;
 }
 
 export async function listContacts() {
