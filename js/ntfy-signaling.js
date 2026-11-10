@@ -347,6 +347,7 @@ export class NtfySecureSignaling {
    this.onDebug("[signaling] вызов отклонён: приглашение не активировано или отозвано");
    return;
   }
+  await this.processIncomingKeyRotation(p.from,p);
   if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
   await this.recordConversationEvent(m.type,p,"incoming",Number(n.time)*1000||Date.now());
   this.onPeerMessage(p.from);
