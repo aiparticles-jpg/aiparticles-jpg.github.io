@@ -1,6 +1,6 @@
 import { WebRtcAudio } from "./webrtc.js?v=17";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=36";
-import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js";
+import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=2";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, getOrCreateMessageEncryptionIdentity, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=10";
 import { verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=10";
 import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=5";
@@ -421,8 +421,8 @@ async function rejectIncoming(){
  try{
   await state.secure?.rejectIncoming();
   clearIncomingUi();stopRinging();
-  setStatus("Вызов отклонён","Вызывающий получил подписанное уведомление об отказе.","idle");
-  debug("Входящий вызов явно отклонён; подписанное сообщение отправлено через ntfy.");
+  setStatus("Вызов отклонён","Вызывающий получил подтверждённое уведомление об отказе.","idle");
+  debug("Входящий вызов явно отклонён; подтверждённое сообщение отправлено через ntfy.");
   closeCallScreen();
  }catch(error){showError("Не удалось отправить отказ: "+(error.message||String(error)));}
 }
@@ -943,7 +943,7 @@ async function createContactInvitation({focusResult=true,expectedRevision=null}=
    setInlineStatus(els.inviteStatus,"Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError)),true);
   }
   if(focusResult){els.inviteUrl.focus();els.inviteUrl.select()}
-  debug("Создано подписанное приглашение с действующим OneSignal Subscription ID.");
+  debug("Создано защищённое приглашение с действующим OneSignal Subscription ID.");
   if(profileRevision===profileInviteRevision&&displayName===getProfileDisplayName())profileInviteDirty=false;
   updateInvitationPanel();
   return true;
@@ -1066,7 +1066,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
    try{
     await sendPushEventToContact(peer,"contact_request",requestId,expiresAt);
     report("Ответное приглашение отправлено. OneSignal принял push-уведомление.");
-    debug("Подписанный запрос на добавление контакта опубликован в ntfy; OneSignal принял push.");
+    debug("Аутентифицированный запрос на добавление контакта опубликован в ntfy; OneSignal принял push.");
    }catch(pushError){
     report("Ответное приглашение отправлено через ntfy, но push не отправлен: "+(pushError.message||String(pushError)),true);
     debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(pushError.message||String(pushError)));
