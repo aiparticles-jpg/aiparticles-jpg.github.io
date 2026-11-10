@@ -279,6 +279,146 @@ export class NtfySecureSignaling {
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){await this.inspectTextMessage(n,m);return;}
   if(m.v!==3||!m.payload)return;
+  const p=m.payload;if(!isUserId(p.from)||p.from===this.me||p.to!==this.me)return;
+  if(m.type==="rotation_response"){let ok=false;try{ok=await this.verifyPeerEnvelope(m.type,p,m.auth)}catch{}if(ok&&n?.id){this.seen.add(n.id);this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id);}return;}
+  if(m.type==="cancel"){
+   const c=await getPeerSignalingIdentity(p.from);this.peer=p.from;this.peerName=c.name;this.peerInvitationId=c.invitation_id;this.role=this.me<p.from?"A":"B";
+   await this.processCancel(m);if(n?.id){this.seen.add(n.id);this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id);}return;
+  }
+  if(m.type!=="hello")return;
+  if(this.active||this.ready||(this.incomingSid&&this.incomingSid!==p.sid)||this.outgoingRequest||this.hello)return;
+  let c;try{c=await getPeerSignalingIdentity(p.from)}catch{return;}
+  this.peer=p.from;this.peerName=c.name;this.peerInvitationId=c.invitation_id;this.role=this.me<p.from?"A":"B";
+  if(!await this.verifyPeerEnvelope(m.type,p,m.auth)){this.onDebug("[signaling] вызов отклонён: шифрование, контакт или разрешение недействительны");return;}
+  if(n?.id){this.seen.add(n.id);this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id);}
+  const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
+  if(!Number.isFinite(expiresAt)||Date.now()>expiresAt||typeof p.sid!=="string")return;
+  if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
+  await this.recordConversationEvent("hello",p,"incoming",Number(n.time)*1000||Date.now());
+  this.onPeerMessage(p.from);this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=true;this.incomingHello=p;
+  const pending=this.pendingCancels.get(p.sid);
+  if(pending){this.pendingCancels.delete(p.sid);await this.processCancel(pending);if(this.cancelledSids.has(p.sid))return;}
+  this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer,sid:p.sid,expiresAt});
+ }
+ async inspectContactRequest(n,m){
+  const p=m?.payload;
+  if(m?.v!==3||m?.type!=="contact_request"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me||typeof p.request_id!=="string"||!/^[0-9a-f-]{36}$/i.test(p.request_id)||!p.invitation_id)return;
+  const expires=Number(p.expires_at);if(!Number.isFinite(expires)||Date.now()>expires)return;
+  const issued=await getIssuedInvitation(p.invitation_id);if(!issued||issued.revoked||!issued.secret)return;
+  const contact=await decryptContactRequestEnvelope(m,issued.secret);
+  if(contact.user_id!==p.from)throw Error("Идентификатор отправителя не совпадает с аутентифицированным пакетом контакта.");
+  const activation=await consumeIssuedInvitation({invitationId:p.invitation_id,userId:p.from,requestId:p.request_id});
+  if(!activation.accepted){this.onDebug("[signaling] запрос контакта отклонён: приглашение неизвестно, отозвано или уже использовано");return;}
+  if(n?.id){this.seen.add(n.id);this.pendingEvents=this.pendingEvents.filter(item=>item.id!==n.id);}
+  this.onPeerMessage(this.peer);
+  this.onContactRequest({requestId:p.request_id,contact,expiresAt:expires,invitationCreatedAt:activation.created_at,invitationId:p.invitation_id,sharedSecret:issued.secret});
+ }
+ async processCancel(m){
+  const p=m?.payload;if(m?.v!==3||!p||p.from!==this.peer||p.to!==this.me)return;
+  if(!await this.verifyPeerEnvelope("cancel",p,m.auth))throw Error("Аутентификация отмены вызова или разрешение недействительны.");
+  if(!p.sid||this.acceptedSids.has(p.sid)||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
+  this.onPeerMessage(this.peer);
+  if(!this.incomingIdentity){this.pendingCancels.set(p.sid,m);if(this.pendingCancels.size>50)this.pendingCancels.delete(this.pendingCancels.keys().next().value);return;}
+  this.cancelledSids.add(p.sid);if(this.cancelledSids.size>100)this.cancelledSids.delete(this.cancelledSids.values().next().value);
+  if(this.incomingSid===p.sid&&!this.hello&&!this.ready){
+   this.onDebug("[signaling] получена аутентифицированная отмена входящего вызова до ответа");
+   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.onCancelIncoming({peer:this.peerName||"контакт",sid:p.sid});
+  }
+ }
+ async inspectPendingIncoming(){
+  for(const n of this.pendingEvents)await this.inspectIncoming(n);
+ }
+ resetSession({preservePending=false}={}){
+  this.active=false;this.answeringIncoming=false;this.clearHelloRetry();this.clearAnswerRetry();
+  this.hello=null;this.helloDirection=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.incomingHello=null;
+  if(!preservePending)this.pendingEvents=[];this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.acceptedSids.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
+ }
+ async rejectIncoming(){
+  const sid=this.incomingSid;
+  if(this.closed||!sid||!this.peer)return false;
+  const payload={sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),expiresAt:Date.now()+15000};
+  await this.publish(this.peer,await this.authenticated("reject",payload));
+  await this.recordConversationEvent("reject",payload,"outgoing",Date.now());
+  this.acceptedSids.add(sid);
+  this.onDebug("[signaling] аутентифицированный отказ от входящего вызова отправлен через ntfy");
+  this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
+  return true;
+ }
+ async cancelCall(){
+  const request=this.outgoingRequest||this.hello;
+  if(this.closed||!request||!["A","B"].includes(this.role))return false;
+  const payload={sid:request.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),expiresAt:Date.now()+15000};
+  await this.publish(this.peer,await this.authenticated("cancel",payload));
+  this.outgoingRequest=null;
+  this.onDebug("[signaling] аутентифицированная отмена вызова отправлена через ntfy");
+  return true;
+ }
+ async sendHello(){
+  if(this.closed||this.ready||this.rateLimited||this.helloDirection==="incoming")return;
+  if(!this.hello){
+   this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),expiresAt:Date.now()+45000};
+   this.helloDirection="outgoing";
+  }
+  this.helloAttempts++;
+  this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
+  await this.publish(this.peer,await this.authenticated("hello",this.hello));
+  await this.recordConversationEvent("hello",this.hello,"outgoing",Date.now());
+  this.onStatus("Запрос отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
+  if(!this.ready)this.onDialing({peer:this.peerName||"контакт",expiresAt:this.hello.expiresAt,callId:this.hello.sid});
+ }
+ scheduleHelloRetry(delay){
+  this.clearHelloRetry();
+  if(this.closed||this.ready||this.rateLimited||this.helloDirection!=="outgoing"||this.helloAttempts>=3)return;
+  this.helloRetryTimer=setTimeout(async()=>{
+   this.helloRetryTimer=null;
+   if(this.closed||this.ready||this.rateLimited)return;
+   try{await this.sendHello()}catch(err){
+    this.onError(err);
+    if(err.retryable)this.scheduleHelloRetry(this.helloAttempts===2?10000:5000);
+   }
+  },delay);
+ }
+ clearHelloRetry(){if(this.helloRetryTimer!==null){clearTimeout(this.helloRetryTimer);this.helloRetryTimer=null}}
+ clearAnswerRetry(){if(this.answerRetryTimer!==null){clearTimeout(this.answerRetryTimer);this.answerRetryTimer=null}}
+ async sendAnswer(){
+  if(this.closed||this.rateLimited||!this.answer)return;
+  this.answerAttempts++;
+  this.onDebug(`[signaling] answer POST attempt ${this.answerAttempts}/3`);
+  await this.publish(this.peer,await this.authenticated("answer",this.answer));
+  await this.recordConversationEvent("answer",this.answer,"outgoing",Date.now());
+  this.lastAnswerAt=Date.now();
+  this.clearAnswerRetry();
+  if(!this.readyNotified){this.readyNotified=true;this.onReady();}
+ }
+ scheduleAnswerRetry(delay){
+  this.clearAnswerRetry();
+  if(this.closed||this.rateLimited||!this.answer||this.answerAttempts>=3)return;
+  this.answerRetryTimer=setTimeout(async()=>{
+   this.answerRetryTimer=null;
+   try{await this.sendAnswer()}catch(err){
+    this.onError(err);
+    if(err.retryable)this.scheduleAnswerRetry(10000);
+   }
+  },delay);
+ }
+ enqueueMessages(events){
+  const task=this.messageQueue.then(async()=>{for(const event of events)await this.handle(event)});
+  this.messageQueue=task.catch(error=>this.onError(error));
+  return this.messageQueue;
+ }
+ async handle(event){
+  if(!this.active){
+   let q;try{q=JSON.parse(event.data)}catch{return;}
+   if(!q.message||!q.id||this.seen.has(q.id))return;
+   if(!this.pendingEvents.some(x=>x.id===q.id)){this.pendingEvents.push(q);this.onDebug("[signaling] входящее сообщение сохранено до ответа пользователя");await this.inspectIncoming(q);}
+   return;
+  }
+  const n=JSON.parse(event.data);if(!n.message||!n.id||this.seen.has(n.id))return;
+  this.seen.add(n.id);if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
+  let m;try{m=JSON.parse(n.message)}catch{return;}
+  if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
+  if(m.type==="text"){if(m.v===3&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
+  if(m.v!==3||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me)return;
   const p=m.payload;
   if(m.type==="cancel"){await this.processCancel(m);return;}
   if(!["rotation_response","reject","hello","answer","data"].includes(m.type))return;
