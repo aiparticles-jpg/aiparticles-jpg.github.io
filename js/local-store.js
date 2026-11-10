@@ -51,15 +51,16 @@ function openDatabase() {
 }
 
 
-export async function createIssuedInvitation({ id, created_at = Date.now(), max_activations = 1 }) {
+export async function createIssuedInvitation({ id, secret, created_at = Date.now(), max_activations = 1 }) {
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id) ||
+      typeof secret !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(secret) ||
       !Number.isFinite(Number(created_at)) || !Number.isInteger(max_activations) || max_activations < 1) {
-    throw new TypeError("A valid invitation ID, creation time, and activation limit are required.");
+    throw new TypeError("A valid invitation ID, 256-bit secret, creation time, and activation limit are required.");
   }
   const db = await openDatabase();
   const tx = db.transaction("invitations", "readwrite");
   const done = transactionDone(tx);
-  tx.objectStore("invitations").add({ id, created_at: Number(created_at), max_activations, activations: [], revoked: false });
+  tx.objectStore("invitations").add({ id, secret, created_at: Number(created_at), max_activations, activations: [], revoked: false });
   await done;
 }
 
@@ -173,45 +174,39 @@ function toHex(buffer) {
 
 export async function getOrCreateIdentity() {
   const db = await openDatabase();
+  const read = db.transaction("meta", "readonly");
+  const readDone = transactionDone(read);
+  const record = await requestValue(read.objectStore("meta").get("identity"));
+  await readDone;
+  if (record?.value?.version === 2 && typeof record.value.user_id === "string" && /^[a-f0-9]{64}$/.test(record.value.user_id)) return record.value;
 
-  {
-    const tx = db.transaction("meta", "readonly");
+  // One-time protocol migration: old ECDSA identities and their contact trust
+  // records cannot be mixed with the capability/HMAC protocol.
+  if (record?.value) {
+    const tx = db.transaction(["meta", "contacts", "history", "conversation", "invitations"], "readwrite");
     const done = transactionDone(tx);
-    const record = await requestValue(tx.objectStore("meta").get("identity"));
+    const meta = tx.objectStore("meta");
+    meta.delete("identity");
+    meta.delete("my_invitation");
+    meta.delete("message_encryption_identity");
+    meta.delete("message_encryption_pending_identity");
+    meta.delete("message_encryption_previous_identity");
+    tx.objectStore("contacts").clear();
+    tx.objectStore("history").clear();
+    tx.objectStore("conversation").clear();
+    tx.objectStore("invitations").clear();
     await done;
-    if (record?.value?.privateKey && record.value.user_id && record.value.public_key) {
-      return record.value;
-    }
   }
-
-  if (!globalThis.crypto?.subtle) {
-    throw new Error("This browser does not support the Web Crypto API.");
-  }
-
-  const keyPair = await crypto.subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["sign", "verify"]
-  );
-  const publicBytes = await crypto.subtle.exportKey("raw", keyPair.publicKey);
-  const fingerprint = await crypto.subtle.digest("SHA-256", publicBytes);
-  const identity = {
-    user_id: toHex(fingerprint),
-    public_key: toBase64Url(publicBytes),
-    privateKey: keyPair.privateKey,
-    created_at: new Date().toISOString()
-  };
-
-  // Re-check in a read/write transaction so simultaneous first-run tabs
-  // do not overwrite an identity that another tab has just saved.
+  if (!globalThis.crypto?.subtle) throw new Error("This browser does not support the Web Crypto API.");
+  const random = crypto.getRandomValues(new Uint8Array(32));
+  const userId = toHex(await crypto.subtle.digest("SHA-256", random));
+  random.fill(0);
+  const identity = { version: 2, user_id: userId, created_at: new Date().toISOString() };
   const tx = db.transaction("meta", "readwrite");
   const done = transactionDone(tx);
   const store = tx.objectStore("meta");
-  const existing = await requestValue(store.get("identity"));
-  if (existing?.value?.privateKey && existing.value.user_id && existing.value.public_key) {
-    await done;
-    return existing.value;
-  }
+  const current = await requestValue(store.get("identity"));
+  if (current?.value?.version === 2 && current.value.user_id) { await done; return current.value; }
   store.put({ key: "identity", value: identity });
   await done;
   return identity;
@@ -351,24 +346,11 @@ export async function clearPreviousMessageEncryptionIdentity(keyId) {
   return record?.value?.key_id === keyId;
 }
 
-export async function signWithIdentity(payload) {
-  const identity = await getOrCreateIdentity();
-  const data = new TextEncoder().encode(
-    typeof payload === "string" ? payload : JSON.stringify(payload)
-  );
-  const signature = await crypto.subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
-    identity.privateKey,
-    data
-  );
-  return toBase64Url(signature);
-}
-
 export async function saveContact(contact) {
   if (!contact || typeof contact !== "object" ||
-      !contact.user_id || !contact.public_key || !contact.push_subscription_id ||
-      !contact.name) {
-    throw new TypeError("A contact requires a local name, user_id, public_key, and push_subscription_id.");
+      !contact.user_id || !contact.message_encryption_public_key || !contact.message_encryption_key_id ||
+      !contact.invitation_secret || !contact.push_subscription_id || !contact.name) {
+    throw new TypeError("A contact requires a local name, ECDH key, invitation secret, and push subscription ID.");
   }
 
   const record = {
