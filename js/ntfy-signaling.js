@@ -297,7 +297,7 @@ export class NtfySecureSignaling {
   }
   if(usedPeer.slot==="pending")await this.promotePendingPeerEncryptionKey(p.from,usedPeer.key_id);
 
-  if(!switchedByUse&&!switchedByAck&&usedLocal.slot==="active"&&p.recipient_key_id===localRing.active.key_id&&localRing.previous){
+  if(!switchedByUse&&usedLocal.slot==="active"&&p.recipient_key_id===localRing.active.key_id&&localRing.previous){
    await markPreviousMessageEncryptionIdentityForDeletion(localRing.previous.key_id);
   }
   await this.recordConversationEvent("text",{...p,text:plaintext},"incoming",createdAt);
