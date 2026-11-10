@@ -25,6 +25,7 @@ function canonicalPayload(contact) {
     message_encryption_public_key: contact.message_encryption_public_key,
     message_encryption_key_id: contact.message_encryption_key_id
   };
+  if (Object.hasOwn(contact, "message_encryption_generation")) payload.message_encryption_generation = contact.message_encryption_generation;
   if (Object.hasOwn(contact, "display_name")) payload.display_name = contact.display_name;
   return JSON.stringify(payload);
 }
@@ -81,6 +82,10 @@ export async function verifyContactPackage(input) {
       !/^[a-f0-9]{64}$/.test(contact.message_encryption_key_id)) {
     throw new Error("В приглашении отсутствует корректный ключ шифрования. Попросите собеседника создать новое приглашение.");
   }
+  if (Object.hasOwn(contact, "message_encryption_generation") &&
+      (!Number.isSafeInteger(contact.message_encryption_generation) || contact.message_encryption_generation < 1)) {
+    throw new Error("Некорректный номер поколения ключа шифрования в приглашении.");
+  }
   const encryptionBytes = fromBase64Url(contact.message_encryption_public_key);
   if (encryptionBytes.length !== 65 || encryptionBytes[0] !== 4) {
     throw new Error("Некорректный открытый ключ шифрования в приглашении.");
@@ -124,6 +129,7 @@ export async function verifyContactPackage(input) {
     invitation_id: contact.invitation_id,
     message_encryption_public_key: contact.message_encryption_public_key,
     message_encryption_key_id: contact.message_encryption_key_id,
+    message_encryption_generation: Number(contact.message_encryption_generation) || 1,
     ...(Object.hasOwn(contact, "display_name") ? { display_name: contact.display_name } : {})
   };
 }

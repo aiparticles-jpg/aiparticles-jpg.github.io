@@ -241,6 +241,116 @@ export async function getOrCreateMessageEncryptionIdentity() {
   return value;
 }
 
+
+export async function getMessageEncryptionKeyRing() {
+  const fallback = await getOrCreateMessageEncryptionIdentity();
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readonly");
+  const done = transactionDone(tx);
+  const meta = tx.objectStore("meta");
+  const [activeRecord, pending, previous] = await Promise.all([
+    requestValue(meta.get("message_encryption_identity")),
+    requestValue(meta.get("message_encryption_pending_identity")),
+    requestValue(meta.get("message_encryption_previous_identity"))
+  ]);
+  await done;
+  const active = activeRecord?.value || fallback;
+  let previousValue = previous?.value || null;
+  if (previousValue?.peer_switched_at && Date.now() - Number(previousValue.peer_switched_at) >= 12 * 60 * 60 * 1000) {
+    await clearPreviousMessageEncryptionIdentity(previousValue.key_id);
+    previousValue = null;
+  }
+  return { active: { ...active, generation: Number(active.generation) || 1 }, pending: pending?.value || null, previous: previousValue };
+}
+
+export async function createPendingMessageEncryptionIdentity() {
+  const ring = await getMessageEncryptionKeyRing();
+  if (ring.pending) return ring.pending;
+  if (ring.previous) return null;
+  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const publicBytes = await crypto.subtle.exportKey("raw", pair.publicKey);
+  const privateBytes = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
+  const privateKey = await crypto.subtle.importKey("pkcs8", privateBytes, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+  new Uint8Array(privateBytes).fill(0);
+  const value = { privateKey, public_key: toBase64Url(publicBytes), key_id: toHex(await crypto.subtle.digest("SHA-256", publicBytes)), generation: ring.active.generation + 1, created_at: new Date().toISOString() };
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const meta = tx.objectStore("meta");
+  const [activeRecord, pendingRecord, previousRecord] = await Promise.all([
+    requestValue(meta.get("message_encryption_identity")),
+    requestValue(meta.get("message_encryption_pending_identity")),
+    requestValue(meta.get("message_encryption_previous_identity"))
+  ]);
+  if (pendingRecord?.value) { await done; return pendingRecord.value; }
+  if (previousRecord?.value || activeRecord?.value?.key_id !== ring.active.key_id) { await done; return null; }
+  meta.put({ key: "message_encryption_pending_identity", value });
+  await done;
+  return value;
+}
+
+export async function activatePendingMessageEncryptionIdentity(keyId, generation) {
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const meta = tx.objectStore("meta");
+  const [activeRecord, pendingRecord, previousRecord] = await Promise.all([
+    requestValue(meta.get("message_encryption_identity")),
+    requestValue(meta.get("message_encryption_pending_identity")),
+    requestValue(meta.get("message_encryption_previous_identity"))
+  ]);
+  const active = activeRecord?.value, pending = pendingRecord?.value;
+  if (!active || !pending || pending.key_id !== keyId || Number(pending.generation) !== Number(generation) || previousRecord?.value) { await done; return false; }
+  meta.put({ key: "message_encryption_previous_identity", value: { ...active, generation: Number(active.generation) || 1 } });
+  meta.put({ key: "message_encryption_identity", value: { ...pending, activated_at: new Date().toISOString() } });
+  meta.delete("message_encryption_pending_identity");
+  await done;
+  return true;
+}
+
+
+export async function acknowledgePendingMessageEncryptionIdentity(keyId, generation, peerId, requiredPeerIds) {
+  if (typeof keyId !== "string" || typeof peerId !== "string" || !Array.isArray(requiredPeerIds)) return false;
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const meta = tx.objectStore("meta");
+  const record = await requestValue(meta.get("message_encryption_pending_identity"));
+  const pending = record?.value;
+  if (!pending || pending.key_id !== keyId || Number(pending.generation) !== Number(generation)) { await done; return false; }
+  const acknowledged = new Set(Array.isArray(pending.acknowledged_peers) ? pending.acknowledged_peers : []);
+  acknowledged.add(peerId);
+  meta.put({ key: "message_encryption_pending_identity", value: { ...pending, acknowledged_peers: [...acknowledged] } });
+  await done;
+  const required = [...new Set(requiredPeerIds.filter(id => typeof id === "string" && id))];
+  return required.includes(peerId) && required.every(id => acknowledged.has(id));
+}
+
+
+export async function markPreviousMessageEncryptionIdentityForDeletion(keyId) {
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const meta = tx.objectStore("meta");
+  const record = await requestValue(meta.get("message_encryption_previous_identity"));
+  if (record?.value?.key_id === keyId && !record.value.peer_switched_at) {
+    meta.put({ key: "message_encryption_previous_identity", value: { ...record.value, peer_switched_at: Date.now() } });
+  }
+  await done;
+  return record?.value?.key_id === keyId;
+}
+
+export async function clearPreviousMessageEncryptionIdentity(keyId) {
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const meta = tx.objectStore("meta");
+  const record = await requestValue(meta.get("message_encryption_previous_identity"));
+  if (record?.value?.key_id === keyId) meta.delete("message_encryption_previous_identity");
+  await done;
+  return record?.value?.key_id === keyId;
+}
+
 export async function signWithIdentity(payload) {
   const identity = await getOrCreateIdentity();
   const data = new TextEncoder().encode(
