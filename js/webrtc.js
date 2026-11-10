@@ -37,6 +37,9 @@ export class WebRtcAudio {
     this.audioSender = null;
     this.prewarmed = false;
     this.prewarmStartedAt = 0;
+    this.prewarmCompletedAt = 0;
+    this.iceGatheringStartedAt = 0;
+    this.iceGatheringCompletedAt = 0;
     this.signalEnabled = false;
     this.pendingLocalCandidates = [];
     this.localStream = null;
@@ -178,13 +181,32 @@ export class WebRtcAudio {
     pc.onicecandidate = event => {
       if (event.candidate) {
         this.pendingLocalCandidates.push(event.candidate.toJSON());
-        this.onState("PC["+this.pcDiagnosticId+"] ICE candidate #"+this.pendingLocalCandidates.length+" собран; отдельный POST не отправляется.");
+        const elapsed = this.iceGatheringStartedAt
+          ? ((Date.now() - this.iceGatheringStartedAt) / 1000).toFixed(1) + "s"
+          : "n/a";
+        const candidateType = event.candidate.type || "unknown";
+        const protocol = event.candidate.protocol || "unknown";
+        this.onState("PC["+this.pcDiagnosticId+"] ICE candidate #"+this.pendingLocalCandidates.length+
+          "; type="+candidateType+"; protocol="+protocol+"; elapsed="+elapsed+
+          "; отдельный POST не отправляется.");
       } else {
-        this.onState("PC["+this.pcDiagnosticId+"] ice-gathering-complete; candidates="+this.pendingLocalCandidates.length+"; elapsed="+((Date.now()-this.diagnosticStartedAt)/1000).toFixed(1)+"s.");
+        this.onState("PC["+this.pcDiagnosticId+"] ICE end-of-candidates; total="+this.pendingLocalCandidates.length+".");
       }
     };
 
-    pc.onicegatheringstatechange = () => this.onState("PC["+this.pcDiagnosticId+"] ice-gathering-"+pc.iceGatheringState+"; elapsed="+((Date.now()-this.diagnosticStartedAt)/1000).toFixed(1)+"s.");
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === "gathering" && !this.iceGatheringStartedAt) {
+        this.iceGatheringStartedAt = Date.now();
+        this.onState("PC["+this.pcDiagnosticId+"] ICE gathering started.");
+      } else if (pc.iceGatheringState === "complete" && !this.iceGatheringCompletedAt) {
+        this.iceGatheringCompletedAt = Date.now();
+        const elapsed = this.iceGatheringStartedAt
+          ? ((this.iceGatheringCompletedAt - this.iceGatheringStartedAt) / 1000).toFixed(1)
+          : "n/a";
+        this.onState("PC["+this.pcDiagnosticId+"] ICE gathering complete; duration="+elapsed+
+          "s; candidates="+this.pendingLocalCandidates.length+".");
+      }
+    };
     pc.onsignalingstatechange = () => this.onState("PC["+this.pcDiagnosticId+"] signaling-"+pc.signalingState+".");
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
@@ -526,8 +548,9 @@ export class WebRtcAudio {
     const pc = await this.createPeerConnection({ prewarm: true });
     if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
     await this.waitForIceGatheringComplete(pc);
+    this.prewarmCompletedAt = Date.now();
     const elapsedSeconds = this.prewarmStartedAt
-      ? ((Date.now() - this.prewarmStartedAt) / 1000).toFixed(1)
+      ? ((this.prewarmCompletedAt - this.prewarmStartedAt) / 1000).toFixed(1)
       : "n/a";
     this.onState("ICE предварительно подготовлен; кандидатов: " +
       this.pendingLocalCandidates.length + "; время: " + elapsedSeconds + " с; pool=1");
@@ -536,7 +559,7 @@ export class WebRtcAudio {
 
   isPrewarmed() {
     return this.prewarmed && !!this.pc && !!this.pc.localDescription &&
-      Date.now() - this.prewarmStartedAt < 60000;
+      !!this.prewarmCompletedAt && Date.now() - this.prewarmCompletedAt < 60000;
   }
 
   async activatePreparedOffer() {
