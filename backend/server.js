@@ -63,7 +63,7 @@ function validateRequest(body, now) {
   if (typeof recipient_subscription_id !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(recipient_subscription_id)) return null;
   if (!Number.isSafeInteger(expires_at)) return null;
-  if (sender_name !== undefined && (typeof sender_name !== "string" || sender_name.length > 60 || sender_name.trim() !== sender_name || /[\\u0000-\\u001f\\u007f]/.test(sender_name))) return null;
+  if (sender_name !== undefined && (typeof sender_name !== "string" || sender_name.length > 60 || sender_name.trim() !== sender_name || /[\u0000-\u001f\u007f]/.test(sender_name))) return null;
 
   return { user_id, event, call_id, recipient_subscription_id, expires_at };
 }
