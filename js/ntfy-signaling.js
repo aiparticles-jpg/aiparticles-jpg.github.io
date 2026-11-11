@@ -167,7 +167,18 @@ export class NtfySecureSignaling {
   this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} CREATED; t=+0ms; readyState=${es.readyState} (${stateName()})`);
   const ready=new Promise((resolve,reject)=>{
    const timeout=setTimeout(()=>{if(!settled){settled=true;reject(Error("Тайм-аут подключения к ntfy"))}},15000);
-   es.onopen=()=>{
+   es.onopen=event=>{
+    // ntfy sends its own named SSE event "open" immediately after connecting.
+    // It is a MessageEvent with data; it must not be mistaken for EventSource's
+    // transport-level open event (a plain Event).
+    if(typeof event?.data==="string"){
+     let serverEvent=null;
+     try{serverEvent=JSON.parse(event.data)?.event||null}catch{}
+     if(serverEvent==="open"){
+      this.onDebug(`[SSE ${this.debugId}] ntfy server event=open received; transport connection was already opened.`);
+      return;
+     }
+    }
     const now=performance.now(),sincePrevious=lastOpenAt===null?"—":Math.round(now-lastOpenAt)+"ms";
     this.sseOpenCount++;
     this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} OPEN #${this.sseOpenCount}; since-create=+${elapsed()}ms; since-prev-open=${sincePrevious}; readyState(before)=${es.readyState} (${stateName()})`);
