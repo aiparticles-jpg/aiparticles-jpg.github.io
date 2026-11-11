@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=27";
+import { WebRtcAudio } from "./webrtc.js?v=28";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=45";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=12";
@@ -194,7 +194,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],callReturnSnapshot:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],callReturnSnapshot:null};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -533,11 +533,11 @@ async function finishNoAnswer(){
  debug("Исходящий вызов истёк через 45 секунд; отменяющий POST не отправлялся.");
  closeCallScreen();
 }
-function createWebRtcInstance(diagnosticPilot=els.pilot.checked,initiatorOverride=null){
+function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
  const me=state.me,peer=els.peer.value;
  return new WebRtcAudio({
   diagnosticPilot,
-  initiator:initiatorOverride===null?(NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer):initiatorOverride,
+  initiator:NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer,
   onRemoteHangup:()=>handleRemoteHangup(),
   sendSignal:payload=>state.secure.sendSignal(payload),
   onRemoteStream:stream=>{els.audio.srcObject=stream;els.audio.play().catch(e=>debug("Не удалось включить удалённый звук: "+e.message))},
@@ -710,70 +710,6 @@ if("serviceWorker" in navigator){
   }
  });
 }
-function scheduleIcePrewarm(reason="input",force=false){
- if(state.prewarmTimer)clearTimeout(state.prewarmTimer);
- state.prewarmTimer=setTimeout(async()=>{
-  state.prewarmTimer=null;
-  const me=state.me;
-  const names=me;
-  const eligible=NtfySecureSignaling.validUserId(me)&&navigator.onLine;
-  if(state.connecting||state.incomingCall||state.answeringCall||state.outgoingCall||state.peerPresent||state.secure?.active||state.callStarted)return;
-  if(!eligible){
-   if(state.webrtc?.prewarmed){
-    const old=state.webrtc;state.webrtc=null;state.prewarmNames=null;
-    await old.close({stopTracks:true});
-   }
-   return;
-  }
-  if(state.prewarmPromise){
-   // Repeated periodic/visibility checks must not queue a redundant second
-   // prewarm for the same peer while the current ICE gathering is still running.
-   if(state.prewarmTargetNames!==names)state.prewarmPending={reason,force};
-   return;
-  }
-  const currentFresh=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===names);
-  if(currentFresh)return;
-
-  // Prepare a generic offerer PC using only our own identity; the remote peer is not needed for ICE gathering.
-  const candidate=createWebRtcInstance(els.pilot.checked,true);
-  const previous=state.webrtc;
-  // Publish the in-flight prepared PC immediately so Connect can keep and reuse it.
-  state.webrtc=candidate;
-  state.prewarmNames=names;
-  const task=(async()=>{
-   try{
-    if(previous&&previous!==candidate)await previous.close({stopTracks:true});
-    debug("Предварительная подготовка ICE начата (причина: "+reason+"; без микрофона и без ntfy).");
-    const count=await candidate.prepareIce();
-    const latestMe=state.me;
-    const stillOwned=state.webrtc===candidate&&navigator.onLine&&latestMe===names;
-    if(!stillOwned){
-     await candidate.close({stopTracks:true});
-     if(state.webrtc===candidate){state.webrtc=null;state.prewarmNames=null}
-     debug("Новая ICE-подготовка отброшена: параметры или экземпляр изменились.");
-     return null;
-    }
-    debug("Предварительная подготовка ICE завершена; локально сохранено кандидатов: "+count+". Тот же PC сохранён для звонка.");
-    return candidate;
-   }catch(error){
-    await candidate.close({stopTracks:true});
-    if(state.webrtc===candidate){state.webrtc=null;state.prewarmNames=null}
-    debug("Предварительная подготовка ICE не удалась: "+(error.message||String(error)));
-    return null;
-   }
-  })();
-  state.prewarmTargetNames=names;
-  state.prewarmPromise=task;
-  try{await task}
-  finally{
-   if(state.prewarmPromise===task){
-    state.prewarmPromise=null;state.prewarmTargetNames=null;
-    const pending=state.prewarmPending;state.prewarmPending=null;
-    if(pending)scheduleIcePrewarm(pending.reason,pending.force);
-   }
-  }
- },700);
-}
 async function onSecureReady(){
  state.answeringCall=false;
  state.peerPresent=true;state.role=state.secure.role==="A"?"initiator":"receiver";
@@ -799,30 +735,10 @@ async function handleSignal(payload){
 }
 async function startWebRtcOffer(){
  if(state.callStarted)return;state.callStarted=true;
- try{
-  await ensureWebRtc();
-  if(state.webrtc?.prewarmed&&!state.webrtc.isPrewarmed()){
-   const preparing=state.webrtc;
-   debug("Звонок использует текущую ICE-подготовку; ожидаем завершения gathering на том же PC.");
-   // Wait for the app-level task too: it may still be replacing the previous PC
-   // before prepareIce() has installed its own promise on this instance.
-   if(state.prewarmPromise&&state.prewarmTargetNames===state.prewarmNames)await state.prewarmPromise;
-   const ready=await preparing.waitForPrewarm();
-   if(state.webrtc!==preparing){
-    await ensureWebRtc();
-   }else if(!ready){
-    debug("Текущая ICE-подготовка не завершилась; создаём обычный WebRTC PC.");
-    await preparing.close({stopTracks:true});
-    state.webrtc=null;state.prewarmNames=null;
-    await ensureWebRtc();
-   }
-  }
-  const prepared=await state.webrtc.activatePreparedOffer();
-  if(!prepared)await state.webrtc.createOffer();
-  debug((prepared?"Предварительно подготовленный ":"")+"WebRTC offer передан в ntfy. Ожидаем answer от второго устройства и установления P2P.");
- }
+ try{await ensureWebRtc();await state.webrtc.createOffer();debug("WebRTC offer отправлен пакетами ICE по временным отсечкам 200/500/2000 мс.");}
  catch(e){state.callStarted=false;showError("Не удалось запустить WebRTC: "+e.message);setStatus("Не удалось начать звонок","Проверьте разрешение микрофона и повторите попытку.","error")}
 }
+
 async function connect(){
  if(els.callScreen.classList.contains("hidden"))openCallScreen();
  const answering=state.incomingCall;
@@ -838,10 +754,7 @@ async function connect(){
  try{
   const me=state.me;
   // Keep a matching prepared PC even while its ICE gathering is still running.
-  const matchingPrewarm=!!(state.webrtc?.prewarmed&&state.prewarmNames===me&&me<peer);
-  const keepPrewarm=matchingPrewarm&&(state.webrtc.isPrewarmed()||
-   !!(state.prewarmPromise&&state.prewarmTargetNames===me));
-  if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
+  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
   state.callStarted=false;state.peerPresent=false;
   if(!NtfySecureSignaling.validUserId(me)||!NtfySecureSignaling.validUserId(peer)||me===peer)throw Error("Выберите сохранённый контакт. Собеседник должен отличаться от вашей идентичности.");
   
@@ -903,7 +816,7 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  else if(failure)setStatus("Соединение потеряно","WebRTC не восстановил связь за отведённое время. Звонок завершён.","error");
  else setStatus("Звонок завершён","Подписка на ваше имя остаётся активной. Чтобы позвонить снова, нажмите кнопку звонка в карточке контакта.","idle");
  closeCallScreen();
- scheduleIcePrewarm("hangup",true);
+
 }
 function handleRemoteHangup(){
  if(state.hangingUp)return;
@@ -1481,11 +1394,11 @@ els.debugMode.addEventListener("change",()=>{
  applyDebugMode();
  debug("Режим отладки "+(els.debugMode.checked?"включён":"выключен")+".");
 });
-els.pilot.addEventListener("change",async()=>{
+els.pilot.addEventListener("change",()=>{
  try{localStorage.setItem("vl.simulateMicrophone.v1",els.pilot.checked?"1":"0")}catch(error){debug("Не удалось сохранить настройку симуляции микрофона: "+error.message)}
  debug("Симуляция микрофона "+(els.pilot.checked?"включена":"выключена")+". Настройка применяется при следующем подключении.");
- if(!state.secure?.active&&!state.callStarted){if(state.webrtc?.prewarmed){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}scheduleIcePrewarm("pilot-change")}
 });
+
 function openAboutScreen(){
  els.headerMenu.open=false;
  els.aboutScreen.classList.remove("hidden");
@@ -1822,18 +1735,18 @@ els.peer.addEventListener("change",()=>{
   const me=state.me;
   state.secure.setPeer(NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  }
- scheduleIcePrewarm("input");
+
 });
-setInterval(()=>scheduleIcePrewarm("periodic",true),30000);
+
 document.addEventListener("visibilitychange",()=>{
  if(!document.hidden){
   reconcileOutgoingCallExpiry();
-  scheduleIcePrewarm("visibility",true);
+
  }
 });
 window.addEventListener("pageshow",reconcileOutgoingCallExpiry);
 window.addEventListener("focus",reconcileOutgoingCallExpiry);
-window.addEventListener("online",()=>scheduleIcePrewarm("online",true));
+
 els.hangup.addEventListener("click",hangup);
 els.confirmDeleteContact.addEventListener("click",deleteSelectedContact);
 els.saveContactName.addEventListener("click",saveSelectedContactName);
@@ -1853,7 +1766,7 @@ async function initializeApp(){
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
   await refreshContactOptions();
-  scheduleIcePrewarm("identity-ready",true);
+
   const requestedChat=new URLSearchParams(window.location.search).get("openChat");
   if(requestedChat){
    await openChatFromNotification(requestedChat);
@@ -1921,4 +1834,4 @@ els.tcp.classList.add("hidden");
 try{els.pilot.checked=localStorage.getItem("vl.simulateMicrophone.v1")==="1"}catch{els.pilot.checked=false}
 els.dismissIncoming.classList.add("hidden");
 initializeApp();
-scheduleIcePrewarm();
+
