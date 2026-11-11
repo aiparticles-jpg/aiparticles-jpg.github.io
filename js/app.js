@@ -203,7 +203,8 @@ function formatDiagnosticLogTimestamp(date,elapsedMs){
 async function copyDiagnosticLog(element,button){
  const value=element?.textContent?.trim();
  if(!value)return;
- const textToCopy="\n"+value+"\n\n";
+ const copiedAt=new Date().toLocaleString("ru-RU",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+ const textToCopy="\n"+value+"\n(Скопировано: "+copiedAt+")\n\n";
  try{
   if(navigator.clipboard?.writeText){
    await navigator.clipboard.writeText(textToCopy);
