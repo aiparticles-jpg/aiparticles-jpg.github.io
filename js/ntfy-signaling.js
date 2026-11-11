@@ -132,7 +132,22 @@ export class NtfySecureSignaling {
   const body={...payload,invitation_id:payload.invitation_id||contact.invitation_id};
   if(type!=="rotation_response"&&contact.rotation_id&&contact.rotation_public_key)body.rotation_request={rotation_id:contact.rotation_id,public_key:contact.rotation_public_key};
   const key=await this.deriveEnvelopeKey(contact.invitation_secret,this.me,peer),iv=crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:this.envelopeAad(type,this.me,peer)},key,enc.encode(stable(body)));
+  const plaintext=enc.encode(stable(body));
+  if(type==="data"){
+   const signal=payload.signal?.payload||{};
+   const sdpChars=signal.description?.sdp?.length||0;
+   const candidateCount=Array.isArray(signal.candidates)?signal.candidates.length:0;
+   try{
+    const compressed=await new Response(new Blob([plaintext]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();
+    const encryptedLength=compressed.byteLength+16;
+    const ciphertextChars=Math.ceil(encryptedLength*4/3);
+    const estimate=enc.encode(JSON.stringify({v:3,type,payload:{from:this.me,to:peer},auth:{scheme:"contact-aes-256-gcm",iv:"x".repeat(16),ciphertext:"x".repeat(ciphertextChars)}})).byteLength;
+    this.onDebug(`[signaling] data size: SDP=${sdpChars} chars; candidates=${candidateCount}; plaintext=${plaintext.byteLength} bytes; gzip=${compressed.byteLength} bytes; estimated gzip-encrypted envelope=${estimate} bytes; fits single POST=${estimate<=3000}.`);
+   }catch(error){
+    this.onDebug("[signaling] gzip size diagnostic unavailable: "+(error.message||String(error)));
+   }
+  }
+  const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:this.envelopeAad(type,this.me,peer)},key,plaintext);
   return {v:3,type,payload:{from:this.me,to:peer},auth:{scheme:"contact-aes-256-gcm",iv:b64u(iv),ciphertext:b64u(ciphertext)}};
  }
 
