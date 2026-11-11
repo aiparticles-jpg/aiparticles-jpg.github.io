@@ -317,7 +317,7 @@ export class WebRtcAudio {
         if (report.codecId) {
           const codec = stats.get(report.codecId);
           if (codec) {
-            const codecName = String(codec.mimeType || "unknown").replace(/^audio\\//i, "");
+            const codecName = String(codec.mimeType || "unknown").replace(/^audio\//i, "");
             fields.push(label + " codec=" + codecName +
               (Number.isFinite(codec.clockRate) ? "/" + codec.clockRate : "") +
               (Number.isFinite(codec.channels) ? "ch=" + codec.channels : "") +
@@ -369,7 +369,7 @@ export class WebRtcAudio {
       const localSdp = pc.localDescription?.sdp || "";
       const remoteSdp = pc.remoteDescription?.sdp || "";
       const ptimeValues = [localSdp, remoteSdp].map(sdp => {
-        const match = sdp.match(/^a=ptime:(\\d+)\\s*$/mi);
+        const match = sdp.match(/^a=ptime:(\d+)\s*$/mi);
         return match ? match[1] + "ms" : "not-signaled";
       });
       fields.push("ptime-SDP local/remote=" + ptimeValues.join("/"));
