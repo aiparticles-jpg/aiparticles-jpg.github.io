@@ -196,6 +196,28 @@ function updateReplyInviteStatus(){
 }
 const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],callReturnSnapshot:null};
 let diagnosticReportStartedPerf=null;
+const diagnosticLogAutoFollow={main:true,serviceWorker:true};
+function scrollDiagnosticLogToBottom(element){
+ if(element)element.scrollTop=element.scrollHeight;
+}
+function disableDiagnosticLogAutoFollow(){
+ diagnosticLogAutoFollow.main=false;
+ diagnosticLogAutoFollow.serviceWorker=false;
+}
+for(const logElement of [els.debugLog,els.swDebugLog]){
+ if(!logElement)continue;
+ for(const eventName of ["wheel","touchstart","pointerdown","keydown"]){
+  logElement.addEventListener(eventName,disableDiagnosticLogAutoFollow,{passive:eventName!=="keydown"});
+ }
+}
+function resetDiagnosticLogAutoFollow(){
+ diagnosticLogAutoFollow.main=true;
+ diagnosticLogAutoFollow.serviceWorker=true;
+ requestAnimationFrame(()=>{
+  scrollDiagnosticLogToBottom(els.debugLog);
+  scrollDiagnosticLogToBottom(els.swDebugLog);
+ });
+}
 function formatDiagnosticLogTimestamp(date,elapsedMs){
  const time=date.toLocaleTimeString("ru-RU",{hour12:false});
  return "["+time+"."+String(date.getMilliseconds()).padStart(3,"0")+" (+"+(Math.max(0,elapsedMs)/1000).toFixed(3)+"s)]";
@@ -237,7 +259,7 @@ function debug(message){
  }
  const timestamp=formatDiagnosticLogTimestamp(now,perfNow-diagnosticReportStartedPerf);
  els.debugLog.textContent=(els.debugLog.textContent+"\n"+timestamp+" "+message).trim();
- els.debugLog.scrollTop=els.debugLog.scrollHeight;
+ if(diagnosticLogAutoFollow.main)scrollDiagnosticLogToBottom(els.debugLog);
 }
 window.addEventListener("voicelink:onesignal-status",event=>{
  if(els.oneSignalStatus&&event.detail?.text)els.oneSignalStatus.textContent=event.detail.text;
@@ -611,7 +633,7 @@ if("serviceWorker" in navigator){
   const line=formatDiagnosticLogTimestamp(now,now.getTime()-swLogStartedAt)+" "+stage+" "+JSON.stringify(details);
   const current=els.swDebugLog.textContent;
   els.swDebugLog.textContent=(current==="Ожидаем событий Service Worker."||current==="Записей пока нет."?"":current+"\n")+line;
-  els.swDebugLog.scrollTop=els.swDebugLog.scrollHeight;
+  if(diagnosticLogAutoFollow.serviceWorker)scrollDiagnosticLogToBottom(els.swDebugLog);
  }
  function renderServiceWorkerLog(logs){
   if(!els.swDebugLog)return;
@@ -624,7 +646,7 @@ if("serviceWorker" in navigator){
    const elapsed=swLogStartedAt===null?0:timestamp-swLogStartedAt;
    return formatDiagnosticLogTimestamp(time,elapsed)+" "+item.stage+" "+JSON.stringify(item.details||{});
   }).join("\n")||"Записей пока нет.";
-  els.swDebugLog.scrollTop=els.swDebugLog.scrollHeight;
+  if(diagnosticLogAutoFollow.serviceWorker)scrollDiagnosticLogToBottom(els.swDebugLog);
  }
  function requestServiceWorkerStatus(reg){
   if(!reg)return;
@@ -1401,7 +1423,7 @@ els.inviteTools.addEventListener("toggle",()=>{
 function openProfileScreen(){clearInlineStatus(els.inviteStatus);clearError();els.profileScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.inviteTools.open=true;updateInvitationPanel();els.profileScreenBack.focus();}
 function closeProfileScreen(){clearInlineStatus(els.inviteStatus);els.profileScreen.classList.add("hidden");document.body.classList.remove("contact-screen-open");els.profileDockButton.focus();}
 let diagnosticReturnFocus=null;
-function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.diagnosticScreenBack.focus();}
+function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");resetDiagnosticLogAutoFollow();els.diagnosticScreenBack.focus();}
 function closeDiagnosticScreen(){els.diagnosticScreen.classList.add("hidden");document.body.classList.remove("contact-screen-open");if(diagnosticReturnFocus?.isConnected&&!diagnosticReturnFocus.classList.contains("hidden"))diagnosticReturnFocus.focus();else els.privacyHelp.focus();diagnosticReturnFocus=null;}
 let profileLongPressTimer=null,profileLongPressTriggered=false;
 els.profileDockButton.addEventListener("click",event=>{if(profileLongPressTriggered){event.preventDefault();profileLongPressTriggered=false;return;}openProfileScreen();});
