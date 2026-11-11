@@ -1,6 +1,6 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js?v=3";
 import { decryptContactRequestEnvelope } from "./contact-exchange.js?v=11";
-import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact } from "./local-store.js?v=12";
+import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact, getNtfyCursor, saveNtfyCursor } from "./local-store.js?v=13";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -15,7 +15,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.preAnswerMessageCount=0;this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishStartAt=0;this.publishStartTimes=[];this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();this.dataAssemblies=new Map();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.cursorBlocked=false;this.lastProcessedMessageId=null;this.preAnswerMessageCount=0;this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishStartAt=0;this.publishStartTimes=[];this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();this.dataAssemblies=new Map();
  }
  static validUserId(s){return isUserId(s)}
  async deriveEnvelopeKey(secret,from,to){
@@ -203,7 +203,11 @@ async publish(to,msg){
   this.identity=await getCurrentSignalingIdentity();
   if(this.identity.user_id!==this.me)throw Error("Локальная идентичность изменилась. Перезапустите подписку.");
   if(this.closed)throw Error("Открытие подписки отменено.");
-  const url=BASE+await getNtfyTopic(this.me)+"/sse?since=all";
+  const cursor=await getNtfyCursor(this.me);
+  this.lastProcessedMessageId=cursor;
+  const since=cursor||"latest";
+  this.onDebug("[SSE "+this.debugId+"] resume cursor="+(cursor||"latest (первичная установка)")+"; старые сообщения до курсора не запрашиваются.");
+  const url=BASE+await getNtfyTopic(this.me)+"/sse?since="+encodeURIComponent(since);
   if(this.closed)throw Error("Открытие подписки отменено.");
   const es=new EventSource(url);this.es=es;
   let settled=false;
@@ -493,8 +497,23 @@ async publish(to,msg){
   },delay);
  }
  enqueueMessages(events){
-  const task=this.messageQueue.then(async()=>{for(const event of events)await this.handle(event)});
-  this.messageQueue=task.catch(error=>this.onError(error));
+  const task=this.messageQueue.then(async()=>{
+   for(const event of events){
+    let ntfyMessage=null;
+    try{ntfyMessage=JSON.parse(event.data)}catch{}
+    await this.handle(event);
+    if(ntfyMessage?.event==="message"&&typeof ntfyMessage.id==="string"){
+     if(this.cursorBlocked){
+      this.onDebug("[SSE "+this.debugId+"] cursor не сдвинут: ранее была ошибка обработки; id="+ntfyMessage.id+". При следующем запуске события будут прочитаны повторно.");
+     }else{
+      await saveNtfyCursor(this.me,ntfyMessage.id);
+      this.lastProcessedMessageId=ntfyMessage.id;
+      this.onDebug("[SSE "+this.debugId+"] cursor сохранён после обработки: "+ntfyMessage.id+".");
+     }
+    }
+   }
+  });
+  this.messageQueue=task.catch(error=>{this.cursorBlocked=true;this.onError(error)});
   return this.messageQueue;
  }
  acceptDataPart(payload){
