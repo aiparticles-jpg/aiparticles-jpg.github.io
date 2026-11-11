@@ -38,6 +38,7 @@ export class WebRtcAudio {
     this.prewarmed = false;
     this.prewarmStartedAt = 0;
     this.prewarmCompletedAt = 0;
+    this.prewarmTask = null;
     this.iceGatheringStartedAt = 0;
     this.iceGatheringCompletedAt = 0;
     this.signalEnabled = false;
@@ -545,16 +546,33 @@ export class WebRtcAudio {
   }
 
   async prepareIce() {
-    const pc = await this.createPeerConnection({ prewarm: true });
-    if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
-    await this.waitForIceGatheringComplete(pc);
-    this.prewarmCompletedAt = Date.now();
-    const elapsedSeconds = this.prewarmStartedAt
-      ? ((this.prewarmCompletedAt - this.prewarmStartedAt) / 1000).toFixed(1)
-      : "n/a";
-    this.onState("ICE предварительно подготовлен; кандидатов: " +
-      this.pendingLocalCandidates.length + "; время: " + elapsedSeconds + " с; pool=1");
-    return this.pendingLocalCandidates.length;
+    if (this.prewarmTask) return this.prewarmTask;
+    const task = (async () => {
+      const pc = await this.createPeerConnection({ prewarm: true });
+      if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
+      await this.waitForIceGatheringComplete(pc);
+      this.prewarmCompletedAt = Date.now();
+      const elapsedSeconds = this.prewarmStartedAt
+        ? ((this.prewarmCompletedAt - this.prewarmStartedAt) / 1000).toFixed(1)
+        : "n/a";
+      this.onState("ICE предварительно подготовлен; кандидатов: " +
+        this.pendingLocalCandidates.length + "; время: " + elapsedSeconds + " с; pool=1");
+      return this.pendingLocalCandidates.length;
+    })();
+    this.prewarmTask = task;
+    try {
+      return await task;
+    } finally {
+      if (this.prewarmTask === task) this.prewarmTask = null;
+    }
+  }
+
+  async waitForPrewarm() {
+    if (this.prewarmTask) {
+      try { await this.prewarmTask; }
+      catch { return false; }
+    }
+    return this.isPrewarmed();
   }
 
   isPrewarmed() {
