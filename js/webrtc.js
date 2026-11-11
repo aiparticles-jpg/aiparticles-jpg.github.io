@@ -41,6 +41,8 @@ export class WebRtcAudio {
     this.prewarmTask = null;
     this.iceGatheringStartedAt = 0;
     this.iceGatheringCompletedAt = 0;
+    this.lastIceCandidateAt = 0;
+    this.iceCandidateErrorCount = 0;
     this.signalEnabled = false;
     this.pendingLocalCandidates = [];
     this.localStream = null;
@@ -182,6 +184,7 @@ export class WebRtcAudio {
     pc.onicecandidate = event => {
       if (event.candidate) {
         this.pendingLocalCandidates.push(event.candidate.toJSON());
+        this.lastIceCandidateAt = Date.now();
         const elapsed = this.iceGatheringStartedAt
           ? ((Date.now() - this.iceGatheringStartedAt) / 1000).toFixed(1) + "s"
           : "n/a";
@@ -195,6 +198,13 @@ export class WebRtcAudio {
       }
     };
 
+    pc.onicecandidateerror = event => {
+      this.iceCandidateErrorCount++;
+      this.onState("PC["+this.pcDiagnosticId+"] ICE candidate error #"+this.iceCandidateErrorCount+
+        "; code="+(event.errorCode||"unknown")+
+        "; url="+(event.url||"unknown")+
+        "; text="+(event.errorText||"no details")+".");
+    };
     pc.onicegatheringstatechange = () => {
       if (pc.iceGatheringState === "gathering" && !this.iceGatheringStartedAt) {
         this.iceGatheringStartedAt = Date.now();
@@ -204,8 +214,13 @@ export class WebRtcAudio {
         const elapsed = this.iceGatheringStartedAt
           ? ((this.iceGatheringCompletedAt - this.iceGatheringStartedAt) / 1000).toFixed(1)
           : "n/a";
+        const sinceLastCandidate=this.lastIceCandidateAt
+          ? ((this.iceGatheringCompletedAt-this.lastIceCandidateAt)/1000).toFixed(1)+"s"
+          : "n/a";
         this.onState("PC["+this.pcDiagnosticId+"] ICE gathering complete; duration="+elapsed+
-          "s; candidates="+this.pendingLocalCandidates.length+".");
+          "s; candidates="+this.pendingLocalCandidates.length+
+          "; since-last-candidate="+sinceLastCandidate+
+          "; candidate-errors="+this.iceCandidateErrorCount+".");
       }
     };
     pc.onsignalingstatechange = () => this.onState("PC["+this.pcDiagnosticId+"] signaling-"+pc.signalingState+".");
