@@ -300,16 +300,23 @@ function updateWebPushStatus(){
  setServiceStatus(els.webPushStatus,label);
 }
 async function checkPushBackendAvailability(){
+ const url="https://signal-backend-9tai.onrender.com/health";
+ const started=performance.now(),wasOnline=navigator.onLine,visibility=document.visibilityState;
  setServiceStatus(els.renderStatus,"Проверяем доступность…");
  const controller=new AbortController(),timeout=window.setTimeout(()=>controller.abort(),25000);
+ let timedOut=false;const timer=window.setTimeout(()=>{timedOut=true},25000);
  try{
-  const response=await fetch("https://signal-backend-9tai.onrender.com/health",{method:"GET",cache:"no-store",signal:controller.signal});
+  const response=await fetch(url,{method:"GET",cache:"no-store",signal:controller.signal});
+  const elapsed=Math.round(performance.now()-started);
+  const body=(await response.text()).slice(0,160);
+  debug(`[backend-health] HTTP ${response.status}; elapsed=${elapsed}ms; online(before)=${wasOnline}; visibility=${visibility}; content-type=${response.headers.get("content-type")||"n/a"}; body=${body||"(empty)"}.`);
   if(!response.ok)throw Error("HTTP "+response.status);
   setServiceStatus(els.renderStatus,"Доступен");
  }catch(error){
+  const elapsed=Math.round(performance.now()-started);
   setServiceStatus(els.renderStatus,error.name==="AbortError"?"Нет ответа (тайм-аут)":"Недоступен");
-  debug("Проверка Render push backend: "+(error.message||String(error)));
- }finally{clearTimeout(timeout)}
+  debug(`[backend-health] FAILED; elapsed=${elapsed}ms; error.name=${error.name||"unknown"}; error.message=${error.message||String(error)}; abortTimerFired=${timedOut}; online(before/after)=${wasOnline}/${navigator.onLine}; visibility(before/after)=${visibility}/${document.visibilityState}; urlHost=signal-backend-9tai.onrender.com. NetworkError в браузере не позволяет отличить DNS/TLS/CORS/сброс соединения — фиксируем только доступные признаки.`);
+ }finally{clearTimeout(timeout);clearTimeout(timer)}
 }
 async function checkServiceWorkerAvailability(){
  if(!("serviceWorker" in navigator)){setServiceStatus(els.serviceWorkerStatus,"Не поддерживается");return}
