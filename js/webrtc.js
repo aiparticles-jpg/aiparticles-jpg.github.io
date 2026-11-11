@@ -188,10 +188,25 @@ export class WebRtcAudio {
         const elapsed = this.iceGatheringStartedAt
           ? ((Date.now() - this.iceGatheringStartedAt) / 1000).toFixed(1) + "s"
           : "n/a";
-        const candidateType = event.candidate.type || "unknown";
-        const protocol = event.candidate.protocol || "unknown";
+        const candidate = event.candidate;
+        const candidateType = candidate.type || "unknown";
+        const protocol = candidate.protocol || "unknown";
+        const address = candidate.address || "n/a";
+        const port = candidate.port ?? "n/a";
+        const related = candidate.relatedAddress
+          ? candidate.relatedAddress + ":" + (candidate.relatedPort ?? "n/a")
+          : "n/a";
+        const network = candidate.networkType || "n/a";
+        const tcpType = candidate.tcpType || "n/a";
         this.onState("PC["+this.pcDiagnosticId+"] ICE candidate #"+this.pendingLocalCandidates.length+
-          "; type="+candidateType+"; protocol="+protocol+"; elapsed="+elapsed+
+          "; type="+candidateType+"; protocol="+protocol+
+          "; local="+address+":"+port+
+          "; related="+related+
+          "; foundation="+(candidate.foundation||"n/a")+
+          "; component="+(candidate.component||"n/a")+
+          "; tcpType="+tcpType+"; network="+network+
+          "; priority="+(candidate.priority??"n/a")+
+          "; elapsed="+elapsed+
           "; отдельный POST не отправляется.");
       } else {
         this.onState("PC["+this.pcDiagnosticId+"] ICE end-of-candidates; total="+this.pendingLocalCandidates.length+".");
@@ -201,15 +216,10 @@ export class WebRtcAudio {
     pc.onicecandidateerror = event => {
       this.iceCandidateErrorCount++;
       const localAddress = event.address || "";
-      const maskedAddress = localAddress
-        ? (localAddress.includes(":")
-          ? localAddress.split(":").slice(0, 3).join(":") + ":…"
-          : localAddress.split(".").slice(0, 3).join(".") + ".x")
-        : "n/a";
       const addressFamily = localAddress ? (localAddress.includes(":") ? "IPv6" : "IPv4") : "unknown";
       this.onState("PC["+this.pcDiagnosticId+"] ICE candidate error #"+this.iceCandidateErrorCount+
         "; code="+(event.errorCode||"unknown")+
-        "; local="+maskedAddress+":"+((event.port ?? "n/a"))+" ("+addressFamily+")"+
+        "; local="+(localAddress||"n/a")+":"+((event.port ?? "n/a"))+" ("+addressFamily+")"+
         "; url="+(event.url||"unknown")+
         "; text="+(event.errorText||"no details")+".");
     };
