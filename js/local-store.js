@@ -123,6 +123,31 @@ export async function hasActiveInvitationGrant(invitationId, userId) {
     invitation.activations.some(item => item.user_id === userId);
 }
 
+export async function getNtfyCursor(userId) {
+  if (typeof userId !== "string" || !/^[a-f0-9]{64}$/.test(userId)) {
+    throw new TypeError("A valid local identity is required for the ntfy cursor.");
+  }
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readonly");
+  const done = transactionDone(tx);
+  const record = await requestValue(tx.objectStore("meta").get("ntfy_cursor:" + userId));
+  await done;
+  return typeof record?.value === "string" ? record.value : null;
+}
+
+export async function saveNtfyCursor(userId, messageId) {
+  if (typeof userId !== "string" || !/^[a-f0-9]{64}$/.test(userId) ||
+      typeof messageId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(messageId)) {
+    throw new TypeError("A valid local identity and ntfy message ID are required.");
+  }
+  const db = await openDatabase();
+  const tx = db.transaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  tx.objectStore("meta").put({ key: "ntfy_cursor:" + userId, value: messageId, updated_at: Date.now() });
+  await done;
+  return messageId;
+}
+
 export async function saveMyInvitation(url) {
   if (typeof url !== "string" || !url.startsWith("https://")) {
     throw new TypeError("A valid HTTPS invitation URL is required.");
