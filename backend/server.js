@@ -28,7 +28,8 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-VoiceLink-Diagnostic");
+    res.setHeader("Access-Control-Expose-Headers", "X-VL-Request-Id, X-VL-Instance-Id, X-VL-Uptime-Ms, X-VL-Boot-Time");
   }
   if (req.method === "OPTIONS") return res.sendStatus(origin === ALLOWED_ORIGIN ? 204 : 403);
   next();
@@ -155,8 +156,23 @@ async function submitWithRetry(event) {
   }
 }
 
-app.get("/health", (_req, res) => {
-  res.status(200).json({ ok: true, service: "voicelink-backend" });
+const crypto = require("crypto");
+const BOOT_TIME = Date.now();
+const INSTANCE_ID = crypto.randomUUID().slice(0, 12);
+
+app.get("/health", (req, res) => {
+  const started = Date.now();
+  const requestId = String(req.get("X-VoiceLink-Diagnostic") || crypto.randomUUID()).slice(0, 80);
+  res.set({
+    "Cache-Control": "no-store",
+    "X-VL-Request-Id": requestId,
+    "X-VL-Instance-Id": INSTANCE_ID,
+    "X-VL-Uptime-Ms": String(Math.round(process.uptime() * 1000)),
+    "X-VL-Boot-Time": new Date(BOOT_TIME).toISOString()
+  });
+  console.log(JSON.stringify({ event: "health_request", requestId, instanceId: INSTANCE_ID, origin: req.get("Origin") || null, userAgent: req.get("User-Agent") || null, uptimeMs: Math.round(process.uptime() * 1000), receivedAt: new Date().toISOString() }));
+  res.on("finish", () => console.log(JSON.stringify({ event: "health_response", requestId, instanceId: INSTANCE_ID, status: res.statusCode, elapsedMs: Date.now() - started, completedAt: new Date().toISOString() }));
+  res.status(200).json({ ok: true, service: "voicelink-backend", instanceId: INSTANCE_ID, bootTime: new Date(BOOT_TIME).toISOString(), serverTime: new Date().toISOString(), uptimeMs: Math.round(process.uptime() * 1000) });
 });
 
 app.post("/v1/push", async (req, res) => {
