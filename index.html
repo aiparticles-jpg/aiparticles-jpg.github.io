@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=67">
+  <link rel="stylesheet" href="./css/style.css?v=68">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -36,7 +36,7 @@
     <header class="topbar">
       <a class="brand" href="./" aria-label="Voice Link">
         <span class="brand-mark">V</span>
-        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.11-128</small></span>
+        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.11-129</small></span>
       </a>
       <div class="topbar-actions">
         <button id="privacy-help" class="privacy-label" type="button" aria-label="О приложении"><span class="dot"></span> Без регистрации</button>
@@ -258,13 +258,13 @@
         </div>
 
         <section class="event-log-panel primary-event-log" aria-labelledby="event-log-title">
-          <div class="panel-heading"><h2 id="event-log-title" class="contact-edit-screen-title">Журнал событий</h2></div>
+          <div class="panel-heading"><h2 id="event-log-title" class="contact-edit-screen-title">Журнал событий</h2><button id="copy-debug-log" class="button button-secondary log-copy-button" type="button" title="Скопировать журнал событий">Копировать</button></div>
           <div class="debug-meta" hidden>Канал: <code id="debug-url">ntfy.sh</code></div>
           <div class="debug-meta" hidden>Состояние: <strong id="debug-state">—</strong></div>
           <pre id="debug-log" class="debug-log">Ожидаем подключения. Здесь появятся события защищённого канала.</pre>
         </section>
         <section class="event-log-panel secondary-event-log" aria-labelledby="sw-event-log-title">
-          <div class="panel-heading"><h2 id="sw-event-log-title" class="contact-edit-screen-title">Журнал фонового обработчика</h2></div>
+          <div class="panel-heading"><h2 id="sw-event-log-title" class="contact-edit-screen-title">Журнал фонового обработчика</h2><button id="copy-sw-debug-log" class="button button-secondary log-copy-button" type="button" title="Скопировать журнал фонового обработчика">Копировать</button></div>
           <pre id="sw-debug-log" class="debug-log">Ожидаем событий Service Worker.</pre>
         </section>
         <section class="event-log-panel service-availability-panel" aria-labelledby="service-availability-title">
@@ -333,6 +333,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=164"></script>
+  <script type="module" src="./js/app.js?v=165"></script>
 </body>
 </html>
