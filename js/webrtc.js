@@ -479,7 +479,7 @@ export class WebRtcAudio {
 
   beginIceBatching(pc,description){
     this.cancelIceBatching();
-    const sdp=String(description.sdp||"").replace(/^a=candidate:[^\\r\\n]*(?:\\r?\\n)?/gm,"").replace(/^a=end-of-candidates\\r?\\n?/gm,"");
+    const sdp=String(description.sdp||"").replace(/^a=candidate:[^\r\n]*(?:\r?\n)?/gm,"").replace(/^a=end-of-candidates\r?\n?/gm,"");
     this.pendingLocalCandidates=[];this.localCandidateCount=0;
     this.iceBatching={pc,description:{type:description.type,sdp},startedAt:0,gatheringComplete:false,stopped:false,sendQueue:Promise.resolve()};
   }
@@ -499,7 +499,7 @@ export class WebRtcAudio {
     else if(candidates.length||end)payload={candidates,...(end?{endOfCandidates:true}:{})};
     if(!payload){this.onState("PC["+this.pcDiagnosticId+"] ICE batch "+index+" skipped: no new candidates.");return;}
     this.onState("PC["+this.pcDiagnosticId+"] sending ICE batch "+index+"; elapsed="+(Date.now()-batch.startedAt)+"ms; candidates="+candidates.length+"; endOfCandidates="+end+".");
-    const send=async()=>{if(this.iceBatching!==batch&&index!==1)return;await this.sendSignal(payload)};
+    const send=async()=>{if(this.iceBatching!==batch)return;await this.sendSignal(payload)};
     batch.sendQueue=batch.sendQueue.then(send,send).catch(error=>this.onError(new Error("Не удалось передать ICE-пакет "+index+": "+(error.message||String(error)))));
     await batch.sendQueue;
     if(end)this.onState("PC["+this.pcDiagnosticId+"] ICE signaling cutoff reached; later local candidates will not be sent.");
