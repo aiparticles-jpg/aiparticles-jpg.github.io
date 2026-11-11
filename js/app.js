@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=24";
+import { WebRtcAudio } from "./webrtc.js?v=25";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=45";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=12";
@@ -195,9 +195,20 @@ function updateReplyInviteStatus(){
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
 const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,prewarmNames:null,prewarmTargetNames:null,prewarmTimer:null,prewarmPromise:null,prewarmPending:null,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],callReturnSnapshot:null};
+let diagnosticReportStartedPerf=null;
+function formatDiagnosticLogTimestamp(date,elapsedMs){
+ const time=date.toLocaleTimeString("ru-RU",{hour12:false});
+ return "["+time+"."+String(date.getMilliseconds()).padStart(3,"0")+" (+"+(Math.max(0,elapsedMs)/1000).toFixed(3)+"s)]";
+}
 function debug(message){
- const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
- els.debugLog.textContent=(els.debugLog.textContent+"\n["+time+"] "+message).trim();
+ const now=new Date();
+ const perfNow=performance.now();
+ if(diagnosticReportStartedPerf===null){
+  diagnosticReportStartedPerf=perfNow;
+  if(els.debugLog.textContent==="Ожидаем подключения. Здесь появятся события защищённого канала.")els.debugLog.textContent="";
+ }
+ const timestamp=formatDiagnosticLogTimestamp(now,perfNow-diagnosticReportStartedPerf);
+ els.debugLog.textContent=(els.debugLog.textContent+"\n"+timestamp+" "+message).trim();
  els.debugLog.scrollTop=els.debugLog.scrollHeight;
 }
 window.addEventListener("voicelink:onesignal-status",event=>{
@@ -564,19 +575,28 @@ if("serviceWorker" in navigator){
  function requestServiceWorkerLog(target=navigator.serviceWorker.controller){
   target?.postMessage({type:"VL_GET_SW_LOG"});
  }
+ let swLogStartedAt=null;
  function appendServiceWorkerLog(stage,details={}){
   if(!els.swDebugLog)return;
-  const time=new Date().toLocaleTimeString("ru-RU",{hour12:false});
-  const line="["+time+"] "+stage+" "+JSON.stringify(details);
+  const now=new Date();
+  if(swLogStartedAt===null)swLogStartedAt=now.getTime();
+  const line=formatDiagnosticLogTimestamp(now,now.getTime()-swLogStartedAt)+" "+stage+" "+JSON.stringify(details);
   const current=els.swDebugLog.textContent;
   els.swDebugLog.textContent=(current==="Ожидаем событий Service Worker."||current==="Записей пока нет."?"":current+"\n")+line;
+  els.swDebugLog.scrollTop=els.swDebugLog.scrollHeight;
  }
  function renderServiceWorkerLog(logs){
   if(!els.swDebugLog)return;
-  els.swDebugLog.textContent=(Array.isArray(logs)?logs:[]).map(item=>{
-   const time=new Date(item.time).toLocaleTimeString("ru-RU",{hour12:false});
-   return "["+time+"] "+item.stage+" "+JSON.stringify(item.details||{});
+  const entries=Array.isArray(logs)?logs:[];
+  const firstTime=entries.length?Number(entries[0].time):NaN;
+  swLogStartedAt=Number.isFinite(firstTime)?firstTime:null;
+  els.swDebugLog.textContent=entries.map(item=>{
+   const timestamp=Number(item.time)||Date.now();
+   const time=new Date(timestamp);
+   const elapsed=swLogStartedAt===null?0:timestamp-swLogStartedAt;
+   return formatDiagnosticLogTimestamp(time,elapsed)+" "+item.stage+" "+JSON.stringify(item.details||{});
   }).join("\n")||"Записей пока нет.";
+  els.swDebugLog.scrollTop=els.swDebugLog.scrollHeight;
  }
  function requestServiceWorkerStatus(reg){
   if(!reg)return;
