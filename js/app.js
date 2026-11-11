@@ -12,7 +12,7 @@ const els={
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
- debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
+ copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
 window.voicelinkIsReadingChat=senderId=>
@@ -199,6 +199,30 @@ let diagnosticReportStartedPerf=null;
 function formatDiagnosticLogTimestamp(date,elapsedMs){
  const time=date.toLocaleTimeString("ru-RU",{hour12:false});
  return "["+time+"."+String(date.getMilliseconds()).padStart(3,"0")+" (+"+(Math.max(0,elapsedMs)/1000).toFixed(3)+"s)]";
+}
+async function copyDiagnosticLog(element,button){
+ const value=element?.textContent?.trim();
+ if(!value)return;
+ const textToCopy="\n"+value+"\n\n";
+ try{
+  if(navigator.clipboard?.writeText){
+   await navigator.clipboard.writeText(textToCopy);
+  }else{
+   const temporary=document.createElement("textarea");
+   temporary.value=textToCopy;
+   temporary.setAttribute("readonly","");
+   temporary.style.position="fixed";temporary.style.opacity="0";
+   document.body.appendChild(temporary);temporary.select();
+   const copied=document.execCommand("copy");temporary.remove();
+   if(!copied)throw Error("Копирование не поддерживается браузером.");
+  }
+  const original=button.textContent;
+  button.textContent="Скопировано";
+  button.disabled=true;
+  window.setTimeout(()=>{button.textContent=original;button.disabled=false},1200);
+ }catch(error){
+  debug("Не удалось скопировать журнал: "+(error.message||String(error)));
+ }
 }
 function debug(message){
  const now=new Date();
@@ -1384,6 +1408,8 @@ els.profileScreenBack.addEventListener("click",closeProfileScreen);
 els.profileDisplayName.addEventListener("input",handleProfileDisplayNameInput);
 els.inviteUrl.addEventListener("focus",()=>{if(profileInviteDirty)refreshProfileInvitationIfNeeded();});
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
+els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els.copyDebugLog));
+els.copySwDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.swDebugLog,els.copySwDebugLog));
 els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;try{els.profileDockButton.setPointerCapture(event.pointerId)}catch{}profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;els.profileDockLabel.textContent="Отпустите";},550);});
 async function completeProfileLongPress(){
  if(els.inviteUrl.value.trim()&&!await refreshProfileInvitationIfNeeded()){
