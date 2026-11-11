@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=29";
+import { WebRtcAudio } from "./webrtc.js?v=30";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=52";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=13";
@@ -535,7 +535,7 @@ async function dismissIncoming(timedOut=false){
 }
 async function finishRejectedCall(info){
  if(!state.outgoingCall)return;
- stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
+ stopRemoteAudioDiagnostics();stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  state.callStarted=false;state.peerPresent=false;updateCallButtons();
@@ -545,7 +545,7 @@ async function finishRejectedCall(info){
 }
 async function finishNoAnswer(){
  if(!state.outgoingCall)return;
- stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
+ stopRemoteAudioDiagnostics();stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
  els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  state.callStarted=false;state.peerPresent=false;updateCallButtons();
@@ -553,14 +553,57 @@ async function finishNoAnswer(){
  debug("Исходящий вызов истёк через 45 секунд; отменяющий POST не отправлялся.");
  closeCallScreen();
 }
+let remoteAudioDiagnosticTimer=null;
+function stopRemoteAudioDiagnostics(){
+ if(remoteAudioDiagnosticTimer!==null){clearInterval(remoteAudioDiagnosticTimer);remoteAudioDiagnosticTimer=null}
+}
+function logRemoteAudioPlayback(){
+ const audio=els.audio;
+ if(!audio.srcObject){stopRemoteAudioDiagnostics();return}
+ const track=audio.srcObject.getAudioTracks?.()[0];
+ debug("Audio playback: readyState="+audio.readyState+
+  "; paused="+audio.paused+
+  "; currentTime="+audio.currentTime.toFixed(2)+"s"+
+  "; playbackRate="+audio.playbackRate+
+  "; visibility="+document.visibilityState+
+  "; track="+(track?("readyState="+track.readyState+",enabled="+track.enabled+",muted="+track.muted):"none")+
+  "; error="+(audio.error?.code||"none"));
+}
 function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
  const me=state.me,peer=els.peer.value;
+ const audioDiagnostics=els.debugMode.checked||diagnosticPilot;
  return new WebRtcAudio({
   diagnosticPilot,
+  audioDiagnostics,
   initiator:NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer,
   onRemoteHangup:()=>handleRemoteHangup(),
   sendSignal:payload=>state.secure.sendSignal(payload),
-  onRemoteStream:stream=>{els.audio.srcObject=stream;els.audio.play().catch(e=>debug("Не удалось включить удалённый звук: "+e.message))},
+  onRemoteStream:stream=>{
+   stopRemoteAudioDiagnostics();
+   els.audio.srcObject=stream;
+   const track=stream.getAudioTracks?.()[0];
+   if(track){
+    track.addEventListener("mute",()=>debug("Remote audio track event: mute"));
+    track.addEventListener("unmute",()=>debug("Remote audio track event: unmute"));
+    track.addEventListener("ended",()=>debug("Remote audio track event: ended"));
+   }
+   const playResult=els.audio.play();
+   if(playResult&&typeof playResult.then==="function"){
+    playResult.then(()=>{
+     debug("Audio playback started: readyState="+els.audio.readyState+
+      "; paused="+els.audio.paused+
+      "; sampleTime="+els.audio.currentTime.toFixed(2)+"s"+
+      "; visibility="+document.visibilityState);
+     if(audioDiagnostics){
+      logRemoteAudioPlayback();
+      remoteAudioDiagnosticTimer=window.setInterval(logRemoteAudioPlayback,2000);
+     }
+    }).catch(e=>debug("Не удалось включить удалённый звук: "+e.message));
+   }else if(audioDiagnostics){
+    logRemoteAudioPlayback();
+    remoteAudioDiagnosticTimer=window.setInterval(logRemoteAudioPlayback,2000);
+   }
+  },
   onError:error=>showError(error.message||String(error)),
   onState:value=>{
    debug("WebRTC: "+value);
@@ -826,7 +869,7 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  }else if(notifyPeer&&state.peerPresent){
   debug("P2P DataChannel ещё не открыт; завершение выполняется локально без отдельного POST.");
  }
- stopOutgoingCall();if(state.incomingCall)state.secure?.dismissIncoming();clearIncomingUi();stopRinging();
+ stopOutgoingCall();stopRemoteAudioDiagnostics();if(state.incomingCall)state.secure?.dismissIncoming();clearIncomingUi();stopRinging();
  if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
  state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
