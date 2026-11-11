@@ -191,7 +191,11 @@ export class WebRtcAudio {
     pc.onsignalingstatechange=()=>this.onState("PC["+this.pcDiagnosticId+"] signaling-"+pc.signalingState+".");
     pc.oniceconnectionstatechange=()=>{const state=pc.iceConnectionState;this.onState("PC["+this.pcDiagnosticId+"] ice-"+state+".");if(this.signalEnabled)this.logSelectedCandidatePair("ice-"+state,pc)};
     pc.ontrack=event=>{const remoteStream=event.streams&&event.streams[0]?event.streams[0]:new MediaStream([event.track]);this.attachRemoteMonitor(remoteStream);this.onRemoteStream(remoteStream)};
-    pc.onconnectionstatechange=()=>this.onState("PC["+this.pcDiagnosticId+"] connection-"+pc.connectionState+".");
+    pc.onconnectionstatechange=()=>{
+      const connectionState=pc.connectionState;
+      this.onState("PC["+this.pcDiagnosticId+"] connection-"+connectionState+".");
+      if(connectionState==="connected")this.startStatsMonitoring(pc);
+    };
     this.pc=pc;return pc;
   }
 
@@ -295,7 +299,31 @@ export class WebRtcAudio {
         const delta = packets !== null && previous && Number.isFinite(previous[packetField])
           ? packets - previous[packetField] : null;
         const label = report.type === "inbound-rtp" ? "in" : "out";
-        fields.push(label + " Δpkts=" + (delta === null ? "n/a" : delta));
+        const elapsedMs = previous && Number.isFinite(previous.timestamp) && Number.isFinite(report.timestamp)
+          ? report.timestamp - previous.timestamp : null;
+        const packetsPerSecond = delta !== null && elapsedMs > 0
+          ? (delta * 1000 / elapsedMs).toFixed(1) : "n/a";
+        fields.push(label + " Δpkts=" + (delta === null ? "n/a" : delta) + "/s=" + packetsPerSecond);
+
+        if (Number.isFinite(report.bytesSent) || Number.isFinite(report.bytesReceived)) {
+          const byteField = report.type === "inbound-rtp" ? "bytesReceived" : "bytesSent";
+          const byteDelta = previous && Number.isFinite(report[byteField]) && Number.isFinite(previous[byteField])
+            ? report[byteField] - previous[byteField] : null;
+          if (byteDelta !== null && elapsedMs > 0) {
+            fields.push(label + " bitrate≈" + Math.round(byteDelta * 8 * 1000 / elapsedMs) + "bps");
+          }
+        }
+
+        if (report.codecId) {
+          const codec = stats.get(report.codecId);
+          if (codec) {
+            const codecName = String(codec.mimeType || "unknown").replace(/^audio\//i, "");
+            fields.push(label + " codec=" + codecName +
+              (Number.isFinite(codec.clockRate) ? "/" + codec.clockRate : "") +
+              (Number.isFinite(codec.channels) ? "ch=" + codec.channels : "") +
+              (codec.sdpFmtpLine ? ";fmtp=" + codec.sdpFmtpLine : ""));
+          }
+        }
 
         if (report.type === "inbound-rtp") {
           if (Number.isFinite(report.packetsLost)) fields.push("lost=" + report.packetsLost);
@@ -328,12 +356,23 @@ export class WebRtcAudio {
         this.previousRtpStats.set(report.id, {
           packetsReceived: report.packetsReceived,
           packetsSent: report.packetsSent,
+          bytesReceived: report.bytesReceived,
+          bytesSent: report.bytesSent,
+          timestamp: report.timestamp,
           concealedSamples: report.concealedSamples,
           concealmentEvents: report.concealmentEvents,
           jitterBufferDelay: report.jitterBufferDelay,
           jitterBufferEmittedCount: report.jitterBufferEmittedCount
         });
       }
+
+      const localSdp = pc.localDescription?.sdp || "";
+      const remoteSdp = pc.remoteDescription?.sdp || "";
+      const ptimeValues = [localSdp, remoteSdp].map(sdp => {
+        const match = sdp.match(/^a=ptime:(\d+)\s*$/mi);
+        return match ? match[1] + "ms" : "not-signaled";
+      });
+      fields.push("ptime-SDP local/remote=" + ptimeValues.join("/"));
 
       const pilotDb = this.measureRemotePilot();
       if (this.diagnosticPilot) {
