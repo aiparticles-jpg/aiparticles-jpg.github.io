@@ -88,6 +88,10 @@ export class WebRtcAudio {
         });
         this.onState("Физический микрофон: поток получен.");
       }
+      if (this.audioDiagnostics && this.audioContext) {
+        if (this.audioContextResumePromise) await this.audioContextResumePromise;
+        if (this.audioContext.state === "suspended") await this.audioContext.resume();
+      }
       const track = this.localStream.getAudioTracks()[0];
       if (track) {
         // Caller stays muted until the answerer confirms acceptance over DataChannel.
