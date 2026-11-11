@@ -15,7 +15,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.preAnswerMessageCount=0;this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishAt=0;this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();this.dataAssemblies=new Map();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.preAnswerMessageCount=0;this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishStartAt=0;this.publishStartTimes=[];this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();this.dataAssemblies=new Map();
  }
  static validUserId(s){return isUserId(s)}
  async deriveEnvelopeKey(secret,from,to){
@@ -61,6 +61,28 @@ export class NtfySecureSignaling {
   await this.processIncomingKeyRotation(peer,payload,type);return true;
  }
 
+ async waitForPublishSlot(){
+  while(true){
+   const now=Date.now();
+   this.publishStartTimes=this.publishStartTimes.filter(start=>now-start<5000);
+   const intervalWait=Math.max(0,this.lastPublishStartAt+250-now);
+   const windowWait=this.publishStartTimes.length>=3?Math.max(0,this.publishStartTimes[0]+5000-now):0;
+   const wait=Math.max(intervalWait,windowWait);
+   if(wait>0){
+    const reasons=[];
+    if(intervalWait>0)reasons.push("минимальный интервал 250 мс");
+    if(windowWait>0)reasons.push("лимит 3 POST за 5 секунд");
+    this.onDebug(`[ntfy] POST отложен на ${Math.ceil(wait)} мс: ${reasons.join("; ")}`);
+    await new Promise(resolve=>setTimeout(resolve,wait));
+    continue;
+   }
+   const startedAt=Date.now();
+   this.publishStartTimes=this.publishStartTimes.filter(start=>startedAt-start<5000);
+   this.publishStartTimes.push(startedAt);
+   this.lastPublishStartAt=startedAt;
+   return;
+  }
+ }
  async publish(to,msg){
   const task=async()=>{
    if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
@@ -74,15 +96,16 @@ export class NtfySecureSignaling {
    }else messages.push(msg);
    for(let i=0;i<messages.length;i++){
     if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
-    const current=messages[i],body=JSON.stringify(current),bodyBytes=enc.encode(body).byteLength,wait=Math.max(0,this.lastPublishAt+1100-Date.now());
-    if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+    const current=messages[i],body=JSON.stringify(current),bodyBytes=enc.encode(body).byteLength;
     if(current.type==="data")this.onDebug(`[ntfy] data POST body size=${bodyBytes} bytes; AES-GCM ciphertext(base64url)=${current.auth?.ciphertext?.length||0} chars; limit=4096 bytes`);
     if(current.type==="data_part")this.onDebug(`[ntfy] data part POST ${i+1}/${messages.length}; body=${bodyBytes} bytes; messageId=${current.payload.message_id.slice(0,8)}; part=${current.payload.index+1}/${current.payload.total}`);
+    const url=BASE+await getNtfyTopic(to);
+    await this.waitForPublishSlot();
     this.onDebug(`[ntfy] POST → ${current.type} (одна попытка)`);
     let response;
-    try{response=await fetch(BASE+await getNtfyTopic(to),{method:"POST",headers:{"Content-Type":"application/json"},body,cache:"no-store"});}
-    catch(error){this.lastPublishAt=Date.now();const failure=Error("Сетевая ошибка при POST в ntfy ("+current.type+"): "+(error.message||String(error)));failure.retryable=true;throw failure;}
-    this.onDebug(`[ntfy] POST ← ${response.status} (${current.type})`);this.lastPublishAt=Date.now();
+    try{response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body,cache:"no-store"});}
+    catch(error){const failure=Error("Сетевая ошибка при POST в ntfy ("+current.type+"): "+(error.message||String(error)));failure.retryable=true;throw failure;}
+    this.onDebug(`[ntfy] POST ← ${response.status} (${current.type})`);
     if(!response.ok){
      const retryAfter=response.headers.get("Retry-After");
      if(response.status===429){this.rateLimited=true;this.clearHelloRetry();this.clearAnswerRetry();}
