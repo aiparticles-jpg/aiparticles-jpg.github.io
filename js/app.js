@@ -311,7 +311,7 @@ async function checkPushBackendAvailability(){
   const meta={instanceId:body?.instanceId||response.headers.get("x-vl-instance-id"),uptimeMs:body?.uptimeMs??response.headers.get("x-vl-uptime-ms"),bootTime:body?.bootTime||response.headers.get("x-vl-boot-time"),serverTime:body?.serverTime||null};
   debug(`[backend-health] phase=HTTP_RESPONSE; status=${response.status}; elapsed=${elapsed}ms; requestId=${requestId}; serverMeta=${JSON.stringify(meta)}; online(before/after)=${onlineBefore}/${navigator.onLine}; visibility(before/after)=${visibilityBefore}/${document.visibilityState}; contentType=${response.headers.get("content-type")||"n/a"}; body=${bodyText.slice(0,300)||"(empty)"}.`);
   if(!response.ok){setServiceStatus(els.renderStatus,"HTTP "+response.status);debug(`[backend-health] classification=HTTP_ERROR; status=${response.status}; requestId=${requestId}.`);return;}
-  const uptime=Number(meta.uptimeMs);
+  const uptime=meta.uptimeMs==null?NaN:Number(meta.uptimeMs);
   debug(`[backend-health] classification=REACHABLE; coldStartLikely=${Number.isFinite(uptime)?uptime<120000:"unknown"}; uptimeMs=${Number.isFinite(uptime)?uptime:"unknown"}; requestId=${requestId}.`);
   setServiceStatus(els.renderStatus,Number.isFinite(uptime)&&uptime<120000?"Доступен (недавно запущен)":"Доступен");
  }catch(error){
