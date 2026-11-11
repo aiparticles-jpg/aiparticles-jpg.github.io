@@ -511,11 +511,11 @@ async function finishNoAnswer(){
  debug("Исходящий вызов истёк через 45 секунд; отменяющий POST не отправлялся.");
  closeCallScreen();
 }
-function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
+function createWebRtcInstance(diagnosticPilot=els.pilot.checked,initiatorOverride=null){
  const me=state.me,peer=els.peer.value;
  return new WebRtcAudio({
   diagnosticPilot,
-  initiator:NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer,
+  initiator:initiatorOverride===null?(NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer):initiatorOverride,
   onRemoteHangup:()=>handleRemoteHangup(),
   sendSignal:payload=>state.secure.sendSignal(payload),
   onRemoteStream:stream=>{els.audio.srcObject=stream;els.audio.play().catch(e=>debug("Не удалось включить удалённый звук: "+e.message))},
@@ -692,10 +692,9 @@ function scheduleIcePrewarm(reason="input",force=false){
  if(state.prewarmTimer)clearTimeout(state.prewarmTimer);
  state.prewarmTimer=setTimeout(async()=>{
   state.prewarmTimer=null;
-  const me=state.me,peer=els.peer.value;
-  const names=me+"|"+peer;
-  const eligible=NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&
-   me!==peer&&me<peer&&navigator.onLine;
+  const me=state.me;
+  const names=me;
+  const eligible=NtfySecureSignaling.validUserId(me)&&navigator.onLine;
   if(state.connecting||state.incomingCall||state.answeringCall||state.outgoingCall||state.peerPresent||state.secure?.active||state.callStarted)return;
   if(!eligible){
    if(state.webrtc?.prewarmed){
@@ -713,7 +712,8 @@ function scheduleIcePrewarm(reason="input",force=false){
   const currentFresh=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===names);
   if(currentFresh)return;
 
-  const candidate=createWebRtcInstance(els.pilot.checked);
+  // Prepare a generic offerer PC using only our own identity; the remote peer is not needed for ICE gathering.
+  const candidate=createWebRtcInstance(els.pilot.checked,true);
   const previous=state.webrtc;
   // Publish the in-flight prepared PC immediately so Connect can keep and reuse it.
   state.webrtc=candidate;
@@ -723,9 +723,8 @@ function scheduleIcePrewarm(reason="input",force=false){
     if(previous&&previous!==candidate)await previous.close({stopTracks:true});
     debug("Предварительная подготовка ICE начата (причина: "+reason+"; без микрофона и без ntfy).");
     const count=await candidate.prepareIce();
-    const latestMe=state.me,latestPeer=els.peer.value;
-    const stillOwned=state.webrtc===candidate&&navigator.onLine&&
-     latestMe+"|"+latestPeer===names&&latestMe<latestPeer;
+    const latestMe=state.me;
+    const stillOwned=state.webrtc===candidate&&navigator.onLine&&latestMe===names;
     if(!stillOwned){
      await candidate.close({stopTracks:true});
      if(state.webrtc===candidate){state.webrtc=null;state.prewarmNames=null}
@@ -817,9 +816,9 @@ async function connect(){
  try{
   const me=state.me;
   // Keep a matching prepared PC even while its ICE gathering is still running.
-  const matchingPrewarm=!!(state.webrtc?.prewarmed&&state.prewarmNames===me+"|"+peer&&me<peer);
+  const matchingPrewarm=!!(state.webrtc?.prewarmed&&state.prewarmNames===me&&me<peer);
   const keepPrewarm=matchingPrewarm&&(state.webrtc.isPrewarmed()||
-   !!(state.prewarmPromise&&state.prewarmTargetNames===me+"|"+peer));
+   !!(state.prewarmPromise&&state.prewarmTargetNames===me));
   if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
   state.callStarted=false;state.peerPresent=false;
   if(!NtfySecureSignaling.validUserId(me)||!NtfySecureSignaling.validUserId(peer)||me===peer)throw Error("Выберите сохранённый контакт. Собеседник должен отличаться от вашей идентичности.");
@@ -1832,6 +1831,7 @@ async function initializeApp(){
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
   await refreshContactOptions();
+  scheduleIcePrewarm("identity-ready",true);
   const requestedChat=new URLSearchParams(window.location.search).get("openChat");
   if(requestedChat){
    await openChatFromNotification(requestedChat);
