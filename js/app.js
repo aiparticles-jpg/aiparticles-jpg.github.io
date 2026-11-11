@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=28";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=48";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=49";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=12";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=12";
@@ -300,16 +300,22 @@ function updateWebPushStatus(){
  setServiceStatus(els.webPushStatus,label);
 }
 async function checkPushBackendAvailability(){
+ const url="https://signal-backend-9tai.onrender.com/health",started=performance.now();
+ const wasOnline=navigator.onLine,visibility=document.visibilityState;
  setServiceStatus(els.renderStatus,"Проверяем доступность…");
  const controller=new AbortController(),timeout=window.setTimeout(()=>controller.abort(),25000);
+ let timedOut=false;const timeoutMarker=window.setTimeout(()=>{timedOut=true},25000);
  try{
-  const response=await fetch("https://signal-backend-9tai.onrender.com/health",{method:"GET",cache:"no-store",signal:controller.signal});
+  const response=await fetch(url,{method:"GET",cache:"no-store",signal:controller.signal});
+  const elapsed=Math.round(performance.now()-started),body=(await response.text()).slice(0,160);
+  debug(`[backend-health] HTTP ${response.status}; elapsed=${elapsed}ms; online(before)=${wasOnline}; visibility=${visibility}; content-type=${response.headers.get("content-type")||"n/a"}; body=${body||"(empty)"}.`);
   if(!response.ok)throw Error("HTTP "+response.status);
   setServiceStatus(els.renderStatus,"Доступен");
  }catch(error){
+  const elapsed=Math.round(performance.now()-started);
   setServiceStatus(els.renderStatus,error.name==="AbortError"?"Нет ответа (тайм-аут)":"Недоступен");
-  debug("Проверка Render push backend: "+(error.message||String(error)));
- }finally{clearTimeout(timeout)}
+  debug(`[backend-health] FAILED; elapsed=${elapsed}ms; error.name=${error.name||"unknown"}; error.message=${error.message||String(error)}; abortTimerFired=${timedOut}; online(before/after)=${wasOnline}/${navigator.onLine}; visibility(before/after)=${visibility}/${document.visibilityState}; host=signal-backend-9tai.onrender.com. Browser NetworkError cannot distinguish DNS/TLS/CORS/connection reset by itself.`);
+ }finally{clearTimeout(timeout);clearTimeout(timeoutMarker)}
 }
 async function checkServiceWorkerAvailability(){
  if(!("serviceWorker" in navigator)){setServiceStatus(els.serviceWorkerStatus,"Не поддерживается");return}

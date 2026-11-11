@@ -343,31 +343,42 @@ export class NtfySecureSignaling {
   await this.recordConversationEvent("text",payload,"outgoing",createdAt);return payload;
  }
  async inspectIncoming(n){
-  if(!n?.message||!n?.id)return;
-  let m;try{m=JSON.parse(n.message)}catch{return;}
+  const eventId=String(n?.id||"нет").slice(0,14);
+  if(!n?.message||!n?.id){this.onDebug(`[incoming] событие пропущено: нет message/id; ntfyId=${eventId}.`);return;}
+  let m;try{m=JSON.parse(n.message)}catch(error){this.onDebug(`[incoming] событие пропущено: message не JSON; ntfyId=${eventId}; error=${error.message||String(error)}.`);return;}
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){await this.inspectTextMessage(n,m);return;}
-  if(m.v!==3||!m.payload)return;
-  const p=m.payload;if(!isUserId(p.from)||p.from===this.me||p.to!==this.me)return;
-  if(m.type==="rotation_response"){let ok=false;try{ok=await this.verifyPeerEnvelope(m.type,p,m.auth)}catch{}if(ok&&n?.id)this.rememberSeen(n.id);return;}
+  if(m.v!==3||!m.payload){this.onDebug(`[incoming] ${m.type||"unknown"} пропущен: version=${m.v??"нет"}; payload=${!!m.payload}; ntfyId=${eventId}.`);return;}
+  const p=m.payload;
+  if(!isUserId(p.from)||p.from===this.me||p.to!==this.me){this.onDebug(`[incoming] ${m.type} пропущен: адресация не для этого устройства; from=${String(p.from||"нет").slice(0,10)}; to=${String(p.to||"нет").slice(0,10)}; me=${this.me.slice(0,10)}; ntfyId=${eventId}.`);return;}
+  if(m.type==="rotation_response"){let ok=false;try{ok=await this.verifyPeerEnvelope(m.type,p,m.auth)}catch(error){this.onDebug(`[incoming] rotation_response verification error: ${error.message||String(error)}; ntfyId=${eventId}.`)}if(ok&&n?.id)this.rememberSeen(n.id);return;}
   if(m.type==="cancel"){
-   const c=await getPeerSignalingIdentity(p.from);this.peer=p.from;this.peerName=c.name;this.peerInvitationId=c.invitation_id;this.role=this.me<p.from?"A":"B";
-   await this.processCancel(m);if(n?.id)this.rememberSeen(n.id);return;
+   try{const contact=await getPeerSignalingIdentity(p.from);this.peer=p.from;this.peerName=contact.name;this.peerInvitationId=contact.invitation_id;this.role=this.me<p.from?"A":"B";await this.processCancel(m);if(n?.id)this.rememberSeen(n.id)}
+   catch(error){this.onDebug(`[incoming] cancel processing failed: ${error.message||String(error)}; peer=${p.from.slice(0,10)}; ntfyId=${eventId}.`)}return;
   }
-  if(m.type!=="hello")return;
-  if(this.active||this.ready||(this.incomingSid&&this.incomingSid!==p.sid)||this.outgoingRequest||this.hello)return;
-  let c;try{c=await getPeerSignalingIdentity(p.from)}catch{return;}
-  this.peer=p.from;this.peerName=c.name;this.peerInvitationId=c.invitation_id;this.role=this.me<p.from?"A":"B";
-  if(!await this.verifyPeerEnvelope(m.type,p,m.auth)){this.onDebug("[signaling] вызов отклонён: шифрование, контакт или разрешение недействительны");return;}
-  if(n?.id)this.rememberSeen(n.id);
+  if(m.type!=="hello"){this.onDebug(`[incoming] неизвестный тип ${m.type||"нет"} пропущен; ntfyId=${eventId}.`);return;}
+  const sid=String(p.sid||"нет").slice(0,8);
+  if(this.active||this.ready||(this.incomingSid&&this.incomingSid!==p.sid)||this.outgoingRequest||this.hello){
+   const reason=this.active?"уже активен звонок":this.ready?"secure-сессия уже ready":(this.incomingSid&&this.incomingSid!==p.sid)?"уже есть другой входящий sid":this.outgoingRequest?"есть исходящий запрос":"hello уже обрабатывается";
+   this.onDebug(`[incoming] hello проигнорирован: ${reason}; peer=${p.from.slice(0,10)}; sid=${sid}; ntfyId=${eventId}.`);return;
+  }
+  let contact;try{contact=await getPeerSignalingIdentity(p.from)}catch(error){this.onDebug(`[incoming] hello не проверен: не удалось загрузить контакт; peer=${p.from.slice(0,10)}; error=${error.message||String(error)}; ntfyId=${eventId}.`);return;}
+  this.peer=p.from;this.peerName=contact.name;this.peerInvitationId=contact.invitation_id;this.role=this.me<p.from?"A":"B";
+  let verified=false;try{verified=await this.verifyPeerEnvelope(m.type,p,m.auth)}catch(error){this.onDebug(`[incoming] hello verification exception: ${error.message||String(error)}; peer=${p.from.slice(0,10)}; sid=${sid}; ntfyId=${eventId}.`);return;}
+  if(!verified){this.onDebug(`[incoming] hello отклонён проверкой E2EE/приглашения; peer=${p.from.slice(0,10)}; sid=${sid}; invitation_id=${String(p.invitation_id||"нет").slice(0,12)}; ntfyId=${eventId}.`);return;}
   const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
-  if(!Number.isFinite(expiresAt)||Date.now()>expiresAt||typeof p.sid!=="string")return;
-  if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid)return;
+  if(!Number.isFinite(expiresAt)||Date.now()>expiresAt||typeof p.sid!=="string"){this.onDebug(`[incoming] hello аутентифицирован, но устарел/невалиден: now=${Date.now()}; expiresAt=${expiresAt}; sidValid=${typeof p.sid==="string"}; ntfyId=${eventId}.`);return;}
+  if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid){
+   const reason=this.acceptedSids.has(p.sid)?"sid уже принят":this.cancelledSids.has(p.sid)?"sid отменён":"этот входящий sid уже установлен";
+   this.onDebug(`[incoming] hello-дубликат проигнорирован: ${reason}; sid=${sid}; ntfyId=${eventId}.`);return;
+  }
+  if(n?.id)this.rememberSeen(n.id);
   await this.recordConversationEvent("hello",p,"incoming",Number(n.time)*1000||Date.now());
   this.onPeerMessage(p.from);this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=true;this.incomingHello=p;
   const pending=this.pendingCancels.get(p.sid);
-  if(pending){this.pendingCancels.delete(p.sid);await this.processCancel(pending);if(this.cancelledSids.has(p.sid))return;}
-  this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer,sid:p.sid,expiresAt});
+  if(pending){this.pendingCancels.delete(p.sid);this.onDebug(`[incoming] для hello уже ожидала отмена; применяем cancel; sid=${sid}.`);await this.processCancel(pending);if(this.cancelledSids.has(p.sid))return;}
+  this.onDebug(`[incoming] hello принят: peer=${p.from.slice(0,10)}; name=${this.peerName||"контакт"}; sid=${sid}; expiresIn=${Math.max(0,Math.round((expiresAt-Date.now())/1000))}s; ntfyId=${eventId}.`);
+  this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer, sid:p.sid,expiresAt});
  }
  async inspectContactRequest(n,m){
   const p=m?.payload;
@@ -591,8 +602,16 @@ export class NtfySecureSignaling {
   }
  }
  async hasCallGrant(payload){
-  const contact=await getPeerSignalingIdentity(payload.from);
-  return payload.invitation_id===contact.invitation_id&&await hasActiveInvitationGrant(contact.invitation_id,payload.from);
+  let contact;
+  try{contact=await getPeerSignalingIdentity(payload.from)}catch(error){this.onDebug(`[grant] нет локальной signaling-identity для отправителя: peer=${String(payload.from||"нет").slice(0,10)}; reason=${error.message||String(error)}.`);return false;}
+  if(payload.invitation_id!==contact.invitation_id){this.onDebug(`[grant] invitation_id не совпадает: received=${String(payload.invitation_id||"нет").slice(0,12)}; saved=${String(contact.invitation_id||"нет").slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return false;}
+  let invitation;
+  try{invitation=await getIssuedInvitation(contact.invitation_id)}catch(error){this.onDebug(`[grant] не удалось прочитать локальную запись приглашения: ${error.message||String(error)}.`);return false;}
+  if(!invitation){this.onDebug(`[grant] локальная запись выданного приглашения отсутствует: invitation_id=${contact.invitation_id.slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return false;}
+  if(invitation.revoked){this.onDebug(`[grant] приглашение отозвано: invitation_id=${contact.invitation_id.slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return false;}
+  const activations=Array.isArray(invitation.activations)?invitation.activations:[];
+  if(!activations.some(item=>item.user_id===payload.from)){this.onDebug(`[grant] нет активации приглашения для отправителя: invitation_id=${contact.invitation_id.slice(0,12)}; activations=${activations.length}; peer=${payload.from.slice(0,10)}.`);return false;}
+  this.onDebug(`[grant] разрешение подтверждено: invitation_id=${contact.invitation_id.slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return true;
  }
  activateSession(sid){this.session=sid;this.ready=true;this.clearHelloRetry();}
  async sendSignal(payload){
