@@ -625,3 +625,6 @@ body.contact-screen-open{overflow:hidden}
 
 /* Diagnostics must appear above the dedicated call screen when opened during a call. */
 #diagnostic-screen{z-index:230}
+
+.log-copy-button{padding:7px 10px;font-size:11px;flex:0 0 auto}
+.diagnostic-screen-content .event-log-panel .panel-heading{align-items:center}
