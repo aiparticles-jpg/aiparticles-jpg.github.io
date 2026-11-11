@@ -735,6 +735,9 @@ async function startWebRtcOffer(){
   if(state.webrtc?.prewarmed&&!state.webrtc.isPrewarmed()){
    const preparing=state.webrtc;
    debug("Звонок использует текущую ICE-подготовку; ожидаем завершения gathering на том же PC.");
+   // Wait for the app-level task too: it may still be replacing the previous PC
+   // before prepareIce() has installed its own promise on this instance.
+   if(state.prewarmPromise&&state.prewarmTargetNames===state.prewarmNames)await state.prewarmPromise;
    const ready=await preparing.waitForPrewarm();
    if(state.webrtc!==preparing){
     await ensureWebRtc();
