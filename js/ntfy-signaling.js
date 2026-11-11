@@ -65,9 +65,11 @@ export class NtfySecureSignaling {
   }
   if(type==="data")this.onDebug(`[e2ee] data расшифрован: ciphertext=${cipherBytes} B; plaintext=${plainBytes} B; key-slot=${used.slot}; payload=valid.`);
   Object.assign(payload,decoded);
-  if(!await this.hasCallGrant(payload)){
-   this.onDebug(`[e2ee] ${type} отклонён после расшифровки: hasCallGrant=false; peer=${peer.slice(0,10)}; invitation_id=${String(payload.invitation_id||"нет").slice(0,12)}.`);return false;
+  const grant=await this.hasCallGrant(payload);
+  if(!grant.ok){
+   this.onDebug(`[reject] stage=CALL_GRANT; code=${grant.code}; type=${type}; peer=${peer.slice(0,10)}; sid=${String(payload.sid||"нет").slice(0,8)}; invitation_id=${String(payload.invitation_id||"нет").slice(0,12)}; details=${JSON.stringify(grant)}.`);return false;
   }
+  this.onDebug(`[grant] code=GRANT_VALID; type=${type}; peer=${peer.slice(0,10)}; invitation_id=${grant.invitation_id}.`);
   if(used.slot==="pending"){
    await updateContact(peer,{invitation_secret:contact.pending_secret,pending_secret:null,pending_rotation_id:null,previous_secret:null,previous_secret_at:null,shared_secret_created_at:Date.now(),rotation_response_id:null,rotation_response_ciphertext:null});
    this.onDebug("[e2ee] получено первое сообщение под новым ключом; старый ключ удалён");
@@ -602,16 +604,20 @@ export class NtfySecureSignaling {
   }
  }
  async hasCallGrant(payload){
+  const peer=String(payload.from||"нет").slice(0,10);
   let contact;
-  try{contact=await getPeerSignalingIdentity(payload.from)}catch(error){this.onDebug(`[grant] нет локальной signaling-identity для отправителя: peer=${String(payload.from||"нет").slice(0,10)}; reason=${error.message||String(error)}.`);return false;}
-  if(payload.invitation_id!==contact.invitation_id){this.onDebug(`[grant] invitation_id не совпадает: received=${String(payload.invitation_id||"нет").slice(0,12)}; saved=${String(contact.invitation_id||"нет").slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return false;}
+  try{contact=await getPeerSignalingIdentity(payload.from)}
+  catch(error){return {ok:false,code:"IDENTITY_NOT_FOUND",detail:error.message||String(error),peer};}
+  const savedId=contact?.invitation_id||null;
+  if(payload.invitation_id!==savedId)return {ok:false,code:"INVITATION_ID_MISMATCH",received:String(payload.invitation_id||"нет").slice(0,12),saved:String(savedId||"нет").slice(0,12),peer};
   let invitation;
-  try{invitation=await getIssuedInvitation(contact.invitation_id)}catch(error){this.onDebug(`[grant] не удалось прочитать локальную запись приглашения: ${error.message||String(error)}.`);return false;}
-  if(!invitation){this.onDebug(`[grant] локальная запись выданного приглашения отсутствует: invitation_id=${contact.invitation_id.slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return false;}
-  if(invitation.revoked){this.onDebug(`[grant] приглашение отозвано: invitation_id=${contact.invitation_id.slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return false;}
+  try{invitation=await getIssuedInvitation(savedId)}
+  catch(error){return {ok:false,code:"INVITATION_READ_FAILED",detail:error.message||String(error),peer};}
+  if(!invitation)return {ok:false,code:"INVITATION_RECORD_MISSING",invitation_id:String(savedId||"нет").slice(0,12),peer};
+  if(invitation.revoked)return {ok:false,code:"INVITATION_REVOKED",invitation_id:String(savedId||"нет").slice(0,12),peer};
   const activations=Array.isArray(invitation.activations)?invitation.activations:[];
-  if(!activations.some(item=>item.user_id===payload.from)){this.onDebug(`[grant] нет активации приглашения для отправителя: invitation_id=${contact.invitation_id.slice(0,12)}; activations=${activations.length}; peer=${payload.from.slice(0,10)}.`);return false;}
-  this.onDebug(`[grant] разрешение подтверждено: invitation_id=${contact.invitation_id.slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return true;
+  if(!activations.some(item=>item.user_id===payload.from))return {ok:false,code:"SENDER_NOT_ACTIVATED",activation_count:activations.length,invitation_id:String(savedId||"нет").slice(0,12),peer};
+  return {ok:true,code:"GRANT_VALID",invitation_id:String(savedId||"нет").slice(0,12),peer};
  }
  activateSession(sid){this.session=sid;this.ready=true;this.clearHelloRetry();}
  async sendSignal(payload){
