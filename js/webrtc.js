@@ -35,10 +35,9 @@ export class WebRtcAudio {
     this.pcDiagnosticId = null;
     this.diagnosticStartedAt = Date.now();
     this.audioSender = null;
-    this.prewarmed = false;
-    this.prewarmStartedAt = 0;
-    this.prewarmCompletedAt = 0;
-    this.prewarmTask = null;
+    this.iceBatching = null;
+    this.iceBatchTimers = [];
+    this.localCandidateCount = 0;
     this.iceGatheringStartedAt = 0;
     this.iceGatheringCompletedAt = 0;
     this.lastIceCandidateAt = 0;
@@ -151,117 +150,49 @@ export class WebRtcAudio {
     return Number.isFinite(peak) ? peak : null;
   }
 
-  async createPeerConnection({ prewarm = false } = {}) {
-    if (this.pc) {
-      if (!prewarm && this.audioSender && !this.audioSender.track && this.localStream) {
-        const stream = await this.prepareOutgoingStream();
-        const track = stream.getAudioTracks()[0];
-        if (track) await this.audioSender.replaceTrack(track);
-      }
-      return this.pc;
-    }
-    const stream = prewarm ? null : await this.prepareOutgoingStream();
-    // Prefetch one ICE candidate set only for the background-prepared caller PC.
-    // Normal call/answer connections keep the browser default (pool size 0).
-    if (prewarm) this.prewarmStartedAt = Date.now();
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: STUN_URL }],
-      iceTransportPolicy: "all",
-      iceCandidatePoolSize: prewarm ? 1 : 0
-    });
-    this.pcDiagnosticId = Math.random().toString(36).slice(2, 8);
-    this.onState("PC["+this.pcDiagnosticId+"] created; initiator="+this.initiator+"; prewarm="+prewarm+".");
-    if (prewarm) {
-      this.audioSender = pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
-      this.ensureControlChannel(pc);
-      this.prewarmed = true;
-      this.signalEnabled = false;
-    } else {
-      for (const track of stream.getAudioTracks()) this.audioSender = pc.addTrack(track, stream);
-      this.ensureControlChannel(pc);
-      this.signalEnabled = true;
-    }
-    pc.onicecandidate = event => {
-      if (event.candidate) {
-        this.pendingLocalCandidates.push(event.candidate.toJSON());
-        this.lastIceCandidateAt = Date.now();
-        const elapsed = this.iceGatheringStartedAt
-          ? ((Date.now() - this.iceGatheringStartedAt) / 1000).toFixed(1) + "s"
-          : "n/a";
-        const candidate = event.candidate;
-        const candidateType = candidate.type || "unknown";
-        const protocol = candidate.protocol || "unknown";
-        const address = candidate.address || "n/a";
-        const port = candidate.port ?? "n/a";
-        const related = candidate.relatedAddress
-          ? candidate.relatedAddress + ":" + (candidate.relatedPort ?? "n/a")
-          : "n/a";
-        const network = candidate.networkType || "n/a";
-        const tcpType = candidate.tcpType || "n/a";
-        this.onState("PC["+this.pcDiagnosticId+"] ICE candidate #"+this.pendingLocalCandidates.length+
-          "; type="+candidateType+"; protocol="+protocol+
-          "; local="+address+":"+port+
-          "; related="+related+
-          "; foundation="+(candidate.foundation||"n/a")+
-          "; component="+(candidate.component||"n/a")+
-          "; tcpType="+tcpType+"; network="+network+
-          "; priority="+(candidate.priority??"n/a")+
-          "; elapsed="+elapsed+
-          "; отдельный POST не отправляется.");
-      } else {
-        this.onState("PC["+this.pcDiagnosticId+"] ICE end-of-candidates; total="+this.pendingLocalCandidates.length+".");
-      }
+  async createPeerConnection() {
+    if(this.pc)return this.pc;
+    const stream=await this.prepareOutgoingStream();
+    const pc=new RTCPeerConnection({iceServers:[{urls:STUN_URL}],iceTransportPolicy:"all",iceCandidatePoolSize:0});
+    this.pcDiagnosticId=Math.random().toString(36).slice(2,8);
+    this.onState("PC["+this.pcDiagnosticId+"] created; initiator="+this.initiator+"; prewarm=false.");
+    for(const track of stream.getAudioTracks())this.audioSender=pc.addTrack(track,stream);
+    this.ensureControlChannel(pc);this.signalEnabled=true;
+    pc.onicecandidate=event=>{
+      if(event.candidate){
+        this.lastIceCandidateAt=Date.now();this.localCandidateCount++;
+        if(this.iceBatching&&!this.iceBatching.stopped)this.pendingLocalCandidates.push(event.candidate.toJSON());
+        const elapsed=this.iceGatheringStartedAt?((Date.now()-this.iceGatheringStartedAt)/1000).toFixed(3)+"s":"n/a";
+        this.onState("PC["+this.pcDiagnosticId+"] ICE candidate #"+this.localCandidateCount+
+          "; type="+(event.candidate.type||"unknown")+"; protocol="+(event.candidate.protocol||"unknown")+
+          "; local="+(event.candidate.address||"n/a")+":"+(event.candidate.port??"n/a")+
+          "; related="+(event.candidate.relatedAddress?event.candidate.relatedAddress+":"+(event.candidate.relatedPort??"n/a"):"n/a")+
+          "; elapsed="+elapsed+(this.iceBatching&&!this.iceBatching.stopped?"; queued for timed batch.":"; after 2s cutoff, not signaled."));
+      }else{if(this.iceBatching)this.iceBatching.gatheringComplete=true;this.onState("PC["+this.pcDiagnosticId+"] ICE end-of-candidates; total="+this.localCandidateCount+".")}
     };
-
-    pc.onicecandidateerror = event => {
-      this.iceCandidateErrorCount++;
-      const localAddress = event.address || "";
-      const addressFamily = localAddress ? (localAddress.includes(":") ? "IPv6" : "IPv4") : "unknown";
+    pc.onicecandidateerror=event=>{
+      this.iceCandidateErrorCount++;const address=event.address||"",family=address?(address.includes(":")?"IPv6":"IPv4"):"unknown";
       this.onState("PC["+this.pcDiagnosticId+"] ICE candidate error #"+this.iceCandidateErrorCount+
-        "; code="+(event.errorCode||"unknown")+
-        "; local="+(localAddress||"n/a")+":"+((event.port ?? "n/a"))+" ("+addressFamily+")"+
-        "; url="+(event.url||"unknown")+
-        "; text="+(event.errorText||"no details")+".");
+        "; code="+(event.errorCode||"unknown")+"; local="+(address||"n/a")+":"+((event.port??"n/a"))+
+        " ("+family+"); url="+(event.url||"unknown")+"; text="+(event.errorText||"no details")+".");
     };
-    pc.onicegatheringstatechange = () => {
-      if (pc.iceGatheringState === "gathering" && !this.iceGatheringStartedAt) {
-        this.iceGatheringStartedAt = Date.now();
+    pc.onicegatheringstatechange=()=>{
+      if(pc.iceGatheringState==="gathering"&&!this.iceGatheringStartedAt){
+        this.iceGatheringStartedAt=Date.now();if(this.iceBatching&&!this.iceBatching.startedAt)this.iceBatching.startedAt=this.iceGatheringStartedAt;
         this.onState("PC["+this.pcDiagnosticId+"] ICE gathering started.");
-      } else if (pc.iceGatheringState === "complete" && !this.iceGatheringCompletedAt) {
-        this.iceGatheringCompletedAt = Date.now();
-        const elapsed = this.iceGatheringStartedAt
-          ? ((this.iceGatheringCompletedAt - this.iceGatheringStartedAt) / 1000).toFixed(1)
-          : "n/a";
-        const sinceLastCandidate=this.lastIceCandidateAt
-          ? ((this.iceGatheringCompletedAt-this.lastIceCandidateAt)/1000).toFixed(1)+"s"
-          : "n/a";
-        this.onState("PC["+this.pcDiagnosticId+"] ICE gathering complete; duration="+elapsed+
-          "s; candidates="+this.pendingLocalCandidates.length+
-          "; since-last-candidate="+sinceLastCandidate+
-          "; candidate-errors="+this.iceCandidateErrorCount+".");
+      }else if(pc.iceGatheringState==="complete"&&!this.iceGatheringCompletedAt){
+        this.iceGatheringCompletedAt=Date.now();if(this.iceBatching)this.iceBatching.gatheringComplete=true;
+        const elapsed=this.iceGatheringStartedAt?((this.iceGatheringCompletedAt-this.iceGatheringStartedAt)/1000).toFixed(3):"n/a";
+        const since=this.lastIceCandidateAt?((this.iceGatheringCompletedAt-this.lastIceCandidateAt)/1000).toFixed(3)+"s":"n/a";
+        this.onState("PC["+this.pcDiagnosticId+"] ICE gathering complete; duration="+elapsed+"s; candidates="+this.localCandidateCount+
+          "; since-last-candidate="+since+"; candidate-errors="+this.iceCandidateErrorCount+".");
       }
     };
-    pc.onsignalingstatechange = () => this.onState("PC["+this.pcDiagnosticId+"] signaling-"+pc.signalingState+".");
-    pc.oniceconnectionstatechange = () => {
-      const iceState = pc.iceConnectionState;
-      this.onState("PC["+this.pcDiagnosticId+"] ice-"+iceState+".");
-      if (this.signalEnabled) this.logSelectedCandidatePair("ice-" + iceState, pc);
-    };
-
-    pc.ontrack = event => {
-      const remoteStream = event.streams && event.streams[0]
-        ? event.streams[0]
-        : new MediaStream([event.track]);
-      this.attachRemoteMonitor(remoteStream);
-      this.onRemoteStream(remoteStream);
-    };
-
-    pc.onconnectionstatechange = () => {
-      this.onState("PC["+this.pcDiagnosticId+"] connection-"+pc.connectionState+".");
-    };
-
-    this.pc = pc;
-    return pc;
+    pc.onsignalingstatechange=()=>this.onState("PC["+this.pcDiagnosticId+"] signaling-"+pc.signalingState+".");
+    pc.oniceconnectionstatechange=()=>{const state=pc.iceConnectionState;this.onState("PC["+this.pcDiagnosticId+"] ice-"+state+".");if(this.signalEnabled)this.logSelectedCandidatePair("ice-"+state,pc)};
+    pc.ontrack=event=>{const remoteStream=event.streams&&event.streams[0]?event.streams[0]:new MediaStream([event.track]);this.attachRemoteMonitor(remoteStream);this.onRemoteStream(remoteStream)};
+    pc.onconnectionstatechange=()=>this.onState("PC["+this.pcDiagnosticId+"] connection-"+pc.connectionState+".");
+    this.pc=pc;return pc;
   }
 
   async logSelectedCandidatePair(trigger, pc) {
@@ -546,136 +477,72 @@ export class WebRtcAudio {
     return promise;
   }
 
-  async waitForIceGatheringComplete(pc, timeoutMs = 60000) {
-    if (pc.iceGatheringState === "complete") { this.onState("PC["+this.pcDiagnosticId+"] ICE wait skipped: already complete."); return; }
-    const waitStartedAt=Date.now();
-    this.onState("PC["+this.pcDiagnosticId+"] ICE wait started; timeout="+(timeoutMs/1000)+"s; state="+pc.iceGatheringState+".");
-    await new Promise((resolve, reject) => {
-      let finished = false;
-      const cleanup = () => {
-        pc.removeEventListener("icegatheringstatechange", check);
-        clearTimeout(timer);
-      };
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        cleanup();
-        this.onState("PC["+this.pcDiagnosticId+"] ICE wait completed in "+((Date.now()-waitStartedAt)/1000).toFixed(1)+"s.");
-        resolve();
-      };
-      const check = () => {
-        if (pc.iceGatheringState === "complete") finish();
-      };
-      const timer = setTimeout(() => {
-        if (finished) return;
-        finished = true;
-        cleanup();
-        this.onState("PC["+this.pcDiagnosticId+"] ICE wait TIMEOUT after "+((Date.now()-waitStartedAt)/1000).toFixed(1)+"s; state="+pc.iceGatheringState+"; candidates="+this.pendingLocalCandidates.length+".");
-        reject(new Error("ICE gathering не завершился за " + timeoutMs / 1000 + " секунд; неполный SDP не отправлен."));
-      }, timeoutMs);
-      pc.addEventListener("icegatheringstatechange", check);
-      check();
-    });
+  beginIceBatching(pc,description){
+    this.cancelIceBatching();
+    const sdp=String(description.sdp||"").replace(/^a=candidate:[^\r\n]*(?:\r?\n)?/gm,"").replace(/^a=end-of-candidates\r?\n?/gm,"");
+    this.pendingLocalCandidates=[];this.localCandidateCount=0;
+    this.iceBatching={pc,description:{type:description.type,sdp},startedAt:0,gatheringComplete:false,stopped:false,sendQueue:Promise.resolve()};
   }
-
-  async prepareIce() {
-    if (this.prewarmTask) return this.prewarmTask;
-    const task = (async () => {
-      const pc = await this.createPeerConnection({ prewarm: true });
-      if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
-      await this.waitForIceGatheringComplete(pc);
-      this.prewarmCompletedAt = Date.now();
-      const elapsedSeconds = this.prewarmStartedAt
-        ? ((this.prewarmCompletedAt - this.prewarmStartedAt) / 1000).toFixed(1)
-        : "n/a";
-      this.onState("ICE предварительно подготовлен; кандидатов: " +
-        this.pendingLocalCandidates.length + "; время: " + elapsedSeconds + " с; pool=1");
-      return this.pendingLocalCandidates.length;
-    })();
-    this.prewarmTask = task;
-    try {
-      return await task;
-    } finally {
-      if (this.prewarmTask === task) this.prewarmTask = null;
-    }
+  scheduleIceBatches(pc){
+    const batch=this.iceBatching;if(!batch||batch.pc!==pc)throw Error("ICE batch generation is unavailable.");
+    if(!batch.startedAt)batch.startedAt=this.iceGatheringStartedAt||Date.now();
+    const elapsed=Date.now()-batch.startedAt;
+    this.onState("PC["+this.pcDiagnosticId+"] timed ICE signaling scheduled at 200/500/2000ms; gathering is not awaited.");
+    [200,500,2000].forEach((cutoff,index)=>this.iceBatchTimers.push(setTimeout(()=>this.flushIceBatch(index+1,batch).catch(error=>this.onError(error)),Math.max(0,cutoff-elapsed))));
   }
-
-  async waitForPrewarm() {
-    if (this.prewarmTask) {
-      try { await this.prewarmTask; }
-      catch { return false; }
-    }
-    return this.isPrewarmed();
+  async flushIceBatch(index,batch){
+    if(this.iceBatching!==batch||batch.stopped||this.pc!==batch.pc)return;
+    const candidates=this.pendingLocalCandidates.splice(0),end=batch.gatheringComplete||index===3;
+    if(end){batch.stopped=true;this.iceBatchTimers.forEach(clearTimeout);this.iceBatchTimers=[];}
+    let payload=null;
+    if(index===1)payload={description:batch.description,candidates,...(end?{endOfCandidates:true}:{})};
+    else if(candidates.length||end)payload={candidates,...(end?{endOfCandidates:true}:{})};
+    if(!payload){this.onState("PC["+this.pcDiagnosticId+"] ICE batch "+index+" skipped: no new candidates.");return;}
+    this.onState("PC["+this.pcDiagnosticId+"] sending ICE batch "+index+"; elapsed="+(Date.now()-batch.startedAt)+"ms; candidates="+candidates.length+"; endOfCandidates="+end+".");
+    const send=async()=>{if(this.iceBatching!==batch)return;await this.sendSignal(payload)};
+    batch.sendQueue=batch.sendQueue.then(send,send).catch(error=>this.onError(new Error("Не удалось передать ICE-пакет "+index+": "+(error.message||String(error)))));
+    await batch.sendQueue;
+    if(end)this.onState("PC["+this.pcDiagnosticId+"] ICE signaling cutoff reached; later local candidates will not be sent.");
   }
-
-  isPrewarmed() {
-    return this.prewarmed && !!this.pc && !!this.pc.localDescription &&
-      !!this.prewarmCompletedAt && Date.now() - this.prewarmCompletedAt < 120000;
+  cancelIceBatching(){
+    this.iceBatchTimers.forEach(clearTimeout);this.iceBatchTimers=[];
+    if(this.iceBatching)this.iceBatching.stopped=true;
+    this.iceBatching=null;this.pendingLocalCandidates=[];
   }
-
-  async activatePreparedOffer() {
-    if (!this.isPrewarmed()) return false;
-    const stream = await this.prepareOutgoingStream();
-    const track = stream.getAudioTracks()[0];
-    if (track && this.audioSender) await this.audioSender.replaceTrack(track);
-    await this.waitForIceGatheringComplete(this.pc);
-    this.signalEnabled = true;
-    const candidates = this.pendingLocalCandidates.length;
-    // A complete localDescription SDP already contains all gathered ICE candidates.
-    // Send it once; never trickle candidates as separate ntfy POSTs.
-    this.onState("PC["+this.pcDiagnosticId+"] sending prepared OFFER; SDP chars="+(this.pc.localDescription?.sdp?.length||0)+"; candidates="+candidates+".");
-    await this.sendSignal({ description: this.pc.localDescription });
-    this.pendingLocalCandidates = [];
-    this.onState("Предварительно собранный ICE offer отправлен одним сообщением; кандидатов в SDP: " + candidates);
-    return true;
+  async createOffer(){
+    const pc=await this.createPeerConnection();this.onState("PC["+this.pcDiagnosticId+"] createOffer started.");
+    const offer=await pc.createOffer();this.beginIceBatching(pc,offer);await pc.setLocalDescription(offer);this.scheduleIceBatches(pc);
   }
-
-  async createOffer() {
-    const pc = await this.createPeerConnection();
-    this.onState("PC["+this.pcDiagnosticId+"] createOffer started.");
-    if (this.prewarmed && await this.activatePreparedOffer()) return;
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await this.waitForIceGatheringComplete(pc);
-    this.signalEnabled = true;
-    const candidates = this.pendingLocalCandidates.length;
-    this.onState("PC["+this.pcDiagnosticId+"] sending OFFER; SDP chars="+(pc.localDescription?.sdp?.length||0)+"; candidates="+candidates+".");
-    await this.sendSignal({ description: pc.localDescription });
-    this.pendingLocalCandidates = [];
-    this.onState("ICE offer отправлен одним сообщением после полного gathering; кандидатов в SDP: " + candidates);
-  }
-
-  async handleSignal(payload) {
-    const pc = await this.createPeerConnection();
-    this.onState("PC["+this.pcDiagnosticId+"] handleSignal entered; description="+(payload.description?.type||"none")+"; candidate="+!!payload.candidate+".");
-    if (payload.description) {
-      const description = payload.description;
+  async handleSignal(payload){
+    const pc=await this.createPeerConnection(),candidates=Array.isArray(payload.candidates)?payload.candidates:[];
+    this.onState("PC["+this.pcDiagnosticId+"] handleSignal entered; description="+(payload.description?.type||"none")+"; candidates="+candidates.length+"; legacyCandidate="+!!payload.candidate+"; endOfCandidates="+!!payload.endOfCandidates+".");
+    if(payload.description){
+      const description=payload.description;
       this.onState("PC["+this.pcDiagnosticId+"] setRemoteDescription("+description.type+") started; SDP chars="+(description.sdp?.length||0)+".");
-      await pc.setRemoteDescription(description);
-      this.onState("PC["+this.pcDiagnosticId+"] setRemoteDescription("+description.type+") completed.");
-      this.remoteDescriptionSet = true;
-      while (this.pendingCandidates.length) {
-        await pc.addIceCandidate(this.pendingCandidates.shift());
-      }
-      if (description.type === "offer") {
+      await pc.setRemoteDescription(description);this.onState("PC["+this.pcDiagnosticId+"] setRemoteDescription("+description.type+") completed.");
+      this.remoteDescriptionSet=true;
+      while(this.pendingCandidates.length)await pc.addIceCandidate(this.pendingCandidates.shift());
+      for(const candidate of candidates)await pc.addIceCandidate(candidate);
+      if(payload.candidate)await pc.addIceCandidate(payload.candidate);
+      if(payload.endOfCandidates)await pc.addIceCandidate(null);
+      if(description.type==="offer"){
         this.onState("PC["+this.pcDiagnosticId+"] createAnswer started.");
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await this.waitForIceGatheringComplete(pc);
-        this.signalEnabled = true;
-        const candidates = this.pendingLocalCandidates.length;
-        this.onState("PC["+this.pcDiagnosticId+"] sending ANSWER; SDP chars="+(pc.localDescription?.sdp?.length||0)+"; candidates="+candidates+".");
-        await this.sendSignal({ description: pc.localDescription });
-        this.pendingLocalCandidates = [];
-        this.onState("ICE answer отправлен одним сообщением после полного gathering; кандидатов в SDP: " + candidates);
+        const answer=await pc.createAnswer();this.beginIceBatching(pc,answer);await pc.setLocalDescription(answer);this.scheduleIceBatches(pc);
       }
-    } else if (payload.candidate) {
-      if (this.remoteDescriptionSet) await pc.addIceCandidate(payload.candidate);
-      else this.pendingCandidates.push(payload.candidate);
+    }else if(candidates.length||payload.candidate||payload.endOfCandidates){
+      if(this.remoteDescriptionSet){
+        for(const candidate of candidates)await pc.addIceCandidate(candidate);
+        if(payload.candidate)await pc.addIceCandidate(payload.candidate);
+        if(payload.endOfCandidates)await pc.addIceCandidate(null);
+      }else{
+        this.pendingCandidates.push(...candidates);if(payload.candidate)this.pendingCandidates.push(payload.candidate);if(payload.endOfCandidates)this.pendingCandidates.push(null);
+        this.onState("PC["+this.pcDiagnosticId+"] remote ICE batch queued until remote SDP is set; queued="+this.pendingCandidates.length+".");
+      }
     }
   }
 
   async close({ stopTracks = false } = {}) {
+    this.cancelIceBatching();
     if (this.statsTimer) {
       clearInterval(this.statsTimer);
       this.statsTimer = null;
@@ -722,8 +589,6 @@ export class WebRtcAudio {
     this.pendingLocalCandidates = [];
     this.remoteDescriptionSet = false;
     this.audioSender = null;
-    this.prewarmed = false;
-    this.prewarmStartedAt = 0;
     this.signalEnabled = false;
     this.callAccepted = false;
     this.micEnabled = false;
