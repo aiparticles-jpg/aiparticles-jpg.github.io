@@ -571,8 +571,10 @@ function logRemoteAudioPlayback(){
 }
 function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
  const me=state.me,peer=els.peer.value;
+ const audioDiagnostics=els.debugMode.checked||diagnosticPilot;
  return new WebRtcAudio({
   diagnosticPilot,
+  audioDiagnostics,
   initiator:NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer,
   onRemoteHangup:()=>handleRemoteHangup(),
   sendSignal:payload=>state.secure.sendSignal(payload),
@@ -592,12 +594,12 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
       "; paused="+els.audio.paused+
       "; sampleTime="+els.audio.currentTime.toFixed(2)+"s"+
       "; visibility="+document.visibilityState);
-     if(diagnosticPilot){
+     if(audioDiagnostics){
       logRemoteAudioPlayback();
       remoteAudioDiagnosticTimer=window.setInterval(logRemoteAudioPlayback,2000);
      }
     }).catch(e=>debug("Не удалось включить удалённый звук: "+e.message));
-   }else if(diagnosticPilot){
+   }else if(audioDiagnostics){
     logRemoteAudioPlayback();
     remoteAudioDiagnosticTimer=window.setInterval(logRemoteAudioPlayback,2000);
    }
