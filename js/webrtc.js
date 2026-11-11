@@ -1,7 +1,7 @@
 import { STUN_URL } from "./config.js";
 
 export class WebRtcAudio {
-  constructor({ sendSignal, onRemoteStream, onState, onError, onRemoteHangup, initiator = false, diagnosticPilot = false }) {
+  constructor({ sendSignal, onRemoteStream, onState, onError, onRemoteHangup, initiator = false, diagnosticPilot = false, audioDiagnostics = false }) {
     this.sendSignal = sendSignal;
     this.onRemoteStream = onRemoteStream;
     this.onState = onState || (() => {});
@@ -14,11 +14,12 @@ export class WebRtcAudio {
     this.pendingHangup = null;
     this.remoteHangupHandled = false;
     this.diagnosticPilot = diagnosticPilot;
+    this.audioDiagnostics = diagnosticPilot || audioDiagnostics;
     this.audioContext = null;
     this.audioContextResumePromise = null;
     // Create/resume the context while Connect is still running in the user's click
     // activation. The remote peer may answer much later, after autoplay activation expires.
-    if (this.diagnosticPilot) {
+    if (this.audioDiagnostics) {
       try {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (AudioContextClass) {
@@ -91,7 +92,7 @@ export class WebRtcAudio {
       if (track) {
         // Caller stays muted until the answerer confirms acceptance over DataChannel.
         track.enabled = this.micEnabled;
-        if (this.diagnosticPilot) {
+        if (this.audioDiagnostics) {
           this.createSignalMonitorFromStream(this.localStream, "local-track");
           this.onState("AudioContext: state=" + this.audioContext?.state +
             "; sampleRate=" + (this.audioContext?.sampleRate || "n/a") +
@@ -126,7 +127,7 @@ export class WebRtcAudio {
   }
 
   createSignalMonitorFromNode(sourceNode, label) {
-    if (!this.diagnosticPilot || !this.audioContext || !sourceNode) return null;
+    if (!this.audioDiagnostics || !this.audioContext || !sourceNode) return null;
     const analyser = this.audioContext.createAnalyser();
     analyser.fftSize = 4096;
     analyser.smoothingTimeConstant = 0;
@@ -141,7 +142,7 @@ export class WebRtcAudio {
   }
 
   createSignalMonitorFromStream(stream, label) {
-    if (!this.diagnosticPilot || !this.audioContext || !stream) return null;
+    if (!this.audioDiagnostics || !this.audioContext || !stream) return null;
     const source = this.audioContext.createMediaStreamSource(stream);
     const monitor = this.createSignalMonitorFromNode(source, label);
     if (monitor) monitor.source = source;
@@ -180,7 +181,7 @@ export class WebRtcAudio {
   }
 
   attachRemoteMonitor(stream) {
-    if (!this.diagnosticPilot || !this.audioContext || !stream) return;
+    if (!this.audioDiagnostics || !this.audioContext || !stream) return;
     try {
       const monitor = this.createSignalMonitorFromStream(stream, "remote-track");
       if (!monitor) return;
@@ -193,13 +194,13 @@ export class WebRtcAudio {
   }
 
   logSignalPathDiagnostics() {
-    if (!this.diagnosticPilot || !this.signalMonitors.size) return;
+    if (!this.audioDiagnostics || !this.signalMonitors.size) return "";
     const values = [];
     for (const monitor of this.signalMonitors.values()) {
       const value = this.sampleSignalMonitor(monitor);
       if (value) values.push(value);
     }
-    if (values.length) this.onState("Audio signal path: " + values.join("; "));
+    return values.join("; ");
   }
 
   measureRemotePilot() {
@@ -440,9 +441,10 @@ export class WebRtcAudio {
       fields.push("ptime-SDP local/remote=" + ptimeValues.join("/"));
 
       const pilotDb = this.measureRemotePilot();
-      if (this.diagnosticPilot) {
+      if (this.audioDiagnostics) {
         fields.push("remotePilot(FFT legacy)=" + (pilotDb === null ? "n/a" : pilotDb.toFixed(1) + "dBFS"));
-        this.logSignalPathDiagnostics();
+        const signalPath = this.logSignalPathDiagnostics();
+        if (signalPath) fields.push("audio-path: " + signalPath);
       }
 
       const pair = reports.find(report =>
