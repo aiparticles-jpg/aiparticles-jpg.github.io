@@ -628,3 +628,13 @@ body.contact-screen-open{overflow:hidden}
 
 .log-copy-button{padding:7px 10px;font-size:11px;flex:0 0 auto}
 .diagnostic-screen-content .event-log-panel .panel-heading{align-items:center}
+
+
+/* Compact service status: primary providers first, remaining transports on the second row. */
+.diagnostic-screen-content .service-availability-panel{flex:0 0 auto;display:flex;flex-direction:column;gap:7px;padding-top:8px}
+.service-status-row{display:grid;gap:10px;min-width:0}
+.service-status-primary{grid-template-columns:repeat(2,minmax(0,1fr))}
+.service-status-secondary{grid-template-columns:repeat(3,minmax(0,1fr))}
+.service-status-row .debug-meta{min-width:0;margin:0;font-size:10px;line-height:1.4}
+.service-status-row .debug-meta strong{overflow-wrap:anywhere}
+@media(max-width:380px){.service-status-row{gap:6px}.service-status-row .debug-meta{font-size:9px}}
