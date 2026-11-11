@@ -35,7 +35,7 @@ jobs:
 
           version_date = sys.argv[1]
           html = Path("index.html").read_text(encoding="utf-8")
-          match = re.search(r'id="app-version"[^>]*>Версия (\\d{4}\\.\\d{2}\\.\\d+)-(\\d+)', html)
+          match = re.search(r'id="app-version"[^>]*>Версия (\d{4}\.\d{2}\.\d+)-(\d+)', html)
           if not match:
               raise SystemExit("Could not read the base application version from index.html")
 
@@ -67,7 +67,7 @@ jobs:
           html = path.read_text(encoding="utf-8")
 
           html, version_count = re.subn(
-              r'(id="app-version"[^>]*>Версия )\\d{4}\\.\\d{2}\\.\\d{2}-\\d+',
+              r'(id="app-version"[^>]*>Версия )\d{4}\.\d{2}\.\d{2}-\d+',
               lambda match: match.group(1) + version,
               html,
               count=1,
@@ -76,7 +76,7 @@ jobs:
               raise SystemExit("Could not find the application version marker in index.html")
 
           html, cache_count = re.subn(
-              r'(src="./js/app\\.js\\?v=)[^"]+',
+              r'(src="./js/app\.js\?v=)[^"]+',
               lambda match: match.group(1) + cache_version,
               html,
               count=1,
