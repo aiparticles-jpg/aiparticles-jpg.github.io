@@ -204,7 +204,10 @@ async function copyDiagnosticLog(element,button){
  const value=element?.textContent?.trim();
  if(!value)return;
  const copiedAt=new Date().toLocaleString("ru-RU",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
- const textToCopy="\n"+value+"\n(Скопировано: "+copiedAt+")\n\n";
+ const elapsedMs=Math.max(0,Math.round(performance.now()));
+ const elapsedSeconds=Math.floor(elapsedMs/1000);
+ const elapsedSinceStart="+"+String(Math.floor(elapsedSeconds/3600)).padStart(2,"0")+":"+String(Math.floor((elapsedSeconds%3600)/60)).padStart(2,"0")+":"+String(elapsedSeconds%60).padStart(2,"0")+"."+String(elapsedMs%1000).padStart(3,"0");
+ const textToCopy="\n"+value+"\n(Скопировано: "+copiedAt+"; с запуска: "+elapsedSinceStart+")\n\n";
  try{
   if(navigator.clipboard?.writeText){
    await navigator.clipboard.writeText(textToCopy);
