@@ -37,20 +37,37 @@ export class NtfySecureSignaling {
   return false;
  }
  async verifyPeerEnvelope(type,payload,auth){
-  if(auth?.scheme!=="contact-aes-256-gcm"||typeof auth.iv!=="string"||typeof auth.ciphertext!=="string")return false;
-  const peer=payload?.from;if(!isUserId(peer)||peer===this.me||payload?.to!==this.me)return false;
-  const contact=await getContact(peer);if(!contact?.invitation_secret)return false;
+  if(auth?.scheme!=="contact-aes-256-gcm"||typeof auth.iv!=="string"||typeof auth.ciphertext!=="string"){
+   this.onDebug(`[e2ee] ${type} отклонён: некорректная структура auth (scheme/iv/ciphertext).`);return false;
+  }
+  const peer=payload?.from;
+  if(!isUserId(peer)||peer===this.me||payload?.to!==this.me){
+   this.onDebug(`[e2ee] ${type} отклонён до расшифровки: from/to не соответствуют локальной идентичности.`);return false;
+  }
+  const cipherBytes=un64(auth.ciphertext).byteLength;
+  const contact=await getContact(peer);
+  if(!contact?.invitation_secret){
+   this.onDebug(`[e2ee] ${type} отклонён: для peer=${peer.slice(0,10)} нет сохранённого invitation_secret.`);return false;
+  }
   const candidates=[{slot:"pending",secret:contact.pending_secret},{slot:"active",secret:contact.invitation_secret},{slot:"previous",secret:contact.previous_secret}].filter(x=>typeof x.secret==="string");
-  let decoded=null,used=null;
+  let decoded=null,used=null,decryptFailures=0,payloadFailures=0,plainBytes=null;
   for(const candidate of candidates){try{
    const key=await this.deriveEnvelopeKey(candidate.secret,peer,this.me);
    const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(auth.iv),additionalData:this.envelopeAad(type,peer,this.me)},key,un64(auth.ciphertext));
+   plainBytes=plain.byteLength;
    const value=JSON.parse(new TextDecoder().decode(plain));
-   if(!value||typeof value!=="object"||value.from!==peer||value.to!==this.me||!this.validDecryptedPayload(type,value))continue;
+   if(!value||typeof value!=="object"||value.from!==peer||value.to!==this.me||!this.validDecryptedPayload(type,value)){payloadFailures++;continue;}
    decoded=value;used=candidate;break;
-  }catch{}}
-  if(!decoded)return false;Object.assign(payload,decoded);
-  if(!await this.hasCallGrant(payload))return false;
+  }catch{decryptFailures++;}}
+  if(!decoded){
+   this.onDebug(`[e2ee] ${type} не расшифрован: ciphertext=${cipherBytes} B; ключей проверено=${candidates.length}; AES-GCM failures=${decryptFailures}; payload validation failures=${payloadFailures}.`);
+   return false;
+  }
+  if(type==="data")this.onDebug(`[e2ee] data расшифрован: ciphertext=${cipherBytes} B; plaintext=${plainBytes} B; key-slot=${used.slot}; payload=valid.`);
+  Object.assign(payload,decoded);
+  if(!await this.hasCallGrant(payload)){
+   this.onDebug(`[e2ee] ${type} отклонён после расшифровки: hasCallGrant=false; peer=${peer.slice(0,10)}; invitation_id=${String(payload.invitation_id||"нет").slice(0,12)}.`);return false;
+  }
   if(used.slot==="pending"){
    await updateContact(peer,{invitation_secret:contact.pending_secret,pending_secret:null,pending_rotation_id:null,previous_secret:null,previous_secret_at:null,shared_secret_created_at:Date.now(),rotation_response_id:null,rotation_response_ciphertext:null});
    this.onDebug("[e2ee] получено первое сообщение под новым ключом; старый ключ удалён");
@@ -133,22 +150,27 @@ export class NtfySecureSignaling {
   if(type!=="rotation_response"&&contact.rotation_id&&contact.rotation_public_key)body.rotation_request={rotation_id:contact.rotation_id,public_key:contact.rotation_public_key};
   const key=await this.deriveEnvelopeKey(contact.invitation_secret,this.me,peer),iv=crypto.getRandomValues(new Uint8Array(12));
   const plaintext=enc.encode(stable(body));
+  let gzipBytes=null;
   if(type==="data"){
    const signal=payload.signal?.payload||{};
    const sdpChars=signal.description?.sdp?.length||0;
    const candidateCount=Array.isArray(signal.candidates)?signal.candidates.length:0;
    try{
     const compressed=await new Response(new Blob([plaintext]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();
-    const encryptedLength=compressed.byteLength+16;
-    const ciphertextChars=Math.ceil(encryptedLength*4/3);
-    const estimate=enc.encode(JSON.stringify({v:3,type,payload:{from:this.me,to:peer},auth:{scheme:"contact-aes-256-gcm",iv:"x".repeat(16),ciphertext:"x".repeat(ciphertextChars)}})).byteLength;
-    this.onDebug(`[signaling] data size: SDP=${sdpChars} chars; candidates=${candidateCount}; plaintext=${plaintext.byteLength} bytes; gzip=${compressed.byteLength} bytes; estimated gzip-encrypted envelope=${estimate} bytes; fits single POST=${estimate<=3000}.`);
+    gzipBytes=compressed.byteLength;
+    this.onDebug(`[signaling] data input: SDP=${sdpChars} chars; candidates=${candidateCount}; JSON plaintext=${plaintext.byteLength} B; gzip would be=${gzipBytes} B (saved ${plaintext.byteLength-gzipBytes} B); compression=NOT_APPLIED; AES-GCM input=${plaintext.byteLength} B.`);
    }catch(error){
-    this.onDebug("[signaling] gzip size diagnostic unavailable: "+(error.message||String(error)));
+    this.onDebug("[signaling] gzip comparison unavailable: "+(error.message||String(error))+"; compression=NOT_APPLIED.");
    }
   }
   const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:this.envelopeAad(type,this.me,peer)},key,plaintext);
-  return {v:3,type,payload:{from:this.me,to:peer},auth:{scheme:"contact-aes-256-gcm",iv:b64u(iv),ciphertext:b64u(ciphertext)}};
+  const ciphertextBytes=ciphertext.byteLength,ciphertextText=b64u(ciphertext);
+  const envelope={v:3,type,payload:{from:this.me,to:peer},auth:{scheme:"contact-aes-256-gcm",iv:b64u(iv),ciphertext:ciphertextText}};
+  if(type==="data"){
+   const envelopeBytes=enc.encode(JSON.stringify(envelope)).byteLength;
+   this.onDebug(`[signaling] data actual: AES-GCM ciphertext=${ciphertextBytes} B; base64url=${ciphertextText.length} chars; envelope JSON=${envelopeBytes} B; ntfy split threshold=3000 B; expected parts=${Math.max(1,Math.ceil(envelopeBytes/2200))}.`);
+  }
+  return envelope;
  }
 
  async subscribe(){
