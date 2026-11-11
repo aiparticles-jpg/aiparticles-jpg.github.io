@@ -726,7 +726,7 @@ async function onSecureReady(){
  if(state.role==="initiator")await startWebRtcOffer();
 }
 async function handleSignal(payload){
- const type=payload?.description?.type|| (payload?.candidate?"candidate":"unknown");
+ const type=payload?.description?.type||(payload?.candidates?"candidate-batch":payload?.candidate?"candidate":"unknown");
  debug("SIGNAL receive: type="+type+"; peer="+(state.secure?.peer||els.peer.value)+".");
  await ensureWebRtc();
  debug("SIGNAL dispatch to WebRTC: type="+type+".");
