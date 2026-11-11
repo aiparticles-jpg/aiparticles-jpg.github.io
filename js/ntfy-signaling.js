@@ -604,8 +604,30 @@ export class NtfySecureSignaling {
   }
  }
  async hasCallGrant(payload){
-  const contact=await getPeerSignalingIdentity(payload.from);
-  return payload.invitation_id===contact.invitation_id&&await hasActiveInvitationGrant(contact.invitation_id,payload.from);
+  let contact;
+  try{contact=await getPeerSignalingIdentity(payload.from)}catch(error){
+   this.onDebug(`[grant] нет локальной signaling-identity для отправителя: peer=${String(payload.from||"нет").slice(0,10)}; reason=${error.message||String(error)}.`);return false;
+  }
+  if(payload.invitation_id!==contact.invitation_id){
+   this.onDebug(`[grant] invitation_id не совпадает: received=${String(payload.invitation_id||"нет").slice(0,12)}; saved=${String(contact.invitation_id||"нет").slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return false;
+  }
+  let invitation;
+  try{invitation=await getIssuedInvitation(contact.invitation_id)}catch(error){
+   this.onDebug(`[grant] не удалось прочитать локальную запись приглашения: ${error.message||String(error)}.`);return false;
+  }
+  if(!invitation){
+   this.onDebug(`[grant] локальная запись выданного приглашения отсутствует: invitation_id=${contact.invitation_id.slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return false;
+  }
+  if(invitation.revoked){
+   this.onDebug(`[grant] приглашение отозвано: invitation_id=${contact.invitation_id.slice(0,12)}; peer=${payload.from.slice(0,10)}.`);return false;
+  }
+  const activations=Array.isArray(invitation.activations)?invitation.activations:[];
+  const activated=activations.some(item=>item.user_id===payload.from);
+  if(!activated){
+   this.onDebug(`[grant] нет активации приглашения для отправителя: invitation_id=${contact.invitation_id.slice(0,12)}; activations=${activations.length}; peer=${payload.from.slice(0,10)}.`);return false;
+  }
+  this.onDebug(`[grant] разрешение подтверждено: invitation_id=${contact.invitation_id.slice(0,12)}; peer=${payload.from.slice(0,10)}.`);
+  return true;
  }
  activateSession(sid){this.session=sid;this.ready=true;this.clearHelloRetry();}
  async sendSignal(payload){
