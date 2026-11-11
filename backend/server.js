@@ -171,7 +171,7 @@ app.get("/health", (req, res) => {
     "X-VL-Boot-Time": new Date(BOOT_TIME).toISOString()
   });
   console.log(JSON.stringify({ event: "health_request", requestId, instanceId: INSTANCE_ID, origin: req.get("Origin") || null, userAgent: req.get("User-Agent") || null, uptimeMs: Math.round(process.uptime() * 1000), receivedAt: new Date().toISOString() }));
-  res.on("finish", () => console.log(JSON.stringify({ event: "health_response", requestId, instanceId: INSTANCE_ID, status: res.statusCode, elapsedMs: Date.now() - started, completedAt: new Date().toISOString() }));
+  res.on("finish", () => console.log(JSON.stringify({ event: "health_response", requestId, instanceId: INSTANCE_ID, status: res.statusCode, elapsedMs: Date.now() - started, completedAt: new Date().toISOString() })));
   res.status(200).json({ ok: true, service: "voicelink-backend", instanceId: INSTANCE_ID, bootTime: new Date(BOOT_TIME).toISOString(), serverTime: new Date().toISOString(), uptimeMs: Math.round(process.uptime() * 1000) });
 });
 
