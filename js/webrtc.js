@@ -49,6 +49,7 @@ export class WebRtcAudio {
     this.pilotOscillator = null;
     this.remoteAnalyser = null;
     this.remoteAnalyserBuffer = null;
+    this.signalMonitors = new Map();
     this.pendingCandidates = [];
     this.remoteDescriptionSet = false;
     this.statsTimer = null;
@@ -72,6 +73,7 @@ export class WebRtcAudio {
         oscillator.frequency.value = 997;
         gain.gain.value = 0.025;
         oscillator.connect(gain);
+        this.createSignalMonitorFromNode(gain, "pilot-source");
         gain.connect(destination);
         oscillator.start();
         this.pilotOscillator = oscillator;
@@ -89,6 +91,13 @@ export class WebRtcAudio {
       if (track) {
         // Caller stays muted until the answerer confirms acceptance over DataChannel.
         track.enabled = this.micEnabled;
+        if (this.diagnosticPilot) {
+          this.createSignalMonitorFromStream(this.localStream, "local-track");
+          this.onState("AudioContext: state=" + this.audioContext?.state +
+            "; sampleRate=" + (this.audioContext?.sampleRate || "n/a") +
+            "; baseLatency=" + (Number.isFinite(this.audioContext?.baseLatency) ? (this.audioContext.baseLatency * 1000).toFixed(1) + "ms" : "n/a") +
+            "; outputLatency=" + (Number.isFinite(this.audioContext?.outputLatency) ? (this.audioContext.outputLatency * 1000).toFixed(1) + "ms" : "n/a"));
+        }
         this.onState("Аудиотрек: readyState=" + track.readyState + "; enabled=" + track.enabled);
       }
     }
@@ -116,25 +125,81 @@ export class WebRtcAudio {
     return this.ensureMedia();
   }
 
+  createSignalMonitorFromNode(sourceNode, label) {
+    if (!this.diagnosticPilot || !this.audioContext || !sourceNode) return null;
+    const analyser = this.audioContext.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0;
+    sourceNode.connect(analyser);
+    // A private MediaStreamDestination keeps this parallel measurement branch
+    // pull-active without routing the diagnostic tap to the phone speaker.
+    const sink = this.audioContext.createMediaStreamDestination();
+    analyser.connect(sink);
+    const monitor = { label, analyser, sink, buffer: new Float32Array(analyser.fftSize) };
+    this.signalMonitors.set(label, monitor);
+    return monitor;
+  }
+
+  createSignalMonitorFromStream(stream, label) {
+    if (!this.diagnosticPilot || !this.audioContext || !stream) return null;
+    const source = this.audioContext.createMediaStreamSource(stream);
+    const monitor = this.createSignalMonitorFromNode(source, label);
+    if (monitor) monitor.source = source;
+    return monitor;
+  }
+
+  sampleSignalMonitor(monitor) {
+    if (!monitor || !this.audioContext) return null;
+    monitor.analyser.getFloatTimeDomainData(monitor.buffer);
+    let sumSquares = 0;
+    let peak = 0;
+    let clipped = 0;
+    const crossings = [];
+    const data = monitor.buffer;
+    for (let i = 0; i < data.length; i++) {
+      const value = data[i];
+      sumSquares += value * value;
+      const absolute = Math.abs(value);
+      if (absolute > peak) peak = absolute;
+      if (absolute >= 0.99) clipped++;
+      if (i > 0 && data[i - 1] <= 0 && value > 0) {
+        const previous = data[i - 1];
+        const fraction = previous === value ? 0 : -previous / (value - previous);
+        crossings.push(i - 1 + fraction);
+      }
+    }
+    const rms = Math.sqrt(sumSquares / data.length);
+    const dbfs = value => value > 0 ? (20 * Math.log10(value)).toFixed(1) : "-120.0";
+    let frequency = "n/a";
+    if (crossings.length >= 2) {
+      const span = crossings[crossings.length - 1] - crossings[0];
+      if (span > 0) frequency = ((crossings.length - 1) * this.audioContext.sampleRate / span).toFixed(1) + "Hz";
+    }
+    return monitor.label + "{rms=" + dbfs(rms) + "dBFS;peak=" + dbfs(peak) +
+      "dBFS;freq≈" + frequency + ";clip=" + clipped + "/" + data.length + "}";
+  }
+
   attachRemoteMonitor(stream) {
     if (!this.diagnosticPilot || !this.audioContext || !stream) return;
     try {
-      if (this.remoteAnalyser) {
-        try { this.remoteAnalyser.disconnect(); } catch {}
-      }
-      const source = this.audioContext.createMediaStreamSource(stream);
-      const analyser = this.audioContext.createAnalyser();
-      analyser.fftSize = 4096;
-      analyser.smoothingTimeConstant = 0.25;
-      analyser.minDecibels = -100;
-      analyser.maxDecibels = -10;
-      source.connect(analyser);
-      this.remoteAnalyser = analyser;
-      this.remoteAnalyserBuffer = new Float32Array(analyser.frequencyBinCount);
-      this.onState("MIC SIMULATION: анализатор подключён к входящему аудиопотоку.");
+      const monitor = this.createSignalMonitorFromStream(stream, "remote-track");
+      if (!monitor) return;
+      this.remoteAnalyser = monitor.analyser;
+      this.remoteAnalyserBuffer = new Float32Array(this.remoteAnalyser.frequencyBinCount);
+      this.onState("MIC SIMULATION: измерительная ветвь подключена к входящему MediaStreamTrack (до audio element).");
     } catch (error) {
       this.onState("MIC SIMULATION: ошибка анализатора: " + error.message);
     }
+  }
+
+  logSignalPathDiagnostics() {
+    if (!this.diagnosticPilot || !this.signalMonitors.size) return;
+    const values = [];
+    for (const monitor of this.signalMonitors.values()) {
+      const value = this.sampleSignalMonitor(monitor);
+      if (value) values.push(value);
+    }
+    if (values.length) this.onState("Audio signal path: " + values.join("; "));
   }
 
   measureRemotePilot() {
@@ -376,7 +441,8 @@ export class WebRtcAudio {
 
       const pilotDb = this.measureRemotePilot();
       if (this.diagnosticPilot) {
-        fields.push("remotePilot=" + (pilotDb === null ? "n/a" : pilotDb.toFixed(1) + "dBFS"));
+        fields.push("remotePilot(FFT legacy)=" + (pilotDb === null ? "n/a" : pilotDb.toFixed(1) + "dBFS"));
+        this.logSignalPathDiagnostics();
       }
 
       const pair = reports.find(report =>
@@ -611,6 +677,12 @@ export class WebRtcAudio {
       this.pilotOscillator.disconnect();
       this.pilotOscillator = null;
     }
+    for (const monitor of this.signalMonitors.values()) {
+      try { monitor.analyser.disconnect(); } catch {}
+      try { monitor.source?.disconnect(); } catch {}
+      try { monitor.sink?.stream?.getTracks().forEach(track => track.stop()); } catch {}
+    }
+    this.signalMonitors.clear();
     if (this.remoteAnalyser) {
       try { this.remoteAnalyser.disconnect(); } catch {}
       this.remoteAnalyser = null;
