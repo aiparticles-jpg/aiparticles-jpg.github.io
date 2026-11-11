@@ -200,8 +200,16 @@ export class WebRtcAudio {
 
     pc.onicecandidateerror = event => {
       this.iceCandidateErrorCount++;
+      const localAddress = event.address || "";
+      const maskedAddress = localAddress
+        ? (localAddress.includes(":")
+          ? localAddress.split(":").slice(0, 3).join(":") + ":…"
+          : localAddress.split(".").slice(0, 3).join(".") + ".x")
+        : "n/a";
+      const addressFamily = localAddress ? (localAddress.includes(":") ? "IPv6" : "IPv4") : "unknown";
       this.onState("PC["+this.pcDiagnosticId+"] ICE candidate error #"+this.iceCandidateErrorCount+
         "; code="+(event.errorCode||"unknown")+
+        "; local="+maskedAddress+":"+((event.port ?? "n/a"))+" ("+addressFamily+")"+
         "; url="+(event.url||"unknown")+
         "; text="+(event.errorText||"no details")+".");
     };
