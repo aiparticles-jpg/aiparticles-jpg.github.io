@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=23";
+import { WebRtcAudio } from "./webrtc.js?v=24";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=45";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=12";
@@ -666,26 +666,29 @@ function scheduleIcePrewarm(reason="input",force=false){
   if(currentFresh)return;
 
   const candidate=createWebRtcInstance(els.pilot.checked);
+  const previous=state.webrtc;
+  // Publish the in-flight prepared PC immediately so Connect can keep and reuse it.
+  state.webrtc=candidate;
+  state.prewarmNames=names;
   const task=(async()=>{
    try{
+    if(previous&&previous!==candidate)await previous.close({stopTracks:true});
     debug("Предварительная подготовка ICE начата (причина: "+reason+"; без микрофона и без ntfy).");
     const count=await candidate.prepareIce();
     const latestMe=state.me,latestPeer=els.peer.value;
-    const stillEligible=!state.connecting&&!state.incomingCall&&!state.answeringCall&&!state.outgoingCall&&!state.peerPresent&&!state.secure?.active&&!state.callStarted&&navigator.onLine&&
+    const stillOwned=state.webrtc===candidate&&navigator.onLine&&
      latestMe+"|"+latestPeer===names&&latestMe<latestPeer;
-    if(!stillEligible){
+    if(!stillOwned){
      await candidate.close({stopTracks:true});
-     debug("Новая ICE-подготовка отброшена: параметры или состояние страницы изменились.");
+     if(state.webrtc===candidate){state.webrtc=null;state.prewarmNames=null}
+     debug("Новая ICE-подготовка отброшена: параметры или экземпляр изменились.");
      return null;
     }
-    const previous=state.webrtc;
-    state.webrtc=candidate;
-    state.prewarmNames=names;
-    if(previous&&previous!==candidate)await previous.close({stopTracks:true});
-    debug("Предварительная подготовка ICE завершена; локально сохранено кандидатов: "+count+". Старый экземпляр заменён.");
+    debug("Предварительная подготовка ICE завершена; локально сохранено кандидатов: "+count+". Тот же PC сохранён для звонка.");
     return candidate;
    }catch(error){
     await candidate.close({stopTracks:true});
+    if(state.webrtc===candidate){state.webrtc=null;state.prewarmNames=null}
     debug("Предварительная подготовка ICE не удалась: "+(error.message||String(error)));
     return null;
    }
@@ -729,6 +732,22 @@ async function startWebRtcOffer(){
  if(state.callStarted)return;state.callStarted=true;
  try{
   await ensureWebRtc();
+  if(state.webrtc?.prewarmed&&!state.webrtc.isPrewarmed()){
+   const preparing=state.webrtc;
+   debug("Звонок использует текущую ICE-подготовку; ожидаем завершения gathering на том же PC.");
+   // Wait for the app-level task too: it may still be replacing the previous PC
+   // before prepareIce() has installed its own promise on this instance.
+   if(state.prewarmPromise&&state.prewarmTargetNames===state.prewarmNames)await state.prewarmPromise;
+   const ready=await preparing.waitForPrewarm();
+   if(state.webrtc!==preparing){
+    await ensureWebRtc();
+   }else if(!ready){
+    debug("Текущая ICE-подготовка не завершилась; создаём обычный WebRTC PC.");
+    await preparing.close({stopTracks:true});
+    state.webrtc=null;state.prewarmNames=null;
+    await ensureWebRtc();
+   }
+  }
   const prepared=await state.webrtc.activatePreparedOffer();
   if(!prepared)await state.webrtc.createOffer();
   debug((prepared?"Предварительно подготовленный ":"")+"WebRTC offer передан в ntfy. Ожидаем answer от второго устройства и установления P2P.");
@@ -749,8 +768,10 @@ async function connect(){
  clearError();setBusy(true);
  try{
   const me=state.me;
-  // Do not wait for a background ICE gather before starting call signaling.
-  const keepPrewarm=!!(state.webrtc&&state.webrtc.isPrewarmed()&&state.prewarmNames===me+"|"+peer&&me<peer);
+  // Keep a matching prepared PC even while its ICE gathering is still running.
+  const matchingPrewarm=!!(state.webrtc?.prewarmed&&state.prewarmNames===me+"|"+peer&&me<peer);
+  const keepPrewarm=matchingPrewarm&&(state.webrtc.isPrewarmed()||
+   !!(state.prewarmPromise&&state.prewarmTargetNames===me+"|"+peer));
   if(state.webrtc&&!keepPrewarm){await state.webrtc.close({stopTracks:true});state.webrtc=null;state.prewarmNames=null}
   state.callStarted=false;state.peerPresent=false;
   if(!NtfySecureSignaling.validUserId(me)||!NtfySecureSignaling.validUserId(peer)||me===peer)throw Error("Выберите сохранённый контакт. Собеседник должен отличаться от вашей идентичности.");
