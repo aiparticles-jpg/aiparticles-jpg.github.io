@@ -23,7 +23,7 @@ export class NtfySecureSignaling {
   const material=await crypto.subtle.importKey("raw",raw,"HKDF",false,["deriveKey"]),pair=[from,to].sort().join("|"),salt=await digest(enc.encode("voicelink-envelope-pair-v3|"+pair));
   return crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt,info:enc.encode("voicelink-envelope-v3|"+from+"|"+to)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
  }
- envelopeAad(type,from,to){return enc.encode(stable({v:3,type,from,to}));}
+ envelopeAad(type,from,to,compression=null){return enc.encode(stable({v:3,type,from,to,...(compression?{compression}:{})}));}
  validDecryptedPayload(type,p){
   const uuid=v=>typeof v==="string"&&/^[0-9a-f-]{36}$/i.test(v);
   if(!p||p.from===undefined||p.to===undefined)return false;
@@ -53,9 +53,13 @@ export class NtfySecureSignaling {
   let decoded=null,used=null,decryptFailures=0,payloadFailures=0,plainBytes=null;
   for(const candidate of candidates){try{
    const key=await this.deriveEnvelopeKey(candidate.secret,peer,this.me);
-   const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(auth.iv),additionalData:this.envelopeAad(type,peer,this.me)},key,un64(auth.ciphertext));
-   plainBytes=plain.byteLength;
-   const value=JSON.parse(new TextDecoder().decode(plain));
+   const decrypted=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(auth.iv),additionalData:this.envelopeAad(type,peer,this.me,auth.compression||null)},key,un64(auth.ciphertext));
+    plainBytes=decrypted.byteLength;
+    if(auth.compression&&!(type==="data"&&auth.compression==="gzip"))throw Error("Unsupported envelope compression.");
+    const plain=auth.compression==="gzip"
+     ?await new Response(new Blob([decrypted]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()
+     :decrypted;
+    const value=JSON.parse(new TextDecoder().decode(plain));
    if(!value||typeof value!=="object"||value.from!==peer||value.to!==this.me||!this.validDecryptedPayload(type,value)){payloadFailures++;continue;}
    decoded=value;used=candidate;break;
   }catch{decryptFailures++;}}
@@ -63,7 +67,7 @@ export class NtfySecureSignaling {
    this.onDebug(`[e2ee] ${type} не расшифрован: ciphertext=${cipherBytes} B; ключей проверено=${candidates.length}; AES-GCM failures=${decryptFailures}; payload validation failures=${payloadFailures}.`);
    return false;
   }
-  if(type==="data")this.onDebug(`[e2ee] data расшифрован: ciphertext=${cipherBytes} B; plaintext=${plainBytes} B; key-slot=${used.slot}; payload=valid.`);
+  if(type==="data")this.onDebug(`[e2ee] data расшифрован: ciphertext=${cipherBytes} B; decrypted=${plainBytes} B; compression=${auth.compression||"none"}; key-slot=${used.slot}; payload=valid.`);
   Object.assign(payload,decoded);
   const grant=await this.hasCallGrant(payload);
   if(!grant.ok){
@@ -102,40 +106,47 @@ export class NtfySecureSignaling {
    return;
   }
  }
- async publish(to,msg){
-  const task=async()=>{
-   if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
-   const originalBody=JSON.stringify(msg),originalBytes=enc.encode(originalBody).byteLength,messages=[];
-   if(msg.type==="data"&&originalBytes>3000){
-    if([...originalBody].some(ch=>ch.charCodeAt(0)>127))throw Error("Нельзя безопасно фрагментировать не-ASCII data envelope.");
-    const messageId=crypto.randomUUID(),chunkSize=2200,total=Math.ceil(originalBody.length/chunkSize);
-    if(total>16)throw Error("Зашифрованное data-сообщение слишком велико для безопасной отправки через ntfy.");
-    for(let index=0;index<total;index++)messages.push({v:3,type:"data_part",payload:{from:this.me,to,message_id:messageId,index,total,chunk:originalBody.slice(index*chunkSize,(index+1)*chunkSize)}});
-    this.onDebug(`[ntfy] data envelope ${originalBytes} bytes split into ${total} parts; chunk=${chunkSize}; messageId=${messageId.slice(0,8)}`);
-   }else messages.push(msg);
-   for(let i=0;i<messages.length;i++){
+async publish(to,msg){
+   const task=async()=>{
     if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
-    const current=messages[i],body=JSON.stringify(current),bodyBytes=enc.encode(body).byteLength;
-    if(current.type==="data")this.onDebug(`[ntfy] data POST body size=${bodyBytes} bytes; AES-GCM ciphertext(base64url)=${current.auth?.ciphertext?.length||0} chars; limit=4096 bytes`);
-    if(current.type==="data_part")this.onDebug(`[ntfy] data part POST ${i+1}/${messages.length}; body=${bodyBytes} bytes; messageId=${current.payload.message_id.slice(0,8)}; part=${current.payload.index+1}/${current.payload.total}`);
-    const url=BASE+await getNtfyTopic(to);
-    await this.waitForPublishSlot();
-    this.onDebug(`[ntfy] POST → ${current.type} (одна попытка)`);
-    let response;
-    try{response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body,cache:"no-store"});}
-    catch(error){const failure=Error("Сетевая ошибка при POST в ntfy ("+current.type+"): "+(error.message||String(error)));failure.retryable=true;throw failure;}
-    this.onDebug(`[ntfy] POST ← ${response.status} (${current.type})`);
-    if(!response.ok){
-     const retryAfter=response.headers.get("Retry-After");
-     if(response.status===429){this.rateLimited=true;this.clearHelloRetry();this.clearAnswerRetry();}
-     const failure=Error("ntfy HTTP "+response.status+(response.status===429?"; сервер ограничил частоту запросов"+(retryAfter?"; Retry-After: "+retryAfter:""):""));
-     failure.retryable=response.status===408||response.status>=500;throw failure;
+    const maxMessageBytes=4096,originalBody=JSON.stringify(msg),originalBytes=enc.encode(originalBody).byteLength,messages=[];
+    if(msg.type==="data"&&originalBytes>maxMessageBytes){
+     if([...originalBody].some(ch=>ch.charCodeAt(0)>127))throw Error("Нельзя безопасно фрагментировать не-ASCII data envelope.");
+     const messageId=crypto.randomUUID(),template={v:3,type:"data_part",payload:{from:this.me,to,message_id:messageId,index:15,total:16,chunk:""}};
+     const wrapperBytes=enc.encode(JSON.stringify(template)).byteLength,chunkSize=maxMessageBytes-wrapperBytes,total=Math.ceil(originalBody.length/chunkSize);
+     if(chunkSize<1||total>16)throw Error("Зашифрованное data-сообщение слишком велико для ntfy.");
+     for(let index=0;index<total;index++){
+      const part={v:3,type:"data_part",payload:{from:this.me,to,message_id:messageId,index,total,chunk:originalBody.slice(index*chunkSize,(index+1)*chunkSize)}};
+      const partBytes=enc.encode(JSON.stringify(part)).byteLength;
+      if(partBytes>maxMessageBytes)throw Error(`ntfy body size ${partBytes} B exceeds ${maxMessageBytes} B.`);
+      messages.push(part);
+     }
+     this.onDebug(`[ntfy] envelope=${originalBytes} B; parts=${total}; chunkCapacity=${chunkSize} chars; wrapper=${wrapperBytes} B; maxBody=${maxMessageBytes} B.`);
+    }else messages.push(msg);
+    for(let i=0;i<messages.length;i++){
+     if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
+     const current=messages[i],body=JSON.stringify(current),bodyBytes=enc.encode(body).byteLength;
+     if(bodyBytes>maxMessageBytes)throw Error(`ntfy message body ${bodyBytes} B exceeds ${maxMessageBytes} B.`);
+     if(current.type==="data")this.onDebug(`[ntfy] data POST body=${bodyBytes} B; limit=${maxMessageBytes} B; headroom=${maxMessageBytes-bodyBytes} B.`);
+     if(current.type==="data_part")this.onDebug(`[ntfy] data part POST ${i+1}/${messages.length}; body=${bodyBytes} B; limit=${maxMessageBytes} B; headroom=${maxMessageBytes-bodyBytes} B.`);
+     const url=BASE+await getNtfyTopic(to);
+     await this.waitForPublishSlot();
+     this.onDebug(`[ntfy] POST → ${current.type} (одна попытка)`);
+     let response;
+     try{response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body,cache:"no-store"});}
+     catch(error){const failure=Error("Сетевая ошибка при POST в ntfy ("+current.type+"): "+(error.message||String(error)));failure.retryable=true;throw failure;}
+     this.onDebug(`[ntfy] POST ← ${response.status} (${current.type})`);
+     if(!response.ok){
+      const retryAfter=response.headers.get("Retry-After");
+      if(response.status===429){this.rateLimited=true;this.clearHelloRetry();this.clearAnswerRetry();}
+      const failure=Error("ntfy HTTP "+response.status+(response.status===429?"; сервер ограничил частоту запросов"+(retryAfter?"; Retry-After: "+retryAfter:""):""));
+      failure.retryable=response.status===408||response.status>=500;throw failure;
+     }
     }
-   }
-  };
-  const result=this.publishQueue.then(task,task);this.publishQueue=result.catch(()=>{});return result;
- }
- async beginKeyRotation(peer,contact){
+   };
+   const result=this.publishQueue.then(task,task);this.publishQueue=result.catch(()=>{});return result;
+  }
+  async beginKeyRotation(peer,contact){
   if(contact.rotation_id&&contact.rotation_private_key)return contact;
   if(contact.pending_secret||contact.previous_secret)return contact;
   const pair=await crypto.subtle.generateKey({name:"RSA-OAEP",modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:"SHA-256"},true,["encrypt","decrypt"]);
@@ -151,28 +162,24 @@ export class NtfySecureSignaling {
   const body={...payload,invitation_id:payload.invitation_id||contact.invitation_id};
   if(type!=="rotation_response"&&contact.rotation_id&&contact.rotation_public_key)body.rotation_request={rotation_id:contact.rotation_id,public_key:contact.rotation_public_key};
   const key=await this.deriveEnvelopeKey(contact.invitation_secret,this.me,peer),iv=crypto.getRandomValues(new Uint8Array(12));
-  const plaintext=enc.encode(stable(body));
-  let gzipBytes=null;
-  if(type==="data"){
-   const signal=payload.signal?.payload||{};
-   const sdpChars=signal.description?.sdp?.length||0;
-   const candidateCount=Array.isArray(signal.candidates)?signal.candidates.length:0;
-   try{
-    const compressed=await new Response(new Blob([plaintext]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();
-    gzipBytes=compressed.byteLength;
-    this.onDebug(`[signaling] data input: SDP=${sdpChars} chars; candidates=${candidateCount}; JSON plaintext=${plaintext.byteLength} B; gzip would be=${gzipBytes} B (saved ${plaintext.byteLength-gzipBytes} B); compression=NOT_APPLIED; AES-GCM input=${plaintext.byteLength} B.`);
-   }catch(error){
-    this.onDebug("[signaling] gzip comparison unavailable: "+(error.message||String(error))+"; compression=NOT_APPLIED.");
+   const plaintext=enc.encode(stable(body));
+   let encryptionInput=plaintext,compression=null;
+   if(type==="data"&&typeof CompressionStream==="function"){
+    try{
+     const compressed=await new Response(new Blob([plaintext]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();
+     if(compressed.byteLength<plaintext.byteLength){encryptionInput=compressed;compression="gzip";}
+     const signal=payload.signal?.payload||{},sdpChars=signal.description?.sdp?.length||0,candidateCount=Array.isArray(signal.candidates)?signal.candidates.length:0;
+     this.onDebug(`[compression] JSON=${plaintext.byteLength} B; gzip=${compressed.byteLength} B; saved=${plaintext.byteLength-compressed.byteLength} B; applied=${compression==="gzip"}; SDP=${sdpChars} chars; candidates=${candidateCount}; AES-GCM input=${encryptionInput.byteLength} B.`);
+    }catch(error){this.onDebug(`[compression] gzip failed; fallback=plain; reason=${error.message||String(error)}.`);}
    }
-  }
-  const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:this.envelopeAad(type,this.me,peer)},key,plaintext);
-  const ciphertextBytes=ciphertext.byteLength,ciphertextText=b64u(ciphertext);
-  const envelope={v:3,type,payload:{from:this.me,to:peer},auth:{scheme:"contact-aes-256-gcm",iv:b64u(iv),ciphertext:ciphertextText}};
-  if(type==="data"){
-   const envelopeBytes=enc.encode(JSON.stringify(envelope)).byteLength;
-   this.onDebug(`[signaling] data actual: AES-GCM ciphertext=${ciphertextBytes} B; base64url=${ciphertextText.length} chars; envelope JSON=${envelopeBytes} B; ntfy split threshold=3000 B; expected parts=${Math.max(1,Math.ceil(envelopeBytes/2200))}.`);
-  }
-  return envelope;
+   const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:this.envelopeAad(type,this.me,peer,compression)},key,encryptionInput);
+   const ciphertextBytes=ciphertext.byteLength,ciphertextText=b64u(ciphertext);
+   const envelope={v:3,type,payload:{from:this.me,to:peer},auth:{scheme:"contact-aes-256-gcm",iv:b64u(iv),...(compression?{compression}:{}),ciphertext:ciphertextText}};
+   if(type==="data"){
+    const envelopeBytes=enc.encode(JSON.stringify(envelope)).byteLength;
+    this.onDebug(`[signaling] data actual: plaintext=${plaintext.byteLength} B; AES-GCM input=${encryptionInput.byteLength} B; compression=${compression||"none"}; ciphertext=${ciphertextBytes} B; base64url=${ciphertextText.length} chars; envelope JSON=${envelopeBytes} B; ntfy message limit=4096 B.`);
+   }
+   return envelope;
  }
 
  async subscribe(){
@@ -494,7 +501,7 @@ export class NtfySecureSignaling {
   const now=Date.now();
   for(const [key,value] of this.dataAssemblies)if(now-value.createdAt>120000)this.dataAssemblies.delete(key);
   const validId=value=>typeof value==="string"&&/^[0-9a-f-]{36}$/i.test(value);
-  if(!payload||payload.from!==this.peer||payload.to!==this.me||!validId(payload.message_id)||!Number.isInteger(payload.index)||!Number.isInteger(payload.total)||payload.total<2||payload.total>16||payload.index<0||payload.index>=payload.total||typeof payload.chunk!=="string"||payload.chunk.length<1||payload.chunk.length>2200){
+  if(!payload||payload.from!==this.peer||payload.to!==this.me||!validId(payload.message_id)||!Number.isInteger(payload.index)||!Number.isInteger(payload.total)||payload.total<2||payload.total>16||payload.index<0||payload.index>=payload.total||typeof payload.chunk!=="string"||payload.chunk.length<1||payload.chunk.length>4096){
    this.onDebug("[ntfy] data part отклонён: некорректные метаданные или размер.");return null;
   }
   const key=payload.from+":"+payload.message_id;let entry=this.dataAssemblies.get(key);
@@ -503,7 +510,7 @@ export class NtfySecureSignaling {
   const previous=entry.parts.get(payload.index);
   if(previous!==undefined){if(previous!==payload.chunk){this.dataAssemblies.delete(key);this.onDebug("[ntfy] сборка data отменена: повторный фрагмент содержит другие данные.");}return null;}
   entry.parts.set(payload.index,payload.chunk);entry.size+=payload.chunk.length;
-  if(entry.size>40000){this.dataAssemblies.delete(key);this.onDebug("[ntfy] сборка data отменена: превышен максимальный размер.");return null;}
+  if(entry.size>65536){this.dataAssemblies.delete(key);this.onDebug("[ntfy] сборка data отменена: превышен максимальный размер.");return null;}
   this.onDebug(`[ntfy] data part получен: ${entry.parts.size}/${entry.total}; messageId=${payload.message_id.slice(0,8)}; index=${payload.index+1}`);
   if(entry.parts.size!==entry.total)return null;
   let body="";for(let index=0;index<entry.total;index++){const part=entry.parts.get(index);if(part===undefined)return null;body+=part;}
