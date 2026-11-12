@@ -398,11 +398,17 @@ function updateCallButtons(){
  els.replyInvite.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
-function stopRinging(){
+function stopRinging({suspend=true}={}){
  state.ringingKind=null;
  if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
- for(const oscillator of state.ringOscillators){try{oscillator.stop()}catch{}}
+ for(const oscillator of state.ringOscillators){
+  try{oscillator.stop()}catch{}
+  try{oscillator.disconnect()}catch{}
+ }
  state.ringOscillators=[];
+ if(suspend&&state.ringContext&&state.ringContext.state==="running"){
+  state.ringContext.suspend().catch(error=>debug("[ring] не удалось приостановить AudioContext: "+(error.message||String(error))));
+ }
 }
 function unlockRingingAudio(){
  try{
