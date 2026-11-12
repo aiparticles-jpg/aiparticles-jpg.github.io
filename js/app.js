@@ -444,8 +444,8 @@ async function startRinging(kind){
     notes.forEach((frequency,index)=>{
      const start=now+index*step,oscillator=state.ringContext.createOscillator(),gain=state.ringContext.createGain();
      oscillator.type="triangle";oscillator.frequency.value=frequency;
-     gain.gain.setValueAtTime(0.0001,start);gain.gain.linearRampToValueAtTime(0.045,start+0.025);
-     gain.gain.setValueAtTime(0.045,start+noteDuration-0.04);gain.gain.linearRampToValueAtTime(0.0001,start+noteDuration);
+     gain.gain.setValueAtTime(0.0001,start);gain.gain.linearRampToValueAtTime(0.045,start+0.06);
+     gain.gain.setValueAtTime(0.045,start+noteDuration-0.08);gain.gain.linearRampToValueAtTime(0.0001,start+noteDuration);
      oscillator.connect(gain);gain.connect(state.ringContext.destination);
      oscillator.start(start);oscillator.stop(start+noteDuration);nodes.push(oscillator);
     });
@@ -454,8 +454,8 @@ async function startRinging(kind){
     for(const frequency of [440,480]){
      const oscillator=state.ringContext.createOscillator(),gain=state.ringContext.createGain();
      oscillator.type="sine";oscillator.frequency.value=frequency;
-     gain.gain.setValueAtTime(0.0001,now);gain.gain.linearRampToValueAtTime(0.035,now+0.025);
-     gain.gain.setValueAtTime(0.035,now+duration-0.04);gain.gain.linearRampToValueAtTime(0.0001,now+duration);
+     gain.gain.setValueAtTime(0.0001,now);gain.gain.linearRampToValueAtTime(0.035,now+0.06);
+     gain.gain.setValueAtTime(0.035,now+duration-0.08);gain.gain.linearRampToValueAtTime(0.0001,now+duration);
      oscillator.connect(gain);gain.connect(state.ringContext.destination);
      oscillator.start(now);oscillator.stop(now+duration);nodes.push(oscillator);
     }
