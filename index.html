@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=71">
+  <link rel="stylesheet" href="./css/style.css?v=72">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -176,7 +176,9 @@
             <button id="answer-incoming" class="button button-primary call-round-action hidden" type="button" aria-label="Ответить" title="Ответить"><svg class="call-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.84.58 2.8.7A2 2 0 0 1 22 16.92Z"/></svg></button>
             <button id="reject-incoming" class="button button-danger call-round-action call-reject-action hidden" type="button" aria-label="Отклонить" title="Отклонить"><svg class="call-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.84.58 2.8.7A2 2 0 0 1 22 16.92Z"/></svg></button>
             <button id="dismiss-incoming" class="button button-secondary call-dismiss-action hidden" type="button"><svg class="call-dismiss-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.58 10.59a2 2 0 0 0 2.83 2.83"/><path d="M9.88 5.09A10.94 10.94 0 0 1 12 4.9c5 0 9.27 3.11 11 7.1a11.8 11.8 0 0 1-4.04 5.07"/><path d="M6.61 6.61A11.7 11.7 0 0 0 1 12c1.73 3.99 6 7.1 11 7.1 1.26 0 2.47-.2 3.59-.57"/></svg><span>Скрыть вызов</span></button>
-            <button id="hangup" class="button button-danger hidden" type="button" disabled>Завершить звонок</button>
+            <button id="mic-toggle" class="button call-round-action call-control-action hidden" type="button" aria-label="Выключить микрофон" title="Выключить микрофон" aria-pressed="false"><svg class="call-action-icon mic-on-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg><svg class="call-action-icon mic-off-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9V5a3 3 0 0 0-5.83-.9M5 10v2a7 7 0 0 0 11.95 4.95M19 10v2a7 7 0 0 1-.6 2.85M12 19v3m-4 0h8M2 2l20 20"/></svg></button>
+            <button id="speaker-toggle" class="button call-round-action call-control-action call-speaker-action hidden" type="button" aria-label="Выбрать аудиовыход" title="Выбрать аудиовыход" aria-pressed="false" disabled><svg class="call-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg></button>
+            <button id="hangup" class="button button-danger call-round-action call-hangup-action hidden" type="button" aria-label="Завершить звонок" title="Завершить звонок" disabled><svg class="call-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.84.58 2.8.7A2 2 0 0 1 22 16.92Z"/></svg></button>
           </div>
           <audio id="remote-audio" autoplay playsinline></audio>
           <p id="call-error-message" class="error-message hidden" role="alert"></p>
@@ -336,6 +338,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=181"></script>
+  <script type="module" src="./js/app.js?v=182"></script>
 </body>
 </html>
