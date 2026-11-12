@@ -704,3 +704,23 @@ body.contact-screen-open{overflow:hidden}
 .call-screen-stage .contact-call-actions .call-speaker-action[aria-pressed="true"]{background:#177e70;color:#fff}
 .call-screen-stage .contact-call-actions .call-hangup-action .call-action-icon{transform:rotate(135deg)}
 @media(max-width:520px){.call-screen-stage .contact-call-actions{gap:30px 96px}}
+
+
+/* Incoming-call dismiss control: round button on its own row, spaced like hangup. */
+.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{
+ position:relative;display:grid;place-items:center;
+ flex:0 0 100%;width:68px;height:68px;min-height:68px;
+ margin-left:calc(50% - 34px);margin-right:0;padding:0;
+ border:0;border-radius:50%;color:#fff;background:#34445b;
+ box-shadow:0 5px 18px rgba(0,0,0,.24);order:3;
+}
+.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action:hover:not(:disabled){background:#435873}
+.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action::after{
+ position:absolute;top:76px;left:50%;transform:translateX(-50%);
+ color:var(--text);font-size:12px;font-weight:600;white-space:nowrap;
+ content:attr(aria-label);
+}
+.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action .call-dismiss-icon{
+ width:29px;height:29px;flex:0 0 29px;
+}
+.call-screen-stage .contact-call-actions:has(#dismiss-incoming:not(.hidden)){row-gap:64px}
