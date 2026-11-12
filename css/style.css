@@ -642,7 +642,7 @@ body.contact-screen-open{overflow:hidden}
 
 /* Incoming-call actions: familiar round answer/reject controls. */
 .call-screen-stage .contact-call-actions{
- display:flex;align-items:flex-start;justify-content:center;flex-wrap:wrap;gap:28px 76px;
+ display:flex;align-items:flex-start;justify-content:center;flex-wrap:wrap;gap:30px 96px;
 }
 .call-screen-stage .contact-call-actions .call-round-action{
  position:relative;display:grid;place-items:center;flex:0 0 68px;width:68px;height:68px;min-height:68px;
@@ -672,14 +672,14 @@ body.contact-screen-open{overflow:hidden}
 }
 .call-dismiss-icon{width:17px;height:17px;flex:0 0 17px}
 @media(max-width:520px){
- .call-screen-stage .contact-call-actions{gap:76px 34px}
+ .call-screen-stage .contact-call-actions{gap:30px 96px}
 }
 
 /* Override legacy ID-based fixed widths for the dedicated call-screen controls. */
 .call-screen-stage .contact-call-actions #reject-incoming.call-round-action{width:68px;flex:0 0 68px}
 .call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{width:auto;flex:0 0 100%;order:3}
 /* The legacy mobile #hangup rule sets width:100%; keep the active-call button circular. */
-.call-screen-stage .contact-call-actions #hangup.call-hangup-action{width:68px!important;flex:0 0 68px!important}
+.call-screen-stage .contact-call-actions #hangup.call-hangup-action{width:68px!important;flex:0 0 68px!important;margin-left:calc(50% - 34px);order:3}
 
 
 /* Active-call controls: microphone, audio output and hang up. */
@@ -702,4 +702,4 @@ body.contact-screen-open{overflow:hidden}
 .call-control-action[data-muted="true"] .mic-off-icon{display:block}
 .call-screen-stage .contact-call-actions .call-speaker-action[aria-pressed="true"]{background:#177e70;color:#fff}
 .call-screen-stage .contact-call-actions .call-hangup-action .call-action-icon{transform:rotate(135deg)}
-@media(max-width:520px){.call-screen-stage .contact-call-actions{gap:76px 24px}}
+@media(max-width:520px){.call-screen-stage .contact-call-actions{gap:30px 96px}}
