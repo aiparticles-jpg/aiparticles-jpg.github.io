@@ -90,8 +90,14 @@ export async function getOptionalOneSignalSubscriptionId() {
   }
   try {
     const OneSignal = await initializeOneSignal();
-    const id = OneSignal.User?.PushSubscription?.id;
-    return typeof id === "string" && id.trim() ? id : null;
+    // The SDK may initialize before its existing browser subscription has
+    // finished loading. Wait for the ID instead of silently omitting it.
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const id = OneSignal.User?.PushSubscription?.id;
+      if (typeof id === "string" && id.trim()) return id;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    return null;
   } catch {
     return null;
   }
