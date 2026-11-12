@@ -674,3 +674,7 @@ body.contact-screen-open{overflow:hidden}
 @media(max-width:520px){
  .call-screen-stage .contact-call-actions{gap:76px 34px}
 }
+
+/* Override legacy ID-based fixed widths for the dedicated call-screen controls. */
+.call-screen-stage .contact-call-actions #reject-incoming.call-round-action{width:68px;flex:0 0 68px}
+.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{width:auto;flex:0 0 auto}
