@@ -3,7 +3,7 @@ import { NtfySecureSignaling } from "./ntfy-signaling.js?v=52";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=14";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=13";
-import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId } from "./onesignal.js?v=6";
+import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId } from "./onesignal.js?v=7";
 import { sendPushEventToContact } from "./push-api.js?v=3";
 
 const $=id=>document.getElementById(id);
