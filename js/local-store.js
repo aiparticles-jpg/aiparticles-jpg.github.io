@@ -7,7 +7,8 @@ let databasePromise;
 function openDatabase() {
   if (databasePromise) return databasePromise;
 
-  databasePromise = new Promise((resolve, reject) => {
+  let openingPromise;
+  openingPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = () => {
@@ -31,23 +32,47 @@ function openDatabase() {
 
     request.onsuccess = () => {
       const db = request.result;
+      // A browser may close an idle connection (or another tab may request
+      // a schema upgrade). Never keep a closed connection in the shared cache.
+      const invalidateConnection = () => {
+        if (databasePromise === openingPromise) databasePromise = null;
+      };
+      db.onclose = invalidateConnection;
       db.onversionchange = () => {
         db.close();
-        databasePromise = null;
+        invalidateConnection();
       };
       resolve(db);
     };
     request.onerror = () => {
-      databasePromise = null;
+      if (databasePromise === openingPromise) databasePromise = null;
       reject(request.error || new Error("Could not open local storage."));
     };
     request.onblocked = () => {
-      databasePromise = null;
+      if (databasePromise === openingPromise) databasePromise = null;
       reject(new Error("Local storage upgrade is blocked by another open tab."));
     };
   });
 
-  return databasePromise;
+  databasePromise = openingPromise;
+  return openingPromise;
+}
+
+async function openTransaction(storeNames, mode) {
+  // A close/versionchange can land between awaiting openDatabase() and
+  // creating the transaction. Retry once with a fresh connection.
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const db = await openDatabase();
+    try {
+      return db.transaction(storeNames, mode);
+    } catch (error) {
+      if (error?.name !== "InvalidStateError") throw error;
+      lastError = error;
+      databasePromise = null;
+    }
+  }
+  throw lastError || new Error("IndexedDB connection is unavailable.");
 }
 
 
@@ -57,8 +82,7 @@ export async function createIssuedInvitation({ id, secret, created_at = Date.now
       !Number.isFinite(Number(created_at)) || !Number.isInteger(max_activations) || max_activations < 1) {
     throw new TypeError("A valid invitation ID, 256-bit secret, creation time, and activation limit are required.");
   }
-  const db = await openDatabase();
-  const tx = db.transaction("invitations", "readwrite");
+  const tx = await openTransaction("invitations", "readwrite");
   const done = transactionDone(tx);
   tx.objectStore("invitations").add({ id, secret, created_at: Number(created_at), max_activations, activations: [], revoked: false });
   await done;
@@ -66,8 +90,7 @@ export async function createIssuedInvitation({ id, secret, created_at = Date.now
 
 export async function getIssuedInvitation(invitationId) {
   if (typeof invitationId !== "string" || !/^[0-9a-f-]{36}$/i.test(invitationId)) return null;
-  const db = await openDatabase();
-  const tx = db.transaction("invitations", "readonly");
+  const tx = await openTransaction("invitations", "readonly");
   const done = transactionDone(tx);
   const record = await requestValue(tx.objectStore("invitations").get(invitationId));
   await done;
@@ -75,8 +98,7 @@ export async function getIssuedInvitation(invitationId) {
 }
 
 export async function listIssuedInvitations() {
-  const db = await openDatabase();
-  const tx = db.transaction("invitations", "readonly");
+  const tx = await openTransaction("invitations", "readonly");
   const done = transactionDone(tx);
   const records = await requestValue(tx.objectStore("invitations").getAll());
   await done;
@@ -87,9 +109,8 @@ export async function consumeIssuedInvitation({ invitationId, userId, requestId 
   if (typeof invitationId !== "string" || !/^[0-9a-f-]{36}$/i.test(invitationId) ||
       typeof userId !== "string" || !/^[a-f0-9]{64}$/.test(userId) ||
       typeof requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(requestId)) return { accepted: false, reason: "invalid" };
-  const db = await openDatabase();
+  const tx = await openTransaction("invitations", "readwrite");
   return new Promise((resolve, reject) => {
-    const tx = db.transaction("invitations", "readwrite");
     const store = tx.objectStore("invitations");
     let result = { accepted: false, reason: "unknown" };
     const get = store.get(invitationId);
@@ -114,8 +135,7 @@ export async function consumeIssuedInvitation({ invitationId, userId, requestId 
 
 export async function hasActiveInvitationGrant(invitationId, userId) {
   if (typeof invitationId !== "string" || typeof userId !== "string") return false;
-  const db = await openDatabase();
-  const tx = db.transaction("invitations", "readonly");
+  const tx = await openTransaction("invitations", "readonly");
   const done = transactionDone(tx);
   const invitation = await requestValue(tx.objectStore("invitations").get(invitationId));
   await done;
@@ -127,8 +147,7 @@ export async function getNtfyCursor(userId) {
   if (typeof userId !== "string" || !/^[a-f0-9]{64}$/.test(userId)) {
     throw new TypeError("A valid local identity is required for the ntfy cursor.");
   }
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readonly");
+  const tx = await openTransaction("meta", "readonly");
   const done = transactionDone(tx);
   const record = await requestValue(tx.objectStore("meta").get("ntfy_cursor:" + userId));
   await done;
@@ -140,8 +159,7 @@ export async function saveNtfyCursor(userId, messageId) {
       typeof messageId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(messageId)) {
     throw new TypeError("A valid local identity and ntfy message ID are required.");
   }
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
+  const tx = await openTransaction("meta", "readwrite");
   const done = transactionDone(tx);
   tx.objectStore("meta").put({ key: "ntfy_cursor:" + userId, value: messageId, updated_at: Date.now() });
   await done;
@@ -152,8 +170,7 @@ export async function saveMyInvitation(url) {
   if (typeof url !== "string" || !url.startsWith("https://")) {
     throw new TypeError("A valid HTTPS invitation URL is required.");
   }
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readwrite");
+  const tx = await openTransaction("meta", "readwrite");
   const done = transactionDone(tx);
   tx.objectStore("meta").put({
     key: "my_invitation",
@@ -163,8 +180,7 @@ export async function saveMyInvitation(url) {
 }
 
 export async function getMyInvitation() {
-  const db = await openDatabase();
-  const tx = db.transaction("meta", "readonly");
+  const tx = await openTransaction("meta", "readonly");
   const done = transactionDone(tx);
   const record = await requestValue(tx.objectStore("meta").get("my_invitation"));
   await done;
@@ -246,7 +262,7 @@ async function deriveLegacyInvitationId(firstUserId, secondUserId) {
     "-" + hex.slice(16, 20) + "-" + hex.slice(20, 32);
 }
 
-async function migrateLegacyPublicKeyContacts(db, storedIdentity, storedContacts) {
+async function migrateLegacyPublicKeyContacts(storedIdentity, storedContacts) {
   let identity = storedIdentity;
   if (!identity?.user_id || !/^[a-f0-9]{64}$/.test(identity.user_id)) {
     const random = crypto.getRandomValues(new Uint8Array(32));
@@ -300,7 +316,7 @@ async function migrateLegacyPublicKeyContacts(db, storedIdentity, storedContacts
     }
   }
 
-  const tx = db.transaction(["meta", "contacts", "invitations"], "readwrite");
+  const tx = await openTransaction(["meta", "contacts", "invitations"], "readwrite");
   const done = transactionDone(tx);
   tx.objectStore("meta").put({ key: "identity", value: identity });
   // The saved pre-v3 invitation URL has an obsolete package format; a fresh
@@ -343,8 +359,7 @@ export async function getOrCreateIdentity() {
   if (!globalThis.crypto?.subtle) {
     throw new Error("This browser does not support the Web Crypto API.");
   }
-  const db = await openDatabase();
-  const tx = db.transaction(["meta", "contacts", "invitations"], "readonly");
+  const tx = await openTransaction(["meta", "contacts", "invitations"], "readonly");
   const done = transactionDone(tx);
   const [identityRecord, migrationRecord, contacts] = await Promise.all([
     requestValue(tx.objectStore("meta").get("identity")),
@@ -359,7 +374,6 @@ export async function getOrCreateIdentity() {
     return identityRecord.value;
   }
   return migrateLegacyPublicKeyContacts(
-    db,
     identityRecord?.value || null,
     contacts
   );
@@ -374,13 +388,12 @@ export async function saveContact(contact) {
     throw new TypeError("A contact requires a local name, shared 256-bit secret, invitation ID, and push subscription ID.");
   const record={...contact,name:String(contact.name).trim(),updated_at:new Date().toISOString()};
   if(!record.name)throw new TypeError("Contact name cannot be empty.");
-  const db=await openDatabase(),tx=db.transaction("contacts","readwrite"),done=transactionDone(tx);
+  const tx=await openTransaction("contacts","readwrite"),done=transactionDone(tx);
   tx.objectStore("contacts").put(record);await done;return record;
 }
 
 export async function listContacts() {
-  const db = await openDatabase();
-  const tx = db.transaction("contacts", "readonly");
+  const tx = await openTransaction("contacts", "readonly");
   const done = transactionDone(tx);
   const records = await requestValue(tx.objectStore("contacts").getAll());
   await done;
@@ -388,8 +401,7 @@ export async function listContacts() {
 }
 
 export async function getContact(userId) {
-  const db = await openDatabase();
-  const tx = db.transaction("contacts", "readonly");
+  const tx = await openTransaction("contacts", "readonly");
   const done = transactionDone(tx);
   const record = await requestValue(tx.objectStore("contacts").get(userId));
   await done;
@@ -404,8 +416,7 @@ export async function updateContact(userId, updates) {
     throw new TypeError("A contact user_id cannot be changed; save a newly verified identity instead.");
   }
 
-  const db = await openDatabase();
-  const tx = db.transaction("contacts", "readwrite");
+  const tx = await openTransaction("contacts", "readwrite");
   const done = transactionDone(tx);
   const store = tx.objectStore("contacts");
   const existing = await requestValue(store.get(userId));
@@ -433,8 +444,7 @@ export async function updateContact(userId, updates) {
 }
 
 export async function deleteContact(userId) {
-  const db = await openDatabase();
-  const tx = db.transaction(["contacts", "conversation"], "readwrite");
+  const tx = await openTransaction(["contacts", "conversation"], "readwrite");
   const done = transactionDone(tx);
   tx.objectStore("contacts").delete(userId);
   const conversationStore = tx.objectStore("conversation");
@@ -463,8 +473,7 @@ export async function addConversationEvent(event) {
     id: event.id, contact_user_id: event.contact_user_id, type: event.type,
     direction: event.direction, text, created_at: new Date(event.created_at).toISOString()
   };
-  const db = await openDatabase();
-  const tx = db.transaction("conversation", "readwrite");
+  const tx = await openTransaction("conversation", "readwrite");
   const done = transactionDone(tx);
   const store = tx.objectStore("conversation");
   const request = store.index("contact_user_id").getAll(IDBKeyRange.only(record.contact_user_id));
@@ -485,8 +494,7 @@ export async function listConversationEvents(contactUserId) {
   if (typeof contactUserId !== "string" || !/^[a-f0-9]{64}$/.test(contactUserId)) {
     throw new TypeError("A valid contact ID is required.");
   }
-  const db = await openDatabase();
-  const tx = db.transaction("conversation", "readonly");
+  const tx = await openTransaction("conversation", "readonly");
   const done = transactionDone(tx);
   const records = await requestValue(
     tx.objectStore("conversation").index("contact_user_id").getAll(IDBKeyRange.only(contactUserId))
@@ -508,8 +516,7 @@ export async function addCallHistoryEntry(entry) {
     created_at: entry.created_at
   };
 
-  const db = await openDatabase();
-  const tx = db.transaction("history", "readwrite");
+  const tx = await openTransaction("history", "readwrite");
   const done = transactionDone(tx);
   const store = tx.objectStore("history");
   const getAll = store.getAll();
@@ -529,8 +536,7 @@ export async function addCallHistoryEntry(entry) {
 }
 
 export async function listCallHistory() {
-  const db = await openDatabase();
-  const tx = db.transaction("history", "readonly");
+  const tx = await openTransaction("history", "readonly");
   const done = transactionDone(tx);
   const records = await requestValue(tx.objectStore("history").getAll());
   await done;
@@ -540,8 +546,7 @@ export async function listCallHistory() {
 }
 
 export async function clearCallHistory() {
-  const db = await openDatabase();
-  const tx = db.transaction("history", "readwrite");
+  const tx = await openTransaction("history", "readwrite");
   const done = transactionDone(tx);
   tx.objectStore("history").clear();
   await done;
