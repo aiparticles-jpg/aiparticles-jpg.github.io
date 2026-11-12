@@ -638,3 +638,39 @@ body.contact-screen-open{overflow:hidden}
 .service-status-row .debug-meta{min-width:0;margin:0;font-size:10px;line-height:1.4}
 .service-status-row .debug-meta strong{overflow-wrap:anywhere}
 @media(max-width:380px){.service-status-row{gap:6px}.service-status-row .debug-meta{font-size:9px}}
+
+
+/* Incoming-call actions: familiar round answer/reject controls. */
+.call-screen-stage .contact-call-actions{
+ display:flex;align-items:flex-start;justify-content:center;flex-wrap:wrap;gap:76px 42px;
+}
+.call-screen-stage .contact-call-actions .call-round-action{
+ position:relative;display:grid;place-items:center;flex:0 0 68px;width:68px;height:68px;min-height:68px;
+ padding:0;border:0;border-radius:50%;color:#fff;box-shadow:0 5px 18px rgba(0,0,0,.24);
+}
+.call-screen-stage .contact-call-actions .call-round-action::after{
+ position:absolute;top:76px;left:50%;transform:translateX(-50%);color:var(--text);
+ font-size:12px;font-weight:600;white-space:nowrap;content:attr(aria-label);
+}
+.call-screen-stage .contact-call-actions #answer-incoming.call-round-action{
+ background:#20b45a;
+}
+.call-screen-stage .contact-call-actions #answer-incoming.call-round-action:hover:not(:disabled){
+ background:#17994a;
+}
+.call-screen-stage .contact-call-actions #reject-incoming.call-round-action{
+ background:#e5484d;
+}
+.call-screen-stage .contact-call-actions #reject-incoming.call-round-action:hover:not(:disabled){
+ background:#cf343b;
+}
+.call-action-icon{width:29px;height:29px}
+.call-reject-action .call-action-icon{transform:rotate(135deg)}
+.call-screen-stage .contact-call-actions .call-dismiss-action{
+ display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;width:auto;
+ min-height:42px;padding:10px 16px;border-radius:11px;font-size:13px;
+}
+.call-dismiss-icon{width:17px;height:17px;flex:0 0 17px}
+@media(max-width:520px){
+ .call-screen-stage .contact-call-actions{gap:76px 34px}
+}
