@@ -709,7 +709,7 @@ body.contact-screen-open{overflow:hidden}
 /* Incoming-call dismiss control: round button on its own row, spaced like hangup. */
 .call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{
  position:relative;display:grid;place-items:center;
- flex:0 0 100%;width:68px;height:68px;min-height:68px;
+ flex:0 0 68px!important;width:68px!important;height:68px;min-height:68px;
  margin-left:calc(50% - 34px);margin-right:0;padding:0;
  border:0;border-radius:50%;color:#fff;background:#34445b;
  box-shadow:0 5px 18px rgba(0,0,0,.24);order:3;
