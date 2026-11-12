@@ -384,8 +384,8 @@ export async function saveContact(contact) {
       typeof contact.user_id !== "string" || !/^[a-f0-9]{64}$/.test(contact.user_id) ||
       typeof contact.invitation_id !== "string" || !/^[0-9a-f-]{36}$/i.test(contact.invitation_id) ||
       typeof contact.invitation_secret !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(contact.invitation_secret) ||
-      typeof contact.push_subscription_id !== "string" || !contact.push_subscription_id.trim() || !contact.name)
-    throw new TypeError("A contact requires a local name, shared 256-bit secret, invitation ID, and push subscription ID.");
+      (contact.push_subscription_id != null && (typeof contact.push_subscription_id !== "string" || !contact.push_subscription_id.trim())) || !contact.name)
+    throw new TypeError("A contact requires a local name, shared 256-bit secret, and invitation ID; push subscription ID is optional.");
   const record={...contact,name:String(contact.name).trim(),updated_at:new Date().toISOString()};
   if(!record.name)throw new TypeError("Contact name cannot be empty.");
   const tx=await openTransaction("contacts","readwrite"),done=transactionDone(tx);
