@@ -679,7 +679,8 @@ body.contact-screen-open{overflow:hidden}
 .call-screen-stage .contact-call-actions #reject-incoming.call-round-action{width:68px;flex:0 0 68px}
 .call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{width:auto;flex:0 0 100%;order:3}
 /* The legacy mobile #hangup rule sets width:100%; keep the active-call button circular. */
-.call-screen-stage .contact-call-actions #hangup.call-hangup-action{width:68px!important;flex:0 0 68px!important;margin-left:calc(50% - 34px);order:3}
+.call-screen-stage .contact-call-actions #hangup.call-hangup-action{width:68px!important;flex:0 0 68px!important;margin-left:0;margin-right:0;order:3}
+.call-screen-stage .contact-call-actions:has(#hangup:not(.hidden)){row-gap:64px}
 
 
 /* Active-call controls: microphone, audio output and hang up. */
