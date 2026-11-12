@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=30";
+import { WebRtcAudio } from "./webrtc.js?v=31";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=15";
@@ -621,7 +621,8 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
   onError:error=>showError(error.message||String(error)),
   onState:value=>{
    debug("WebRTC: "+value);
-   if(value==="connection-connected"){
+   if(value==="local-audio-ready")updateCallButtons();
+   else if(value==="connection-connected"){
     if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
     updateCallButtons();els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")
    }
@@ -840,18 +841,18 @@ async function connect(){
   else state.secure.setPeer(peer);
   els.debugUrl.textContent="https://ntfy.sh/ · "+me;
 
-  // Request microphone while the user-initiated Connect click is still active.
-  // Do not wait for the asynchronous secure handshake before asking permission.
+  // The caller does not request microphone access while ringing.
+  // The answerer requests it only after the user explicitly presses Answer.
   await ensureWebRtc();
-  // The answerer opens its microphone after the user's Answer click.
-  // The caller remains muted until ACCEPTED arrives over the P2P DataChannel.
   state.webrtc.setMicEnabled(answering);
-  state.webrtc.setCallAccepted(answering);
-  try {
-   await state.webrtc.ensureMedia();
-  } catch(e) {
-   throw new Error("Не удалось получить доступ к микрофону: "+e.message);
+  if(answering){
+   try {
+    await state.webrtc.ensureMedia();
+   } catch(e) {
+    throw new Error("Не удалось получить доступ к микрофону: "+e.message);
+   }
   }
+  state.webrtc.setCallAccepted(answering);
 
   await state.secure.start();
   els.hangup.disabled=false;
