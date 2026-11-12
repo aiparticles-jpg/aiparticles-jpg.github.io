@@ -423,7 +423,7 @@ function unlockRingingAudio(){
  }catch(error){debug("[ring] ошибка подготовки AudioContext: "+(error.message||String(error)))}
 }
 async function startRinging(kind){
- stopRinging();state.ringingKind=kind;
+ stopRinging({suspend:false});state.ringingKind=kind;
  try{
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
   if(!AudioContextClass)throw Error("Web Audio API недоступен");
