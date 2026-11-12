@@ -205,8 +205,9 @@ async publish(to,msg){
   if(this.closed)throw Error("Открытие подписки отменено.");
   const cursor=await getNtfyCursor(this.me);
   this.lastProcessedMessageId=cursor;
-  const since=cursor||"latest";
-  this.onDebug("[SSE "+this.debugId+"] resume cursor="+(cursor||"latest (первичная установка)")+"; старые сообщения до курсора не запрашиваются.");
+  const replayLast30m=new URLSearchParams(location.search).get("replay30m")==="1";
+  const since=replayLast30m?"30m":(cursor||"latest");
+  this.onDebug(replayLast30m?"[SSE "+this.debugId+"] ВРЕМЕННЫЙ ПОВТОР: запрашиваем кеш ntfy за последние 30 минут.":"[SSE "+this.debugId+"] resume cursor="+(cursor||"latest (первичная установка)")+"; старые сообщения до курсора не запрашиваются.");
   const url=BASE+await getNtfyTopic(this.me)+"/sse?since="+encodeURIComponent(since);
   if(this.closed)throw Error("Открытие подписки отменено.");
   const es=new EventSource(url);this.es=es;
