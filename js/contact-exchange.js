@@ -11,11 +11,13 @@ export async function verifyContactPackage(input){
   throw Error("Версия приглашения «"+received+"» не поддерживается. Актуальная версия: "+INVITATION_FORMAT_VERSION+". Попросите собеседника создать новую ссылку.");
  }
  if(typeof c.user_id!=="string"||!/^[a-f0-9]{64}$/.test(c.user_id))throw Error("Некорректный анонимный идентификатор контакта.");
- if(typeof c.push_subscription_id!=="string"||!c.push_subscription_id.trim())throw Error("В приглашении отсутствует OneSignal Subscription ID.");
+ // Web Push is optional. The encrypted contact exchange is delivered by ntfy.
+ if(c.push_subscription_id!==undefined&&c.push_subscription_id!==null&&
+    (typeof c.push_subscription_id!=="string"||!c.push_subscription_id.trim()))throw Error("Некорректный OneSignal Subscription ID.");
  if(typeof c.invitation_id!=="string"||!/^[0-9a-f-]{36}$/i.test(c.invitation_id))throw Error("Некорректный идентификатор приглашения.");
  if(typeof c.invitation_secret!=="string"||un64(c.invitation_secret).length!==32)throw Error("В приглашении отсутствует корректный общий симметричный ключ.");
  if(typeof c.display_name==="string"&&(c.display_name.length>60||c.display_name.trim()!==c.display_name))throw Error("Некорректное имя в приглашении.");
- return {version:INVITATION_FORMAT_VERSION,user_id:c.user_id,push_subscription_id:c.push_subscription_id,invitation_id:c.invitation_id,invitation_secret:c.invitation_secret,shared_secret_created_at:Number.isFinite(Number(c.shared_secret_created_at))?Number(c.shared_secret_created_at):Date.now(),...(Object.hasOwn(c,"display_name")?{display_name:c.display_name}:{})};
+ return {version:INVITATION_FORMAT_VERSION,user_id:c.user_id,push_subscription_id:typeof c.push_subscription_id==="string"&&c.push_subscription_id.trim()?c.push_subscription_id:null,invitation_id:c.invitation_id,invitation_secret:c.invitation_secret,shared_secret_created_at:Number.isFinite(Number(c.shared_secret_created_at))?Number(c.shared_secret_created_at):Date.now(),...(Object.hasOwn(c,"display_name")?{display_name:c.display_name}:{})};
 }
 const aad=p=>enc.encode(stable({v:3,type:"contact_request",request_id:p.request_id,from:p.from,to:p.to,expires_at:p.expires_at,invitation_id:p.invitation_id}));
 async function key(secret,from,to){const raw=un64(secret);if(raw.length!==32)throw Error("Некорректный общий симметричный ключ.");const material=await crypto.subtle.importKey("raw",raw,"HKDF",false,["deriveKey"]),pair=[from,to].sort().join("|"),salt=await crypto.subtle.digest("SHA-256",enc.encode("voicelink-contact-pair-v3|"+pair));return crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt,info:enc.encode("voicelink-contact-request-v3|"+from+"|"+to)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"])}
