@@ -81,6 +81,22 @@ export function initializeOneSignal() {
   return initialization;
 }
 
+// Return an already available subscription without prompting the user.
+// Contact exchange itself is transported by ntfy and must work without Web Push.
+export async function getOptionalOneSignalSubscriptionId() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) ||
+      !("Notification" in window) || Notification.permission !== "granted") {
+    return null;
+  }
+  try {
+    const OneSignal = await initializeOneSignal();
+    const id = OneSignal.User?.PushSubscription?.id;
+    return typeof id === "string" && id.trim() ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function enableOneSignalPush() {
   const OneSignal = await initializeOneSignal();
 

@@ -2,8 +2,8 @@ import { WebRtcAudio } from "./webrtc.js?v=30";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=52";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=14";
-import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=12";
-import { initializeOneSignal, enableOneSignalPush } from "./onesignal.js?v=5";
+import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=13";
+import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId } from "./onesignal.js?v=6";
 import { sendPushEventToContact } from "./push-api.js?v=3";
 
 const $=id=>document.getElementById(id);
@@ -1116,8 +1116,9 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
  updateCallButtons();els.replyInvite.disabled=true;clearError();
  try{
   const contact=await getContact(peer);if(!contact?.push_subscription_id||!contact?.invitation_secret||!contact?.invitation_id)throw Error("У контакта отсутствуют данные приглашения. Попросите его прислать новую ссылку.");
-  const subscriptionId=await enableOneSignalPush(),identity=await getCurrentSignalingIdentity(),invitationId=contact.invitation_id,createdAt=Number(contact.shared_secret_created_at)||Date.now();
-  const pack={version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,push_subscription_id:subscriptionId,invitation_id:invitationId,invitation_secret:contact.invitation_secret,shared_secret_created_at:createdAt,...(senderDisplayName?{display_name:senderDisplayName}:{})};
+  const subscriptionId=await getOptionalOneSignalSubscriptionId(),identity=await getCurrentSignalingIdentity(),invitationId=contact.invitation_id,createdAt=Number(contact.shared_secret_created_at)||Date.now();
+  if(!subscriptionId)debug("На этом устройстве Web Push недоступен или не разрешён; ответное приглашение будет отправлено через ntfy без push-подписки.");
+  const pack={version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,...(subscriptionId?{push_subscription_id:subscriptionId}:{}),invitation_id:invitationId,invitation_secret:contact.invitation_secret,shared_secret_created_at:createdAt,...(senderDisplayName?{display_name:senderDisplayName}:{})};
   const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER,msg=await createContactRequestEnvelope({contact,contactPackage:pack,from:identity.user_id,to:peer,requestId,expiresAt});
   const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
