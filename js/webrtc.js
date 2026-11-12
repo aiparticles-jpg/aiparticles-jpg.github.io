@@ -94,8 +94,9 @@ export class WebRtcAudio {
       }
       const track = this.localStream.getAudioTracks()[0];
       if (track) {
-        // Caller stays muted until the answerer confirms acceptance over DataChannel.
+        // Capture begins only after acceptance; respect the current mute state.
         track.enabled = this.micEnabled;
+        await this.attachLocalAudioTrack();
         if (this.audioDiagnostics) {
           this.createSignalMonitorFromStream(this.localStream, "local-track");
           this.onState("AudioContext: state=" + this.audioContext?.state +
@@ -121,7 +122,16 @@ export class WebRtcAudio {
     if (this.localStream) {
       for (const track of this.localStream.getAudioTracks()) track.enabled = this.micEnabled;
     }
-    this.onState("Микрофон " + (this.micEnabled ? "включён" : "ожидает подтверждения ответа"));
+    this.onState("Микрофон " + (this.micEnabled ? "включён" : "выключен"));
+  }
+
+  async attachLocalAudioTrack() {
+    const track = this.localStream?.getAudioTracks?.()[0];
+    if (!track || !this.audioSender) return false;
+    track.enabled = this.micEnabled;
+    await this.audioSender.replaceTrack(track);
+    this.onState("local-audio-ready");
+    return true;
   }
 
   async prepareOutgoingStream() {
@@ -222,11 +232,14 @@ export class WebRtcAudio {
 
   async createPeerConnection() {
     if(this.pc)return this.pc;
-    const stream=await this.prepareOutgoingStream();
     const pc=new RTCPeerConnection({iceServers:[{urls:STUN_URL}],iceTransportPolicy:"all",iceCandidatePoolSize:0});
     this.pcDiagnosticId=Math.random().toString(36).slice(2,8);
-    this.onState("PC["+this.pcDiagnosticId+"] created; initiator="+this.initiator+"; prewarm=false.");
-    for(const track of stream.getAudioTracks())this.audioSender=pc.addTrack(track,stream);
+    this.onState("PC["+this.pcDiagnosticId+"] created; initiator="+this.initiator+"; microphone deferred until call acceptance.");
+    // Reserve the audio m-line before SDP exchange. Attach the real microphone
+    // track later, after the user accepts the call.
+    this.audioTransceiver=pc.addTransceiver("audio",{direction:"sendrecv"});
+    this.audioSender=this.audioTransceiver.sender;
+    if(this.localStream)await this.attachLocalAudioTrack();
     this.ensureControlChannel(pc);this.signalEnabled=true;
     pc.onicecandidate=event=>{
       if(event.candidate){
@@ -544,7 +557,13 @@ export class WebRtcAudio {
 
     if (message.type === "ACCEPTED") {
       this.setMicEnabled(true);
-      this.onState("Собеседник ответил; микрофон включён.");
+      this.onState("Собеседник ответил; запрашиваем микрофон.");
+      this.ensureMedia()
+        .then(() => this.onState("Собеседник ответил; микрофон включён."))
+        .catch(error => {
+          this.setMicEnabled(false);
+          this.onError(new Error("Собеседник принял звонок, но не удалось получить доступ к микрофону: " + (error.message || String(error))));
+        });
       return;
     }
 
