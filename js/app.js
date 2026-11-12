@@ -358,7 +358,7 @@ function updateCallButtons(){
  const canSelectOutput=typeof els.audio.setSinkId==="function"&&typeof navigator.mediaDevices?.selectAudioOutput==="function";
  els.speakerToggle.disabled=!active||state.hangingUp||!canSelectOutput;
  els.speakerToggle.setAttribute("aria-pressed",String(!!state.speakerOutputId));
- els.speakerToggle.setAttribute("aria-label",state.speakerOutputId?"Вернуть аудиовыход по умолчанию":"Выбрать аудиовыход");
+ els.speakerToggle.setAttribute("aria-label",state.speakerOutputId?"Вернуть аудиовыход по умолчанию":"Динамик");
  els.speakerToggle.title=canSelectOutput?(state.speakerOutputId?"Вернуть аудиовыход по умолчанию":"Выбрать аудиовыход"):"Переключение аудиовыхода не поддерживается этим браузером";
  els.answerIncoming.disabled=state.connecting;
  els.dismissIncoming.disabled=state.connecting;
