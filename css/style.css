@@ -724,3 +724,118 @@ body.contact-screen-open{overflow:hidden}
  width:29px;height:29px;flex:0 0 29px;
 }
 .call-screen-stage .contact-call-actions:has(#dismiss-incoming:not(.hidden)){row-gap:64px}
+
+/* Cross-browser control normalization: keep VoiceLink's visual language consistent. */
+button,
+input,
+select,
+textarea,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+select,
+summary {
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+input,
+select,
+textarea {
+  color-scheme: dark;
+}
+
+textarea {
+  font-family: inherit;
+}
+
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 42px;
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2391a2bb' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+  background-size: 15px 15px;
+}
+
+select:disabled {
+  opacity: .55;
+}
+
+input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: 0 0 18px;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(183,203,230,.42);
+  border-radius: 5px;
+  background: #0c1727;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+input[type="checkbox"]::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  transform: scale(0);
+  transition: transform .12s ease-in-out;
+  background: var(--accent);
+  clip-path: polygon(14% 44%, 0 59%, 40% 100%, 100% 18%, 84% 4%, 38% 68%);
+}
+
+input[type="checkbox"]:checked {
+  border-color: var(--accent-strong);
+  background: rgba(139,224,194,.14);
+}
+
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+input[type="checkbox"]:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+details > summary {
+  -webkit-user-select: none;
+  user-select: none;
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  input[type="checkbox"]::before {
+    transition: none !important;
+  }
+}
