@@ -10,7 +10,7 @@ const $=id=>document.getElementById(id);
 const els={
  contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenHeaderSlot:$("call-screen-header-slot"),callScreenDiagnosticsSlot:$("call-screen-diagnostics-slot"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),privacyHelp:$("privacy-help"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
- transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),
+ transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
@@ -194,7 +194,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],callReturnSnapshot:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -346,6 +346,20 @@ function updateCallButtons(){
  els.connect.textContent=state.connecting?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";
  els.hangup.classList.toggle("hidden",!active);
  els.hangup.disabled=!active||state.hangingUp;
+ els.micToggle.classList.toggle("hidden",!active);
+ els.micToggle.disabled=!active||state.hangingUp||!state.webrtc?.localStream;
+ const micEnabled=!!state.webrtc?.micEnabled;
+ state.micMuted=!micEnabled;
+ els.micToggle.setAttribute("aria-pressed",String(!micEnabled));
+ els.micToggle.setAttribute("aria-label",micEnabled?"Выключить микрофон":"Включить микрофон");
+ els.micToggle.title=micEnabled?"Выключить микрофон":"Включить микрофон";
+ els.micToggle.dataset.muted=String(!micEnabled);
+ els.speakerToggle.classList.toggle("hidden",!active);
+ const canSelectOutput=typeof els.audio.setSinkId==="function"&&typeof navigator.mediaDevices?.selectAudioOutput==="function";
+ els.speakerToggle.disabled=!active||state.hangingUp||!canSelectOutput;
+ els.speakerToggle.setAttribute("aria-pressed",String(!!state.speakerOutputId));
+ els.speakerToggle.setAttribute("aria-label",state.speakerOutputId?"Вернуть аудиовыход по умолчанию":"Динамик");
+ els.speakerToggle.title=canSelectOutput?(state.speakerOutputId?"Вернуть аудиовыход по умолчанию":"Выбрать аудиовыход"):"Переключение аудиовыхода не поддерживается этим браузером";
  els.answerIncoming.disabled=state.connecting;
  els.dismissIncoming.disabled=state.connecting;
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
@@ -873,7 +887,7 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
  state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
- els.audio.srcObject=null;els.pilot.disabled=false;els.transport.textContent="Не выбран";
+ els.audio.srcObject=null;try{if(typeof els.audio.setSinkId==="function")await els.audio.setSinkId("");}catch(error){debug("Не удалось вернуть аудиовыход по умолчанию: "+error.message)}state.speakerOutputId=null;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  state.callStarted=false;state.peerPresent=false;state.answeringCall=false;state.hangingUp=false;updateCallButtons();
  if(remote)setStatus("Собеседник завершил звонок","Удалённая сторона отправила P2P-сообщение HANGUP; звонок завершён.","idle");
  else if(failure)setStatus("Соединение потеряно","WebRTC не восстановил связь за отведённое время. Звонок завершён.","error");
@@ -1811,6 +1825,34 @@ window.addEventListener("pageshow",reconcileOutgoingCallExpiry);
 window.addEventListener("focus",reconcileOutgoingCallExpiry);
 
 els.hangup.addEventListener("click",hangup);
+els.micToggle.addEventListener("click",()=>{
+ if(!state.webrtc?.localStream||state.hangingUp)return;
+ const enabled=!state.webrtc.micEnabled;
+ state.webrtc.setMicEnabled(enabled);
+ state.micMuted=!enabled;
+ updateCallButtons();
+ debug("Микрофон "+(enabled?"включён":"выключен")+" пользователем во время звонка.");
+});
+els.speakerToggle.addEventListener("click",async()=>{
+ if(state.hangingUp||typeof els.audio.setSinkId!=="function"||typeof navigator.mediaDevices?.selectAudioOutput!=="function")return;
+ try{
+  if(state.speakerOutputId){
+   await els.audio.setSinkId("");
+   state.speakerOutputId=null;
+   debug("Аудиовыход возвращён к настройке браузера.");
+  }else{
+   const device=await navigator.mediaDevices.selectAudioOutput();
+   if(!device?.deviceId)return;
+   await els.audio.setSinkId(device.deviceId);
+   state.speakerOutputId=device.deviceId;
+   debug("Выбран аудиовыход: "+(device.label||"устройство без названия")+".");
+  }
+  updateCallButtons();
+ }catch(error){
+  debug("Не удалось переключить аудиовыход: "+(error.name||"Error")+": "+(error.message||String(error)));
+  showError("Браузер не смог переключить аудиовыход: "+(error.message||String(error)));
+ }
+});
 els.confirmDeleteContact.addEventListener("click",deleteSelectedContact);
 els.saveContactName.addEventListener("click",saveSelectedContactName);
 els.editContactName.addEventListener("input",updateCallButtons);
