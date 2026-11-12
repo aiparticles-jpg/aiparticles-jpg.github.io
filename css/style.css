@@ -642,7 +642,7 @@ body.contact-screen-open{overflow:hidden}
 
 /* Incoming-call actions: familiar round answer/reject controls. */
 .call-screen-stage .contact-call-actions{
- display:flex;align-items:flex-start;justify-content:center;flex-wrap:wrap;gap:76px 42px;
+ display:flex;align-items:flex-start;justify-content:center;flex-wrap:wrap;gap:28px 76px;
 }
 .call-screen-stage .contact-call-actions .call-round-action{
  position:relative;display:grid;place-items:center;flex:0 0 68px;width:68px;height:68px;min-height:68px;
@@ -667,8 +667,8 @@ body.contact-screen-open{overflow:hidden}
 .call-action-icon{width:29px;height:29px}
 .call-reject-action .call-action-icon{transform:rotate(135deg)}
 .call-screen-stage .contact-call-actions .call-dismiss-action{
- display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;width:auto;
- min-height:42px;padding:10px 16px;border-radius:11px;font-size:13px;
+ display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 100%;width:auto;
+ min-height:42px;padding:10px 16px;border-radius:11px;font-size:13px;order:3;
 }
 .call-dismiss-icon{width:17px;height:17px;flex:0 0 17px}
 @media(max-width:520px){
@@ -677,7 +677,9 @@ body.contact-screen-open{overflow:hidden}
 
 /* Override legacy ID-based fixed widths for the dedicated call-screen controls. */
 .call-screen-stage .contact-call-actions #reject-incoming.call-round-action{width:68px;flex:0 0 68px}
-.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{width:auto;flex:0 0 auto}
+.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{width:auto;flex:0 0 100%;order:3}
+/* The legacy mobile #hangup rule sets width:100%; keep the active-call button circular. */
+.call-screen-stage .contact-call-actions #hangup.call-hangup-action{width:68px!important;flex:0 0 68px!important}
 
 
 /* Active-call controls: microphone, audio output and hang up. */
