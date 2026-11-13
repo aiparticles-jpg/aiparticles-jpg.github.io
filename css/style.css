@@ -233,7 +233,7 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 /* Compact sticky app header and overflow menu */
 .shell{padding-top:0}
 .topbar{
- position:sticky;top:0;z-index:50;
+ position:sticky;top:0;z-index:500;isolation:isolate;
  width:100vw;margin:0 0 12px calc(50% - 50vw);
  min-height:52px;padding:7px max(12px,calc((100vw - 680px)/2));
  background:var(--bg);
@@ -831,5 +831,5 @@ details > summary::-webkit-details-marker {
 }
 
 
-/* Reserve the initial 42px reveal offset even before contacts are loaded. */
-.shell{min-height:calc(100vh + 42px);min-height:calc(100dvh + 42px)}
+/* Reserve the initial 52px reveal offset even before contacts are loaded. */
+.shell{min-height:calc(100vh + 52px);min-height:calc(100dvh + 52px)}
