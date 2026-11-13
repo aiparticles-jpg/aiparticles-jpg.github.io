@@ -829,3 +829,7 @@ details > summary::-webkit-details-marker {
     transition: none !important;
   }
 }
+
+
+/* Reserve the initial 42px reveal offset even before contacts are loaded. */
+.shell{min-height:calc(100vh + 42px);min-height:calc(100dvh + 42px)}
