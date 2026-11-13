@@ -420,7 +420,9 @@ function prepareRingOutput(context){
  const master=context.createGain(),analyser=context.createAnalyser();
  master.gain.setValueAtTime(1,context.currentTime);
  analyser.fftSize=2048;analyser.smoothingTimeConstant=0;
- master.connect(analyser);analyser.connect(context.destination);
+ // Анализатор используется только как боковая ветвь измерения.
+ // Основной сигнал идёт напрямую в destination, минуя AnalyserNode.
+ master.connect(analyser);master.connect(context.destination);
  state.ringMasterGain=master;state.ringAnalyser=analyser;
 }
 function logRingOutputRms(label){
