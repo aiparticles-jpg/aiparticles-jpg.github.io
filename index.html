@@ -38,7 +38,7 @@
     <header class="topbar">
       <button id="brand-about" class="brand brand-button" type="button" aria-label="О приложении Voice Link">
         <span class="brand-mark">V</span>
-        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.13-145</small></span>
+        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.13-146</small></span>
       </button>
       <div class="topbar-actions">
         <details id="header-menu" class="header-menu">
@@ -182,6 +182,7 @@
             <button id="hangup" class="button button-danger call-round-action call-hangup-action hidden" type="button" aria-label="Завершить звонок" title="Завершить звонок" disabled><svg class="call-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.84.58 2.8.7A2 2 0 0 1 22 16.92Z"/></svg></button>
           </div>
           <audio id="remote-audio" autoplay playsinline></audio>
+          <audio id="ringback-audio" preload="auto" loop playsinline></audio>
           <p id="call-error-message" class="error-message hidden" role="alert"></p>
         </div>
       </div>
@@ -361,6 +362,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=198"></script>
+  <script type="module" src="./js/app.js?v=199"></script>
 </body>
 </html>
