@@ -401,6 +401,10 @@ function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disa
 function stopRinging({suspend=true}={}){
  const stoppedKind=state.ringingKind;
  state.ringingKind=null;
+ if(els.ringbackAudio){
+  els.ringbackAudio.pause();
+  try{els.ringbackAudio.currentTime=0}catch{}
+ }
  if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
  for(const timer of state.ringDiagnosticTimers)clearTimeout(timer);
  state.ringDiagnosticTimers.length=0;
@@ -482,6 +486,25 @@ function unlockRingingAudio(event){
 }
 async function startRinging(kind){
  stopRinging({suspend:false});state.ringingKind=kind;state.ringDiagnosticDone=false;
+ if(kind==="outgoing"){
+  const audio=els.ringbackAudio;
+  if(!audio){debug("[ring] не найден HTMLAudioElement #ringback-audio.");return}
+  audio.loop=true;
+  try{audio.currentTime=0}catch{}
+  try{
+   const playback=audio.play();
+   if(playback&&typeof playback.then==="function"){
+    playback.then(()=>{
+     if(state.ringingKind==="outgoing")debug("[ring] исходящий WAV воспроизводится через HTMLAudioElement; duration="+(Number.isFinite(audio.duration)?audio.duration.toFixed(2):"unknown")+"s.");
+     else audio.pause();
+    }).catch(error=>{
+     if(state.ringingKind==="outgoing")debug("[ring] браузер не разрешил воспроизведение исходящего WAV: "+(error.message||String(error))+".");
+    });
+   }
+   debug("[ring] запрошен исходящий WAV через HTMLAudioElement непосредственно из click; Web Audio oscillator для исходящего гудка не используется.");
+  }catch(error){debug("[ring] ошибка запуска исходящего WAV: "+(error.message||String(error))+".")}
+  return;
+ }
  try{
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
   if(!AudioContextClass)throw Error("Web Audio API недоступен");
@@ -512,32 +535,16 @@ async function startRinging(kind){
   if(state.ringContext.state!=="running"){debug("[ring] мелодия не запущена: AudioContext="+state.ringContext.state+"; браузер заблокировал воспроизведение.");return}
   debug("[ring] AudioContext running; запускаем мелодию.");
   prepareRingOutput(state.ringContext);
-  const duration=2,cycle=6;
   const pulse=()=>{
    if(state.ringingKind!==kind)return;
    const now=state.ringContext.currentTime;
-   if(kind==="incoming"){
-    // Входная мелодия: четыре мягкие восходящие/нисходящие ноты.
-    const notes=[880,1175,988,784],step=0.28,noteDuration=0.22;
-    notes.forEach((frequency,index)=>{
-     scheduleRingTone(frequency,now+index*step,noteDuration,{type:"triangle",volume:0.045});
-    });
-    state.ringPulseTimer=setTimeout(pulse,3.2*1000);
-    debug("[ring] входная мелодия запущена; следующий повтор через 3.2s.");
-   }else{
-    // Исходящий гудок: стандартная пара 440/480 Hz, 2 s звучание + 4 s пауза.
-    // Генерируется Web Audio напрямую, без WAV/Blob/HTMLMediaElement.
-    scheduleRingTone(440,now,duration,{type:"sine",volume:0.045,ramp:0.05});
-    scheduleRingTone(480,now,duration,{type:"sine",volume:0.045,ramp:0.05});
-    state.ringPulseTimer=setTimeout(pulse,cycle*1000);
-    if(!state.ringDiagnosticDone){
-     state.ringDiagnosticDone=true;
-     scheduleRingDiagnostic("исходящий тон +350ms",350);
-     scheduleRingDiagnostic("исходящий тон +1500ms",1500);
-     scheduleRingDiagnostic("исходящая пауза +2500ms",2500);
-    }
-    debug("[ring] исходящий гудок Web Audio запущен; 440+480 Hz, 2 s звук + 4 s тишина; следующий повтор через 6 s.");
-   }
+   // Входящая мелодия остаётся на Web Audio; исходящий гудок воспроизводится отдельным WAV.
+   const notes=[880,1175,988,784],step=0.28,noteDuration=0.22;
+   notes.forEach((frequency,index)=>{
+    scheduleRingTone(frequency,now+index*step,noteDuration,{type:"triangle",volume:0.045});
+   });
+   state.ringPulseTimer=setTimeout(pulse,3.2*1000);
+   debug("[ring] входная мелодия запущена; следующий повтор через 3.2s.");
   };
   pulse();
  }catch(error){debug("[ring] не удалось включить звук звонка: "+(error.message||String(error))+"; AudioContext="+(state.ringContext?.state||"нет")+".");}
