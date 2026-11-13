@@ -242,9 +242,10 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
  position:sticky;top:0;z-index:50;
  width:100vw;margin:0 0 12px calc(50% - 50vw);
  min-height:52px;padding:7px max(12px,calc((100vw - 680px)/2));
- background:rgba(11,18,32,.94);
+ background:var(--bg);
  border-bottom:1px solid var(--line);
- backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+ /* Avoid Android Firefox sticky/backdrop-filter repaint artifacts. */
+ backdrop-filter:none;-webkit-backdrop-filter:none;
 }
 .topbar-actions{display:flex;align-items:center;gap:12px}
 .privacy-help{position:relative}
