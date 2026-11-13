@@ -194,7 +194,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringResumePromise:null,callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -400,7 +400,6 @@ function updateCallButtons(){
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging({suspend=true}={}){
  const stoppedKind=state.ringingKind;
- if(stoppedKind==="outgoing")debug("[ring] stopRinging() остановил исходящий гудок; stack="+String(new Error().stack||"").split("\\n").slice(1,4).join(" <- "));
  state.ringingKind=null;
  if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
  for(const timer of state.ringDiagnosticTimers)clearTimeout(timer);
@@ -462,12 +461,9 @@ function scheduleRingTone(frequency,start,duration,{type="sine",volume=0.035,ram
 }
 function unlockRingingAudio(event){
  try{
-  // Исходящий HTMLAudioElement запускается непосредственно обработчиком click.
-  // Не запускаем предварительное muted-воспроизведение: его асинхронный pause()
-  // мог остановить уже начавшийся слышимый гудок на том же audio element.
   const target=event?.target;
   if(target instanceof Element&&target.closest("#connect, #contact-screen-call, #answer-incoming")){
-   debug("[ring] действие вызова: исходящий HTMLAudioElement будет запущен непосредственно по click; предварительный запуск отключён.");
+   debug("[ring] действие вызова: пользовательский click разблокирует аудио для звонка; предварительный запуск отключён.");
    return;
   }
   // Остальные пользовательские действия могут заранее разблокировать Web Audio
@@ -483,7 +479,7 @@ function unlockRingingAudio(event){
  }catch(error){debug("[ring] ошибка подготовки аудио: "+(error.message||String(error)))}
 }
 async function startRinging(kind){
- stopRinging({suspend:false});state.ringingKind=kind;
+ stopRinging({suspend:false});state.ringingKind=kind;state.ringDiagnosticDone=false;
  try{
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
   if(!AudioContextClass)throw Error("Web Audio API недоступен");
@@ -532,6 +528,12 @@ async function startRinging(kind){
     scheduleRingTone(440,now,duration,{type:"sine",volume:0.045,ramp:0.05});
     scheduleRingTone(480,now,duration,{type:"sine",volume:0.045,ramp:0.05});
     state.ringPulseTimer=setTimeout(pulse,cycle*1000);
+    if(!state.ringDiagnosticDone){
+     state.ringDiagnosticDone=true;
+     scheduleRingDiagnostic("исходящий тон +350ms",350);
+     scheduleRingDiagnostic("исходящий тон +1500ms",1500);
+     scheduleRingDiagnostic("исходящая пауза +2500ms",2500);
+    }
     debug("[ring] исходящий гудок Web Audio запущен; 440+480 Hz, 2 s звук + 4 s тишина; следующий повтор через 6 s.");
    }
   };
