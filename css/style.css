@@ -832,25 +832,35 @@ details > summary::-webkit-details-marker {
 
 
 
-/* Pull-to-reveal contacts heading: scroll only this panel, never the document. */
-:root{--vl-topbar-height:52px;--vl-contacts-heading-height:54px;--vl-dock-height:104px}
+/* Three independent contact layers: fixed app header, revealable search strip, scrollable contacts. */
+:root{--vl-topbar-height:64px;--vl-search-height:54px;--vl-search-reveal:0px;--vl-dock-height:104px}
 .contacts-list-panel{
- position:fixed;top:calc(var(--vl-topbar-height) - var(--vl-contacts-heading-height));
- right:0;bottom:calc(var(--vl-dock-height) + env(safe-area-inset-bottom));left:0;
- z-index:1;width:100%;height:auto;min-height:0;max-height:none;
- margin:0;padding:0;
+ position:fixed;top:var(--vl-topbar-height);right:0;bottom:calc(var(--vl-dock-height) + env(safe-area-inset-bottom));left:0;
+ z-index:1;width:100%;height:auto;min-height:0;max-height:none;margin:0;padding:0;
  display:block;overflow:hidden;border:0;border-bottom:1px solid var(--line);
 }
+.contacts-search-strip{
+ position:absolute;top:calc(-1 * var(--vl-search-height));left:0;right:0;height:var(--vl-search-height);
+ z-index:3;display:flex;align-items:stretch;overflow:hidden;
+ transform:translateY(var(--vl-search-reveal));will-change:transform;
+ background:rgba(18,29,46,.98);border-bottom:1px solid var(--line);
+}
+.contacts-list-heading{width:100%;height:100%;min-height:var(--vl-search-height);margin:0;padding:7px 17px 9px}
 .contacts-list{
  display:block;width:100%;height:100%;min-height:0;max-height:100%;
- padding-top:var(--vl-contacts-heading-height);
+ padding-top:var(--vl-search-reveal);box-sizing:border-box;
  overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;
- -webkit-overflow-scrolling:touch;scrollbar-width:thin;
+ -webkit-overflow-scrolling:auto;scrollbar-width:thin;touch-action:none;
 }
-.contacts-list-heading{margin-top:0;min-height:54px}
-.contacts-list-items{min-height:calc(100% + var(--vl-contacts-heading-height))}
+.contacts-list-items{min-height:100%}
+.contacts-list-empty{min-height:70px}
+body.contact-screen-open .topbar,
+body.contact-screen-open .contacts-list-panel,
+body.contact-screen-open .utility-dock{display:none!important}
 @media(max-width:520px){
  :root{--vl-dock-height:100px}
  .contacts-list-panel{margin:0}
- .contacts-list-heading{min-height:54px;padding-left:14px;padding-right:14px;gap:8px}
+ .contacts-list-heading{padding-left:14px;padding-right:14px;gap:8px}
+ .contacts-search{width:min(52%,190px);gap:5px}
+ .contacts-search input{height:32px;padding:6px 8px}
 }
