@@ -400,6 +400,11 @@ function updateCallButtons(){
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging({suspend=true}={}){
  state.ringingKind=null;
+ // Explicitly stop the HTMLAudioElement used by outgoing ringback.
+ if(els.ringbackAudio){
+  els.ringbackAudio.pause();
+  try{els.ringbackAudio.currentTime=0}catch{}
+ }
  if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
  for(const timer of state.ringDiagnosticTimers)clearTimeout(timer);
  state.ringDiagnosticTimers.length=0;
@@ -482,20 +487,12 @@ function scheduleRingTone(frequency,start,duration,{type="sine",volume=0.035,ram
 }
 function unlockRingingAudio(event){
  try{
-  const audio=els.ringbackAudio;
-  if(audio&&!audio.__vlUnlocked){
-   audio.src=createRingbackWavUrl();audio.muted=true;
-   const prime=audio.play();
-   if(prime&&typeof prime.then==="function"){
-    prime.then(()=>{audio.pause();audio.currentTime=0;audio.muted=false;audio.__vlUnlocked=true;debug("[ring] HTMLAudioElement разблокирован пользовательским действием.");})
-     .catch(error=>{audio.muted=false;debug("[ring] предварительное воспроизведение HTMLAudioElement не удалось: "+(error.message||String(error)));});
-   }
-  }
-  // При нажатии кнопок вызова исходящий гудок использует только HTMLAudioElement.
-  // Не создаём и не возобновляем Web Audio AudioContext в этом пользовательском действии.
+  // Исходящий HTMLAudioElement запускается непосредственно обработчиком click.
+  // Не запускаем предварительное muted-воспроизведение: его асинхронный pause()
+  // мог остановить уже начавшийся слышимый гудок на том же audio element.
   const target=event?.target;
   if(target instanceof Element&&target.closest("#connect, #contact-screen-call, #answer-incoming")){
-   debug("[ring] действие вызова: HTMLAudioElement подготовлен; AudioContext не трогаем.");
+   debug("[ring] действие вызова: исходящий HTMLAudioElement будет запущен непосредственно по click; предварительный запуск отключён.");
    return;
   }
   // Остальные пользовательские действия могут заранее разблокировать Web Audio
