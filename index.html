@@ -312,6 +312,29 @@
 
 t>
   <script>
+    // Set and verify the document scroll position before revealing the page.
+    (() => {
+      const root = document.documentElement;
+      const scroller = document.scrollingElement || root;
+      const revealOffset = 52;
+
+      if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+
+      requestAnimationFrame(() => {
+        scroller.scrollTop = revealOffset;
+        if (scroller.scrollTop < revealOffset) window.scrollTo(0, revealOffset);
+
+        requestAnimationFrame(() => {
+          if (scroller.scrollTop < revealOffset) {
+            scroller.scrollTop = revealOffset;
+            window.scrollTo(0, revealOffset);
+          }
+          root.classList.remove("vl-positioning");
+        });
+      });
+    })();
+  </script>
+  <script>
     (() => {
       const showFailure = (message, details) => {
         const panel = document.getElementById("vl-startup-failure");
