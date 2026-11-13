@@ -411,6 +411,34 @@ function stopRinging({suspend=true}={}){
   state.ringContext.suspend().catch(error=>debug("[ring] не удалось приостановить AudioContext: "+(error.message||String(error))));
  }
 }
+function startContinuousRingback(){
+ const context=state.ringContext;
+ const tones=[440,480].map(frequency=>{
+  const oscillator=context.createOscillator(),gain=context.createGain();
+  oscillator.type="sine";
+  oscillator.frequency.setValueAtTime(frequency,context.currentTime);
+  gain.gain.setValueAtTime(0,context.currentTime);
+  oscillator.connect(gain);gain.connect(context.destination);
+  oscillator.start();
+  const node={oscillator,gain};
+  state.ringOscillators.push(node);
+  return gain;
+ });
+ const schedulePulse=()=>{
+  if(state.ringingKind!=="outgoing")return;
+  const start=context.currentTime+0.12;
+  for(const gain of tones){
+   gain.gain.cancelScheduledValues(start);
+   gain.gain.setValueAtTime(0,start);
+   gain.gain.linearRampToValueAtTime(0.035,start+0.06);
+   gain.gain.setValueAtTime(0.035,start+1.92);
+   gain.gain.linearRampToValueAtTime(0,start+2);
+   gain.gain.setValueAtTime(0,start+6);
+  }
+  state.ringPulseTimer=setTimeout(schedulePulse,5800);
+ };
+ schedulePulse();
+}
 function scheduleRingTone(frequency,start,duration,{type="sine",volume=0.035,ramp=0.06}={}){
  const context=state.ringContext;
  const oscillator=context.createOscillator(),gain=context.createGain();
@@ -474,10 +502,8 @@ async function startRinging(kind){
     });
     state.ringPulseTimer=setTimeout(pulse,3.2*1000);
    }else{
-    for(const frequency of [440,480]){
-     scheduleRingTone(frequency,now,duration,{type:"sine",volume:0.035});
-    }
-    state.ringPulseTimer=setTimeout(pulse,cycle*1000);
+    // Один непрерывно работающий генератор на каждую частоту; в паузе только gain=0.
+    startContinuousRingback();
    }
    if(kind==="incoming")debug("[ring] входная мелодия запущена; следующий повтор через 3.2s.");
   };
