@@ -1948,7 +1948,7 @@ els.contactList.addEventListener("click",event=>{
 els.addContactFab.addEventListener("click",()=>openAddContactScreen(false));
 els.addContactScreenBack.addEventListener("click",closeAddContactScreen);
 els.contactScreenBack.addEventListener("click",handleContactScreenBack);
-els.contactScreenCall.addEventListener("click",()=>els.connect.click());
+els.contactScreenCall.addEventListener("click",connect);
 els.chatComposer.addEventListener("submit",event=>{event.preventDefault();sendChatMessage()});
 els.chatMessage.addEventListener("input",updateChatComposerState);
 els.chatMessage.addEventListener("keydown",event=>{
