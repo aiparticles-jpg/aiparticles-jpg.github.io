@@ -246,9 +246,9 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 .header-menu>summary{list-style:none}
 .header-menu>summary::-webkit-details-marker{display:none}
 .header-menu-trigger{
- display:grid;place-items:center;width:36px;height:36px;
- border:1px solid var(--line);border-radius:10px;
- color:var(--text);background:#172438;cursor:pointer;
+ display:grid;place-items:center;width:40px;height:40px;
+ border:0;border-radius:50%;
+ color:var(--text);background:transparent;cursor:pointer;
  font-size:25px;line-height:1;
 }
 .header-menu-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
@@ -277,7 +277,7 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
  .shell{padding-top:0}
  .topbar{min-height:64px;margin-bottom:10px;padding:6px 12px}
  .topbar-actions{gap:8px}
- .header-menu-trigger{width:34px;height:34px}
+ .header-menu-trigger{width:36px;height:36px}
 }
 
 
@@ -381,7 +381,8 @@ body.contact-screen-open{overflow:hidden}
 @media(max-width:520px){.chat-events{padding:12px 12px}.chat-composer{padding-left:10px;padding-right:10px}}
 @media(max-width:520px){
  .contact-screen-header{min-height:58px;gap:9px;padding-left:10px;padding-right:10px}
- .contact-screen-back,.contact-screen-call,.contact-screen-menu summary{flex-basis:36px;width:36px;height:36px}
+ .contact-screen-back,.contact-screen-menu summary{flex-basis:36px;width:36px;height:36px}
+ .contact-screen-call{flex-basis:38px;width:38px;height:38px}
  .contact-screen-avatar{flex-basis:38px;width:38px;height:38px}
  .contact-screen-name{font-size:15px}
 }
