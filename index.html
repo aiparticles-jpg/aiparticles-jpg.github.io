@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=81">
+  <link rel="stylesheet" href="./css/style.css?v=82">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -34,12 +34,11 @@
   </div>
   <main class="shell">
     <header class="topbar">
-      <a class="brand" href="./" aria-label="Voice Link">
+      <button id="brand-about" class="brand brand-button" type="button" aria-label="О приложении Voice Link">
         <span class="brand-mark">V</span>
         <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.11-139</small></span>
-      </a>
+      </button>
       <div class="topbar-actions">
-        <button id="privacy-help" class="privacy-label" type="button" aria-label="О приложении"><span class="dot"></span> Без регистрации</button>
         <details id="header-menu" class="header-menu">
           <summary class="header-menu-trigger" aria-label="Открыть меню" title="Меню"><span aria-hidden="true">⋮</span></summary>
           <div class="header-menu-content">
@@ -338,6 +337,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=188"></script>
+  <script type="module" src="./js/app.js?v=189"></script>
 </body>
 </html>
