@@ -399,6 +399,8 @@ function updateCallButtons(){
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging({suspend=true}={}){
+ const stoppedKind=state.ringingKind;
+ if(stoppedKind==="outgoing")debug("[ring] stopRinging() остановил исходящий гудок; stack="+String(new Error().stack||"").split("\\n").slice(1,4).join(" <- "));
  state.ringingKind=null;
  // Explicitly stop the HTMLAudioElement used by outgoing ringback.
  if(els.ringbackAudio){
@@ -507,15 +509,32 @@ function unlockRingingAudio(event){
   }
  }catch(error){debug("[ring] ошибка подготовки аудио: "+(error.message||String(error)))}
 }
+function logOutgoingAudioState(audio,label){
+ const error=audio.error;
+ debug("[ring-audio] "+label+": paused="+audio.paused+"; muted="+audio.muted+"; volume="+audio.volume+"; currentTime="+Number(audio.currentTime||0).toFixed(3)+"; readyState="+audio.readyState+"; networkState="+audio.networkState+"; duration="+(Number.isFinite(audio.duration)?audio.duration:"NaN")+"; error="+(error?error.code+":"+error.message:"none")+"; visibility="+document.visibilityState+"; userActivation="+(navigator.userActivation?String(navigator.userActivation.isActive):"unsupported")+".");
+}
 async function startRinging(kind){
  stopRinging({suspend:false});state.ringingKind=kind;
  try{
   if(kind==="outgoing"){
    const audio=els.ringbackAudio;
    if(!audio)throw Error("HTMLAudioElement гудка не найден");
+   if(!audio.__vlDiagnostics){
+    audio.__vlDiagnostics=true;
+    for(const eventName of ["playing","pause","ended","waiting","stalled","error","emptied"]){
+     audio.addEventListener(eventName,()=>logOutgoingAudioState(audio,"event "+eventName));
+    }
+   }
    audio.src=createRingbackWavUrl();audio.loop=true;audio.muted=false;audio.volume=1;audio.currentTime=0;
-   await audio.play();
-   if(state.ringingKind!=="outgoing"){audio.pause();audio.currentTime=0;return}
+   logOutgoingAudioState(audio,"before play");
+   const playPromise=audio.play();
+   debug("[ring-audio] audio.play() вызван; promise="+(playPromise&&typeof playPromise.then==="function"?"thenable":"no-promise")+".");
+   await playPromise;
+   logOutgoingAudioState(audio,"play() resolved");
+   for(const [delay,label] of [[250,"+250ms"],[1200,"+1200ms"],[3500,"+3500ms"]]){
+    setTimeout(()=>logOutgoingAudioState(audio,label),delay);
+   }
+   if(state.ringingKind!=="outgoing"){audio.pause();audio.currentTime=0;debug("[ring-audio] play() resolved, но состояние звонка уже изменилось; воспроизведение остановлено.");return}
    debug("[ring] исходящий гудок запущен через HTMLAudioElement; цикл WAV 6 s.");
    return;
   }
