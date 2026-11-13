@@ -933,14 +933,12 @@ function formatLastInteraction(value){
 let contactsLoaded=false;
 let allContacts=[];
 
-// Coordinated pull gesture: the contact list scrolls independently while the search strip
-// reveals/collapses in parallel. The app header remains outside both moving layers.
+// Coordinated pull gesture: keep one continuous drag across the search strip and contact list.
 (()=>{
  const list=els.contactList;
- const panel=document.querySelector(".contacts-list-panel");
  const search=document.querySelector(".contacts-search-strip");
- if(!list||!panel||!search)return;
- let reveal=0,lastY=null,dragging=false;
+ if(!list||!search)return;
+ let reveal=0,lastY=null,activeTouchId=null,mouseDragging=false;
  const searchHeight=()=>search.getBoundingClientRect().height||54;
  const setReveal=value=>{
   reveal=Math.max(0,Math.min(searchHeight(),value));
@@ -950,30 +948,58 @@ let allContacts=[];
   if(!delta)return;
   const max=Math.max(0,list.scrollHeight-list.clientHeight);
   if(delta>0){
-   list.scrollTop=Math.min(max,list.scrollTop+delta);
+   const fromList=Math.min(max,list.scrollTop+delta);
+   list.scrollTop=fromList;
    setReveal(reveal-delta);
   }else{
    list.scrollTop=Math.max(0,list.scrollTop+delta);
    setReveal(reveal-delta);
   }
  };
- list.addEventListener("pointerdown",event=>{
-  if(event.pointerType==="mouse"&&event.button!==0)return;
-  dragging=true;lastY=event.clientY;
- });
- list.addEventListener("pointermove",event=>{
-  if(!dragging||lastY===null)return;
-  const delta=lastY-event.clientY;
-  if(Math.abs(delta)<0.1)return;
+ const begin=y=>{lastY=y;};
+ const move=y=>{
+  if(lastY===null)return;
+  const delta=lastY-y;
+  if(Math.abs(delta)>0.05)moveBy(delta);
+  lastY=y;
+ };
+ const finish=()=>{lastY=null;activeTouchId=null;mouseDragging=false;};
+ // Touch Events are tracked on window so moving across child elements or layer boundaries
+ // cannot lose the drag. preventDefault keeps the browser from cancelling it for page scroll.
+ list.addEventListener("touchstart",event=>{
+  if(event.touches.length!==1)return;
+  const touch=event.changedTouches[0];
+  activeTouchId=touch.identifier;
+  begin(touch.clientY);
+ },{passive:true});
+ window.addEventListener("touchmove",event=>{
+  if(activeTouchId===null)return;
+  const touch=Array.from(event.touches).find(item=>item.identifier===activeTouchId);
+  if(!touch)return;
   if(event.cancelable)event.preventDefault();
-  if(Math.abs(delta)>3&&!list.hasPointerCapture(event.pointerId)){try{list.setPointerCapture(event.pointerId)}catch{}}
-  moveBy(delta);
-  lastY=event.clientY;
+  move(touch.clientY);
+ },{passive:false,capture:true});
+ window.addEventListener("touchend",event=>{
+  if(activeTouchId===null)return;
+  if(Array.from(event.changedTouches).some(item=>item.identifier===activeTouchId))finish();
+ },{capture:true});
+ window.addEventListener("touchcancel",finish,{capture:true});
+ // Mouse/pen support without setPointerCapture or lostpointercapture.
+ list.addEventListener("pointerdown",event=>{
+  if(event.pointerType==="touch"||event.button!==0)return;
+  mouseDragging=true;begin(event.clientY);
  });
- const end=()=>{dragging=false;lastY=null;};
- list.addEventListener("pointerup",end);
- list.addEventListener("pointercancel",end);
- list.addEventListener("lostpointercapture",end);
+ window.addEventListener("pointermove",event=>{
+  if(!mouseDragging||event.pointerType==="touch")return;
+  if(event.cancelable)event.preventDefault();
+  move(event.clientY);
+ },{passive:false});
+ window.addEventListener("pointerup",event=>{
+  if(mouseDragging&&event.pointerType!=="touch")finish();
+ });
+ window.addEventListener("pointercancel",event=>{
+  if(mouseDragging&&event.pointerType!=="touch")finish();
+ });
  list.addEventListener("wheel",event=>{
   if(Math.abs(event.deltaY)<0.1)return;
   event.preventDefault();
@@ -983,7 +1009,6 @@ let allContacts=[];
  setReveal(0);
  list.scrollTop=0;
 })();
-
 function renderContactList(contacts){
  allContacts=contacts;
  const query=els.contactSearch.value.trim().toLowerCase();
