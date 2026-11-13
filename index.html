@@ -311,24 +311,46 @@
   </main>
 
   <script>
-    // Set and verify the document scroll position before revealing the page.
+    // Capture the real layout and scroll geometry around the initial reveal.
     (() => {
       const root = document.documentElement;
       const scroller = document.scrollingElement || root;
       const revealOffset = 42;
+      const trace = window.__vlStartupLayoutTrace = [];
+      const rect = selector => {
+        const element = document.querySelector(selector);
+        if (!element) return null;
+        const r = element.getBoundingClientRect();
+        return {top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height)};
+      };
+      const capture = stage => trace.push({
+        stage,
+        scrollY: Math.round(window.scrollY),
+        scrollTop: Math.round(scroller.scrollTop),
+        scrollHeight: scroller.scrollHeight,
+        clientHeight: scroller.clientHeight,
+        topbar: rect(".topbar"),
+        contactsHeading: rect(".contacts-list-heading"),
+        search: rect("#contact-search"),
+        dock: rect(".utility-dock"),
+        diagnosticButton: rect("#diagnostic-dock-button")
+      });
 
       if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-
+      capture("before-scroll");
       requestAnimationFrame(() => {
+        capture("before-first-scroll");
         scroller.scrollTop = revealOffset;
         if (scroller.scrollTop < revealOffset) window.scrollTo(0, revealOffset);
-
+        capture("after-first-scroll");
         requestAnimationFrame(() => {
           if (scroller.scrollTop < revealOffset) {
             scroller.scrollTop = revealOffset;
             window.scrollTo(0, revealOffset);
           }
+          capture("before-reveal");
           root.classList.remove("vl-positioning");
+          requestAnimationFrame(() => capture("after-reveal"));
         });
       });
     })();
@@ -362,6 +384,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=190"></script>
+  <script type="module" src="./js/app.js?v=191"></script>
 </body>
 </html>
