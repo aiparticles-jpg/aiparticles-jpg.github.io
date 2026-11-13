@@ -258,34 +258,8 @@ function debug(message){
   if(els.debugLog.textContent==="Ожидаем подключения. Здесь появятся события защищённого канала.")els.debugLog.textContent="";
  }
  const timestamp=formatDiagnosticLogTimestamp(now,perfNow-diagnosticReportStartedPerf);
- els.debugLog.textContent=(els.debugLog.textContent+"\\n"+timestamp+" "+message).trim();
+ els.debugLog.textContent=(els.debugLog.textContent+"\n"+timestamp+" "+message).trim();
  if(diagnosticLogAutoFollow.main)scrollDiagnosticLogToBottom(els.debugLog);
-}
-function logLayoutSnapshot(stage){
- if(!els.debugMode.checked)return;
- const rect=element=>{
-  if(!element)return null;
-  const r=element.getBoundingClientRect();
-  return {top:Math.round(r.top),bottom:Math.round(r.bottom),height:Math.round(r.height)};
- };
- const scroller=document.scrollingElement||document.documentElement;
- debug("[layout] "+JSON.stringify({
-  stage,
-  scrollY:Math.round(window.scrollY),
-  scrollTop:Math.round(scroller.scrollTop),
-  scrollHeight:scroller.scrollHeight,
-  clientHeight:scroller.clientHeight,
-  topbar:rect(document.querySelector(".topbar")),
-  contactsHeading:rect(document.querySelector(".contacts-list-heading")),
-  search:rect(els.contactSearch),
-  dock:rect(document.querySelector(".utility-dock")),
-  diagnosticButton:rect(els.diagnosticDockButton),
-  diagnosticButtonHidden:els.diagnosticDockButton.classList.contains("hidden")
- }));
-}
-function logInitialLayoutTrace(){
- if(!els.debugMode.checked)return;
- for(const snapshot of window.__vlStartupLayoutTrace||[])debug("[layout-startup] "+JSON.stringify(snapshot));
 }
 window.addEventListener("voicelink:onesignal-status",event=>{
  if(els.oneSignalStatus&&event.detail?.text)els.oneSignalStatus.textContent=event.detail.text;
@@ -988,10 +962,7 @@ function renderContactList(contacts){
  }
 }
 async function refreshContactOptions(selectUserId=""){
- const initialContactLoad=!contactsLoaded;
- if(initialContactLoad)logLayoutSnapshot("before-initial-contact-read");
  const contacts=await listContacts();
- if(initialContactLoad)logLayoutSnapshot("after-initial-contact-read-before-render");
  contacts.sort((a,b)=>{
   const aRequestTime=Date.parse(a.request_received_at||"")||0;
   const bRequestTime=Date.parse(b.request_received_at||"")||0;
@@ -1007,10 +978,6 @@ async function refreshContactOptions(selectUserId=""){
  if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
  contactsLoaded=true;
  renderContactList(contacts);
- if(initialContactLoad){
-  logLayoutSnapshot("immediately-after-initial-contact-render");
-  requestAnimationFrame(()=>logLayoutSnapshot("next-frame-after-initial-contact-render"));
- }
  els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
  originalEditContactName=els.editContactName.value.trim();
  updateReplyInviteStatus();
@@ -1501,8 +1468,6 @@ function applyDebugMode(){
 }
 try{els.debugMode.checked=localStorage.getItem("vl.debugMode.v1")==="1"}catch{els.debugMode.checked=false}
 applyDebugMode();
-requestAnimationFrame(()=>requestAnimationFrame(logInitialLayoutTrace));
-logLayoutSnapshot("after-debug-mode-application");
 els.debugMode.addEventListener("change",()=>{
  try{localStorage.setItem("vl.debugMode.v1",els.debugMode.checked?"1":"0")}catch(error){debug("Не удалось сохранить режим отладки: "+error.message)}
  applyDebugMode();
