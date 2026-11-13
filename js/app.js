@@ -480,7 +480,7 @@ function scheduleRingTone(frequency,start,duration,{type="sine",volume=0.035,ram
  },{once:true});
  oscillator.start(start);oscillator.stop(start+duration);
 }
-function unlockRingingAudio(){
+function unlockRingingAudio(event){
  try{
   const audio=els.ringbackAudio;
   if(audio&&!audio.__vlUnlocked){
@@ -491,12 +491,21 @@ function unlockRingingAudio(){
      .catch(error=>{audio.muted=false;debug("[ring] предварительное воспроизведение HTMLAudioElement не удалось: "+(error.message||String(error)));});
    }
   }
+  // При нажатии кнопок вызова исходящий гудок использует только HTMLAudioElement.
+  // Не создаём и не возобновляем Web Audio AudioContext в этом пользовательском действии.
+  const target=event?.target;
+  if(target instanceof Element&&target.closest("#connect, #contact-screen-call, #answer-incoming")){
+   debug("[ring] действие вызова: HTMLAudioElement подготовлен; AudioContext не трогаем.");
+   return;
+  }
+  // Остальные пользовательские действия могут заранее разблокировать Web Audio
+  // для отдельной мелодии входящего вызова.
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
-  if(!AudioContextClass){debug("[ring] Web Audio API недоступен при разблокировке.");return}
+  if(!AudioContextClass){debug("[ring] Web Audio API недоступен при разблокировке входящей мелодии.");return}
   if(!state.ringContext)state.ringContext=new AudioContextClass();
   const context=state.ringContext;
   if(context.state==="suspended"){
-   debug("[ring] пользовательское действие: пробуем разблокировать AudioContext; visibility="+document.visibilityState+".");
+   debug("[ring] пользовательское действие: разблокируем AudioContext для входящей мелодии; visibility="+document.visibilityState+".");
    context.resume().then(()=>debug("[ring] AudioContext после пользовательского действия: "+context.state+".")).catch(error=>debug("[ring] resume после пользовательского действия отклонён: "+(error.message||String(error))));
   }
  }catch(error){debug("[ring] ошибка подготовки аудио: "+(error.message||String(error)))}
