@@ -11,7 +11,7 @@ const els={
  contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenHeaderSlot:$("call-screen-header-slot"),callScreenDiagnosticsSlot:$("call-screen-diagnostics-slot"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),
- audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
+ audio:$("remote-audio"),ringbackAudio:$("ringback-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
@@ -194,7 +194,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringResumePromise:null,callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringResumePromise:null,ringbackUrl:null,callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -437,35 +437,27 @@ function scheduleRingDiagnostic(label,delay){
  },delay);
  state.ringDiagnosticTimers.push(timer);
 }
-function startContinuousRingback(){
- const context=state.ringContext;
- const tones=[440,480].map(frequency=>{
-  const oscillator=context.createOscillator(),gain=context.createGain();
-  oscillator.type="sine";
-  oscillator.frequency.setValueAtTime(frequency,context.currentTime);
-  gain.gain.setValueAtTime(0,context.currentTime);
-  oscillator.connect(gain);gain.connect(state.ringMasterGain||context.destination);
-  oscillator.start();
-  const node={oscillator,gain};
-  state.ringOscillators.push(node);
-  return gain;
- });
- const schedulePulse=()=>{
-  if(state.ringingKind!=="outgoing")return;
-  const start=context.currentTime+0.12;
-  for(const gain of tones){
-   gain.gain.cancelScheduledValues(start);
-   gain.gain.setValueAtTime(0,start);
-   gain.gain.linearRampToValueAtTime(0.035,start+0.06);
-   gain.gain.setValueAtTime(0.035,start+1.92);
-   gain.gain.linearRampToValueAtTime(0,start+2);
-   gain.gain.setValueAtTime(0,start+6);
+function createRingbackWavUrl(){
+ if(state.ringbackUrl)return state.ringbackUrl;
+ const sampleRate=48000,frames=sampleRate*6,bytesPerSample=2;
+ const buffer=new ArrayBuffer(44+frames*bytesPerSample),view=new DataView(buffer);
+ const writeText=(offset,value)=>{for(let i=0;i<value.length;i++)view.setUint8(offset+i,value.charCodeAt(0))};
+ writeText(0,"RIFF");view.setUint32(4,36+frames*bytesPerSample,true);writeText(8,"WAVE");
+ writeText(12,"fmt ");view.setUint32(16,16,true);view.setUint16(20,1,true);
+ view.setUint16(22,1,true);view.setUint32(24,sampleRate,true);
+ view.setUint32(28,sampleRate*bytesPerSample,true);view.setUint16(32,bytesPerSample,true);
+ view.setUint16(34,16,true);writeText(36,"data");view.setUint32(40,frames*bytesPerSample,true);
+ for(let i=0;i<frames;i++){
+  const time=i/sampleRate,phase=time%6;let sample=0;
+  if(phase<2){
+   const attack=Math.min(1,phase/0.06),release=Math.min(1,(2-phase)/0.08);
+   sample=0.035*Math.min(attack,release)*(Math.sin(2*Math.PI*440*time)+Math.sin(2*Math.PI*480*time));
   }
-  scheduleRingDiagnostic("гудок (через 1 с)",1000);
-  scheduleRingDiagnostic("тишина (через 3 с)",3000);
-  state.ringPulseTimer=setTimeout(schedulePulse,5800);
- };
- schedulePulse();
+  view.setInt16(44+i*bytesPerSample,Math.round(Math.max(-1,Math.min(1,sample))*32767),true);
+ }
+ state.ringbackUrl=URL.createObjectURL(new Blob([buffer],{type:"audio/wav"}));
+ debug("[ring] WAV гудка создан: 48 kHz mono PCM16, цикл 2 s звук + 4 s тишина.");
+ return state.ringbackUrl;
 }
 function scheduleRingTone(frequency,start,duration,{type="sine",volume=0.035,ramp=0.06}={}){
  const context=state.ringContext;
@@ -490,6 +482,15 @@ function scheduleRingTone(frequency,start,duration,{type="sine",volume=0.035,ram
 }
 function unlockRingingAudio(){
  try{
+  const audio=els.ringbackAudio;
+  if(audio&&!audio.__vlUnlocked){
+   audio.src=createRingbackWavUrl();audio.muted=true;
+   const prime=audio.play();
+   if(prime&&typeof prime.then==="function"){
+    prime.then(()=>{audio.pause();audio.currentTime=0;audio.muted=false;audio.__vlUnlocked=true;debug("[ring] HTMLAudioElement разблокирован пользовательским действием.");})
+     .catch(error=>{audio.muted=false;debug("[ring] предварительное воспроизведение HTMLAudioElement не удалось: "+(error.message||String(error)));});
+   }
+  }
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
   if(!AudioContextClass){debug("[ring] Web Audio API недоступен при разблокировке.");return}
   if(!state.ringContext)state.ringContext=new AudioContextClass();
@@ -498,11 +499,20 @@ function unlockRingingAudio(){
    debug("[ring] пользовательское действие: пробуем разблокировать AudioContext; visibility="+document.visibilityState+".");
    context.resume().then(()=>debug("[ring] AudioContext после пользовательского действия: "+context.state+".")).catch(error=>debug("[ring] resume после пользовательского действия отклонён: "+(error.message||String(error))));
   }
- }catch(error){debug("[ring] ошибка подготовки AudioContext: "+(error.message||String(error)))}
+ }catch(error){debug("[ring] ошибка подготовки аудио: "+(error.message||String(error)))}
 }
 async function startRinging(kind){
  stopRinging({suspend:false});state.ringingKind=kind;
  try{
+  if(kind==="outgoing"){
+   const audio=els.ringbackAudio;
+   if(!audio)throw Error("HTMLAudioElement гудка не найден");
+   audio.src=createRingbackWavUrl();audio.loop=true;audio.muted=false;audio.volume=1;audio.currentTime=0;
+   await audio.play();
+   if(state.ringingKind!=="outgoing"){audio.pause();audio.currentTime=0;return}
+   debug("[ring] исходящий гудок запущен через HTMLAudioElement; цикл WAV 6 s.");
+   return;
+  }
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
   if(!AudioContextClass)throw Error("Web Audio API недоступен");
   if(!state.ringContext)state.ringContext=new AudioContextClass();
@@ -511,7 +521,7 @@ async function startRinging(kind){
    ringContext.__vlStateLogger=true;
    ringContext.addEventListener("statechange",()=>{
     debug("[ring] AudioContext statechange: "+ringContext.state+".");
-    if(ringContext.state!=="suspended"||state.ringContext!==ringContext||!state.ringingKind||state.ringResumePromise)return;
+    if(ringContext.state!=="suspended"||state.ringContext!==ringContext||state.ringingKind!=="incoming"||state.ringResumePromise)return;
     const ringingKind=state.ringingKind;
     debug("[ring] AudioContext сам перешёл в suspended во время звонка; автоматически восстанавливаем аудиопоток.");
     const resumePromise=ringContext.resume()
@@ -543,9 +553,6 @@ async function startRinging(kind){
      scheduleRingTone(frequency,now+index*step,noteDuration,{type:"triangle",volume:0.045});
     });
     state.ringPulseTimer=setTimeout(pulse,3.2*1000);
-   }else{
-    // Один непрерывно работающий генератор на каждую частоту; в паузе только gain=0.
-    startContinuousRingback();
    }
    if(kind==="incoming")debug("[ring] входная мелодия запущена; следующий повтор через 3.2s.");
   };
