@@ -451,7 +451,7 @@ function createRingbackWavUrl(){
   const time=i/sampleRate,phase=time%6;let sample=0;
   if(phase<2){
    const attack=Math.min(1,phase/0.06),release=Math.min(1,(2-phase)/0.08);
-   sample=0.035*Math.min(attack,release)*(Math.sin(2*Math.PI*440*time)+Math.sin(2*Math.PI*480*time));
+   sample=0.14*Math.min(attack,release)*(Math.sin(2*Math.PI*440*time)+Math.sin(2*Math.PI*480*time));
   }
   view.setInt16(44+i*bytesPerSample,Math.round(Math.max(-1,Math.min(1,sample))*32767),true);
  }
@@ -623,7 +623,7 @@ function startOutgoingCall({peer,expiresAt}){
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
  state.outgoingCall=true;state.outgoingCallExpiresAt=expiresAt;updateCallButtons();const peerLabel=els.peer.selectedOptions[0]?.textContent||"контакт";setStatus("Вызываем "+peerLabel,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
- startRinging("outgoing");
+ if(state.ringingKind!=="outgoing")startRinging("outgoing");
  scheduleOutgoingCallExpiry();
 }
 async function rejectIncoming(){
@@ -929,6 +929,7 @@ async function connect(){
  }
  state.answeringCall=answering;
  if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging()}
+ else startRinging("outgoing"); // Start audio synchronously in the user's click gesture, before async signaling/WebRTC work.
  clearError();setBusy(true);
  try{
   const me=state.me;
