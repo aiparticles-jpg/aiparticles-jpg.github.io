@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=87">
+  <link rel="stylesheet" href="./css/style.css?v=88">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -311,11 +311,23 @@
   </main>
 
   <script>
-    // Reveal after initial layout without changing the document scroll position.
+    // Keep the document stationary; use the contacts scroller for the pull-to-reveal header.
     (() => {
       const root = document.documentElement;
+      const initializeContactsReveal = () => {
+        const header = document.querySelector(".topbar");
+        const list = document.querySelector(".contacts-list");
+        if (header && list) {
+          root.style.setProperty("--vl-topbar-height", header.getBoundingClientRect().height + "px");
+          list.scrollTop = document.querySelector(".contacts-list-heading")?.getBoundingClientRect().height || 54;
+        }
+      };
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => root.classList.remove("vl-positioning"));
+        initializeContactsReveal();
+        requestAnimationFrame(() => {
+          initializeContactsReveal();
+          root.classList.remove("vl-positioning");
+        });
       });
     })();
   </script>
