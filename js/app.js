@@ -930,7 +930,6 @@ function formatLastInteraction(value){
  if(days<7)return days+" дн.";
  return new Date(timestamp).toLocaleDateString("ru-RU",{day:"numeric",month:"short"});
 }
-let contactListInitialPositioned=false;
 let contactsLoaded=false;
 let allContacts=[];
 function renderContactList(contacts){
@@ -960,10 +959,6 @@ function renderContactList(contacts){
   const last=document.createElement("span");last.className="contact-list-last";last.textContent=formatLastInteraction(contact.last_interaction_at);
   item.append(avatar,details,last);
   els.contactListItems.append(item);
- }
- if(!contactListInitialPositioned&&contacts.length){
-  contactListInitialPositioned=true;
-  requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo({top:42,behavior:"instant"})));
  }
 }
 async function refreshContactOptions(selectUserId=""){
