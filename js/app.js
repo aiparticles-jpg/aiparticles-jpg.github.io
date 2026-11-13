@@ -462,8 +462,14 @@ function createRingbackWavUrl(){
   }
   view.setInt16(44+i*bytesPerSample,Math.round(Math.max(-1,Math.min(1,sample))*32767),true);
  }
- state.ringbackUrl=URL.createObjectURL(new Blob([buffer],{type:"audio/wav"}));
- debug("[ring] WAV гудка создан: 48 kHz mono PCM16, цикл 2 s звук + 4 s тишина.");
+ const audio=els.ringbackAudio;
+ const wavMimeCandidates=["audio/wave","audio/wav","audio/x-wav","audio/x-pn-wav"];
+ const wavMimeSupport=wavMimeCandidates.map(type=>type+":"+((audio&&typeof audio.canPlayType==="function")?audio.canPlayType(type):"unknown")).join(", ");
+ const wavMimeType=wavMimeCandidates.find(type=>audio&&audio.canPlayType(type)==="probably")
+  ||wavMimeCandidates.find(type=>audio&&audio.canPlayType(type)==="maybe")
+  ||"audio/wav";
+ state.ringbackUrl=URL.createObjectURL(new Blob([buffer],{type:wavMimeType}));
+ debug("[ring] WAV гудка создан: 48 kHz mono PCM16, MIME="+wavMimeType+"; canPlayType: "+wavMimeSupport+"; цикл 2 s звук + 4 s тишина.");
  return state.ringbackUrl;
 }
 function scheduleRingTone(frequency,start,duration,{type="sine",volume=0.035,ramp=0.06}={}){
