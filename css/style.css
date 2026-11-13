@@ -830,6 +830,3 @@ details > summary::-webkit-details-marker {
   }
 }
 
-
-/* Reserve the initial 52px reveal offset even before contacts are loaded. */
-.shell{min-height:calc(100vh + 52px);min-height:calc(100dvh + 52px)}
