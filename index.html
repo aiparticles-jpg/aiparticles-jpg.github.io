@@ -310,27 +310,12 @@
     </section>
   </main>
 
-t>
   <script>
-    // Set and verify the document scroll position before revealing the page.
+    // Reveal after initial layout without changing the document scroll position.
     (() => {
       const root = document.documentElement;
-      const scroller = document.scrollingElement || root;
-      const revealOffset = 52;
-
-      if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-
       requestAnimationFrame(() => {
-        scroller.scrollTop = revealOffset;
-        if (scroller.scrollTop < revealOffset) window.scrollTo(0, revealOffset);
-
-        requestAnimationFrame(() => {
-          if (scroller.scrollTop < revealOffset) {
-            scroller.scrollTop = revealOffset;
-            window.scrollTo(0, revealOffset);
-          }
-          root.classList.remove("vl-positioning");
-        });
+        requestAnimationFrame(() => root.classList.remove("vl-positioning"));
       });
     })();
   </script>
