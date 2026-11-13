@@ -401,14 +401,36 @@ function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disa
 function stopRinging({suspend=true}={}){
  state.ringingKind=null;
  if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
- for(const oscillator of state.ringOscillators){
-  try{oscillator.stop()}catch{}
-  try{oscillator.disconnect()}catch{}
+ const activeNodes=state.ringOscillators.splice(0);
+ for(const node of activeNodes){
+  try{node.oscillator.stop()}catch{}
+  try{node.oscillator.disconnect()}catch{}
+  try{node.gain.disconnect()}catch{}
  }
- state.ringOscillators=[];
  if(suspend&&state.ringContext&&state.ringContext.state==="running"){
   state.ringContext.suspend().catch(error=>debug("[ring] не удалось приостановить AudioContext: "+(error.message||String(error))));
  }
+}
+function scheduleRingTone(frequency,start,duration,{type="sine",volume=0.035,ramp=0.06}={}){
+ const context=state.ringContext;
+ const oscillator=context.createOscillator(),gain=context.createGain();
+ oscillator.type=type;
+ oscillator.frequency.setValueAtTime(frequency,start);
+ // В паузе между гудками усиление должно быть ровно нулевым, а не остаточным 0.0001.
+ gain.gain.setValueAtTime(0,start);
+ gain.gain.linearRampToValueAtTime(volume,start+ramp);
+ gain.gain.setValueAtTime(volume,start+duration-0.08);
+ gain.gain.linearRampToValueAtTime(0,start+duration);
+ oscillator.connect(gain);gain.connect(context.destination);
+ const node={oscillator,gain};
+ state.ringOscillators.push(node);
+ oscillator.addEventListener("ended",()=>{
+  try{oscillator.disconnect()}catch{}
+  try{gain.disconnect()}catch{}
+  const index=state.ringOscillators.indexOf(node);
+  if(index!==-1)state.ringOscillators.splice(index,1);
+ },{once:true});
+ oscillator.start(start);oscillator.stop(start+duration);
 }
 function unlockRingingAudio(){
  try{
@@ -443,31 +465,20 @@ async function startRinging(kind){
   const duration=2,cycle=6;
   const pulse=()=>{
    if(state.ringingKind!==kind)return;
-   const now=state.ringContext.currentTime,nodes=[];
+   const now=state.ringContext.currentTime;
    if(kind==="incoming"){
-    // Короткая мелодия вместо телефонного гудка: четыре мягкие восходящие/нисходящие ноты.
+    // Короткая мелодия: четыре мягкие восходящие/нисходящие ноты.
     const notes=[880,1175,988,784],step=0.28,noteDuration=0.22;
     notes.forEach((frequency,index)=>{
-     const start=now+index*step,oscillator=state.ringContext.createOscillator(),gain=state.ringContext.createGain();
-     oscillator.type="triangle";oscillator.frequency.value=frequency;
-     gain.gain.setValueAtTime(0.0001,start);gain.gain.linearRampToValueAtTime(0.045,start+0.06);
-     gain.gain.setValueAtTime(0.045,start+noteDuration-0.08);gain.gain.linearRampToValueAtTime(0.0001,start+noteDuration);
-     oscillator.connect(gain);gain.connect(state.ringContext.destination);
-     oscillator.start(start);oscillator.stop(start+noteDuration);nodes.push(oscillator);
+     scheduleRingTone(frequency,now+index*step,noteDuration,{type:"triangle",volume:0.045});
     });
     state.ringPulseTimer=setTimeout(pulse,3.2*1000);
    }else{
     for(const frequency of [440,480]){
-     const oscillator=state.ringContext.createOscillator(),gain=state.ringContext.createGain();
-     oscillator.type="sine";oscillator.frequency.value=frequency;
-     gain.gain.setValueAtTime(0.0001,now);gain.gain.linearRampToValueAtTime(0.035,now+0.06);
-     gain.gain.setValueAtTime(0.035,now+duration-0.08);gain.gain.linearRampToValueAtTime(0.0001,now+duration);
-     oscillator.connect(gain);gain.connect(state.ringContext.destination);
-     oscillator.start(now);oscillator.stop(now+duration);nodes.push(oscillator);
+     scheduleRingTone(frequency,now,duration,{type:"sine",volume:0.035});
     }
     state.ringPulseTimer=setTimeout(pulse,cycle*1000);
    }
-   state.ringOscillators=nodes;
    if(kind==="incoming")debug("[ring] входная мелодия запущена; следующий повтор через 3.2s.");
   };
   pulse();
