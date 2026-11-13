@@ -940,7 +940,7 @@ let allContacts=[];
  const panel=document.querySelector(".contacts-list-panel");
  const search=document.querySelector(".contacts-search-strip");
  if(!list||!panel||!search)return;
- let reveal=0,lastY=null,lastTime=0,dragging=false;
+ let reveal=0,lastY=null,dragging=false;
  const searchHeight=()=>search.getBoundingClientRect().height||54;
  const setReveal=value=>{
   reveal=Math.max(0,Math.min(searchHeight(),value));
@@ -959,15 +959,16 @@ let allContacts=[];
  };
  list.addEventListener("pointerdown",event=>{
   if(event.pointerType==="mouse"&&event.button!==0)return;
-  dragging=true;lastY=event.clientY;lastTime=performance.now();
+  dragging=true;lastY=event.clientY;
  });
  list.addEventListener("pointermove",event=>{
   if(!dragging||lastY===null)return;
   const delta=lastY-event.clientY;
   if(Math.abs(delta)<0.1)return;
   if(event.cancelable)event.preventDefault();
+  if(Math.abs(delta)>3&&!list.hasPointerCapture(event.pointerId)){try{list.setPointerCapture(event.pointerId)}catch{}}
   moveBy(delta);
-  lastY=event.clientY;lastTime=performance.now();
+  lastY=event.clientY;
  });
  const end=()=>{dragging=false;lastY=null;};
  list.addEventListener("pointerup",end);
