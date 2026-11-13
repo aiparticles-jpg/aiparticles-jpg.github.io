@@ -830,3 +830,26 @@ details > summary::-webkit-details-marker {
   }
 }
 
+
+
+/* Pull-to-reveal contacts heading: scroll only this panel, never the document. */
+:root{--vl-topbar-height:52px;--vl-contacts-heading-height:54px;--vl-dock-height:104px}
+.contacts-list-panel{
+ position:fixed;top:calc(var(--vl-topbar-height) - var(--vl-contacts-heading-height));
+ right:0;bottom:calc(var(--vl-dock-height) + env(safe-area-inset-bottom));left:0;
+ z-index:1;width:100%;height:auto;min-height:0;max-height:none;
+ margin:0;padding:var(--vl-contacts-heading-height) 0 0;
+ display:block;overflow:hidden;border:0;border-bottom:1px solid var(--line);
+}
+.contacts-list{
+ display:block;width:100%;height:100%;min-height:0;max-height:100%;
+ overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;
+ -webkit-overflow-scrolling:touch;scrollbar-width:thin;
+}
+.contacts-list-heading{margin-top:0;min-height:54px}
+.contacts-list-items{min-height:0}
+@media(max-width:520px){
+ :root{--vl-dock-height:100px}
+ .contacts-list-panel{margin:0}
+ .contacts-list-heading{min-height:54px;padding-left:14px;padding-right:14px;gap:8px}
+}
