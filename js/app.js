@@ -194,7 +194,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -401,15 +401,41 @@ function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disa
 function stopRinging({suspend=true}={}){
  state.ringingKind=null;
  if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
+ for(const timer of state.ringDiagnosticTimers)clearTimeout(timer);
+ state.ringDiagnosticTimers.length=0;
  const activeNodes=state.ringOscillators.splice(0);
  for(const node of activeNodes){
   try{node.oscillator.stop()}catch{}
   try{node.oscillator.disconnect()}catch{}
   try{node.gain.disconnect()}catch{}
  }
+ if(state.ringMasterGain){try{state.ringMasterGain.disconnect()}catch{};state.ringMasterGain=null}
+ if(state.ringAnalyser){try{state.ringAnalyser.disconnect()}catch{};state.ringAnalyser=null}
  if(suspend&&state.ringContext&&state.ringContext.state==="running"){
   state.ringContext.suspend().catch(error=>debug("[ring] не удалось приостановить AudioContext: "+(error.message||String(error))));
  }
+}
+function prepareRingOutput(context){
+ const master=context.createGain(),analyser=context.createAnalyser();
+ master.gain.setValueAtTime(1,context.currentTime);
+ analyser.fftSize=2048;analyser.smoothingTimeConstant=0;
+ master.connect(analyser);analyser.connect(context.destination);
+ state.ringMasterGain=master;state.ringAnalyser=analyser;
+}
+function logRingOutputRms(label){
+ const analyser=state.ringAnalyser;if(!analyser)return;
+ const samples=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(samples);
+ let sum=0,peak=0;
+ for(const sample of samples){const value=Math.abs(sample);sum+=sample*sample;if(value>peak)peak=value}
+ const rms=Math.sqrt(sum/samples.length);
+ debug(`[ring-audio] ${label}: RMS=${rms.toFixed(6)} peak=${peak.toFixed(6)} context=${state.ringContext?.state||"none"}.`);
+}
+function scheduleRingDiagnostic(label,delay){
+ const timer=setTimeout(()=>{
+  const index=state.ringDiagnosticTimers.indexOf(timer);if(index!==-1)state.ringDiagnosticTimers.splice(index,1);
+  logRingOutputRms(label);
+ },delay);
+ state.ringDiagnosticTimers.push(timer);
 }
 function startContinuousRingback(){
  const context=state.ringContext;
@@ -418,7 +444,7 @@ function startContinuousRingback(){
   oscillator.type="sine";
   oscillator.frequency.setValueAtTime(frequency,context.currentTime);
   gain.gain.setValueAtTime(0,context.currentTime);
-  oscillator.connect(gain);gain.connect(context.destination);
+  oscillator.connect(gain);gain.connect(state.ringMasterGain||context.destination);
   oscillator.start();
   const node={oscillator,gain};
   state.ringOscillators.push(node);
@@ -435,6 +461,8 @@ function startContinuousRingback(){
    gain.gain.linearRampToValueAtTime(0,start+2);
    gain.gain.setValueAtTime(0,start+6);
   }
+  scheduleRingDiagnostic("гудок (через 1 с)",1000);
+  scheduleRingDiagnostic("тишина (через 3 с)",3000);
   state.ringPulseTimer=setTimeout(schedulePulse,5800);
  };
  schedulePulse();
@@ -449,7 +477,7 @@ function scheduleRingTone(frequency,start,duration,{type="sine",volume=0.035,ram
  gain.gain.linearRampToValueAtTime(volume,start+ramp);
  gain.gain.setValueAtTime(volume,start+duration-0.08);
  gain.gain.linearRampToValueAtTime(0,start+duration);
- oscillator.connect(gain);gain.connect(context.destination);
+ oscillator.connect(gain);gain.connect(state.ringMasterGain||context.destination);
  const node={oscillator,gain};
  state.ringOscillators.push(node);
  oscillator.addEventListener("ended",()=>{
@@ -490,6 +518,7 @@ async function startRinging(kind){
   if(state.ringingKind!==kind){debug("[ring] запуск отменён: тип звонка уже изменился.");return}
   if(state.ringContext.state!=="running"){debug("[ring] мелодия не запущена: AudioContext="+state.ringContext.state+"; браузер заблокировал воспроизведение.");return}
   debug("[ring] AudioContext running; запускаем мелодию.");
+  prepareRingOutput(state.ringContext);
   const duration=2,cycle=6;
   const pulse=()=>{
    if(state.ringingKind!==kind)return;
