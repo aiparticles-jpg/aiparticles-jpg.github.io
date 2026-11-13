@@ -848,7 +848,7 @@ details > summary::-webkit-details-marker {
  -webkit-overflow-scrolling:touch;scrollbar-width:thin;
 }
 .contacts-list-heading{margin-top:0;min-height:54px}
-.contacts-list-items{min-height:0}
+.contacts-list-items{min-height:calc(100% + var(--vl-contacts-heading-height))}
 @media(max-width:520px){
  :root{--vl-dock-height:100px}
  .contacts-list-panel{margin:0}
