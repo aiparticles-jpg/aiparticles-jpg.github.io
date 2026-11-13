@@ -194,7 +194,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringResumePromise:null,callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -506,9 +506,22 @@ async function startRinging(kind){
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
   if(!AudioContextClass)throw Error("Web Audio API недоступен");
   if(!state.ringContext)state.ringContext=new AudioContextClass();
-  if(!state.ringContext.__vlStateLogger){
-   state.ringContext.__vlStateLogger=true;
-   state.ringContext.addEventListener("statechange",()=>debug("[ring] AudioContext statechange: "+state.ringContext.state+"."));
+  const ringContext=state.ringContext;
+  if(!ringContext.__vlStateLogger){
+   ringContext.__vlStateLogger=true;
+   ringContext.addEventListener("statechange",()=>{
+    debug("[ring] AudioContext statechange: "+ringContext.state+".");
+    if(ringContext.state!=="suspended"||state.ringContext!==ringContext||!state.ringingKind||state.ringResumePromise)return;
+    const ringingKind=state.ringingKind;
+    debug("[ring] AudioContext сам перешёл в suspended во время звонка; автоматически восстанавливаем аудиопоток.");
+    const resumePromise=ringContext.resume()
+     .then(()=>{
+      if(state.ringContext===ringContext&&state.ringingKind===ringingKind)debug("[ring] AudioContext автоматически восстановлен: "+ringContext.state+".");
+     })
+     .catch(error=>debug("[ring] автоматическое восстановление AudioContext не удалось: "+(error.message||String(error))))
+     .finally(()=>{if(state.ringResumePromise===resumePromise)state.ringResumePromise=null});
+    state.ringResumePromise=resumePromise;
+   });
   }
   debug("[ring] start kind="+kind+"; AudioContext="+state.ringContext.state+"; visibility="+document.visibilityState+"; notificationPermission="+(window.Notification?.permission||"unsupported")+".");
   if(state.ringContext.state==="suspended"){
