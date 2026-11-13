@@ -286,7 +286,7 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 .contacts-list-panel{margin-top:0;padding-top:0;border-top:0}
 .contacts-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .contacts-list-heading{
- position:relative;display:flex;align-items:center;gap:10px;
+ position:relative;display:flex;align-items:center;gap:10px;margin-top:-52px;
  min-height:54px;padding:7px 17px 9px;
 }
 .contacts-list-heading h2{flex:1;margin:0;font-size:17px}
@@ -830,6 +830,3 @@ details > summary::-webkit-details-marker {
   }
 }
 
-
-/* Reserve the initial 52px reveal offset even before contacts are loaded. */
-.shell{min-height:calc(100vh + 52px);min-height:calc(100dvh + 52px)}

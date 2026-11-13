@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=86">
+  <link rel="stylesheet" href="./css/style.css?v=87">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -310,27 +310,12 @@
     </section>
   </main>
 
-t>
   <script>
-    // Set and verify the document scroll position before revealing the page.
+    // Reveal after initial layout without changing the document scroll position.
     (() => {
       const root = document.documentElement;
-      const scroller = document.scrollingElement || root;
-      const revealOffset = 52;
-
-      if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-
       requestAnimationFrame(() => {
-        scroller.scrollTop = revealOffset;
-        if (scroller.scrollTop < revealOffset) window.scrollTo(0, revealOffset);
-
-        requestAnimationFrame(() => {
-          if (scroller.scrollTop < revealOffset) {
-            scroller.scrollTop = revealOffset;
-            window.scrollTo(0, revealOffset);
-          }
-          root.classList.remove("vl-positioning");
-        });
+        requestAnimationFrame(() => root.classList.remove("vl-positioning"));
       });
     })();
   </script>
