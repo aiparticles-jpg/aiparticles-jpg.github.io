@@ -317,7 +317,7 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 /* Full-screen contact view */
 body.contact-screen-open{overflow:hidden}
 .contact-screen{
- position:fixed;inset:0;z-index:200;width:100%;height:100%;height:100dvh;
+ position:fixed;inset:0;z-index:200;width:100%;height:var(--vl-chat-viewport-height,100dvh);top:var(--vl-chat-viewport-top,0px);bottom:auto;
  display:flex;flex-direction:column;background:var(--bg);
 }
 .contact-screen.hidden{display:none}
@@ -914,3 +914,7 @@ body.call-screen-open .topbar{display:none!important}
 /* Move the complete call-control row, including its captions, upward together. */
 .call-screen-stage{padding-bottom:calc(18px + env(safe-area-inset-bottom))!important}
 .call-screen-stage .contact-call-actions{transform:translateY(-8px)}
+
+
+/* Keep the chat screen aligned to the visible viewport while the mobile keyboard is open. */
+body.contact-screen-open .contact-screen{height:var(--vl-chat-viewport-height,100dvh);top:var(--vl-chat-viewport-top,0px);bottom:auto}
