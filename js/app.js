@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js?v=3";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenHeaderSlot:$("call-screen-header-slot"),callScreenDiagnosticsSlot:$("call-screen-diagnostics-slot"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
+ contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
@@ -194,7 +194,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callReturnSnapshot:null,micMuted:false,speakerOutputId:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callPeer:"",callPeerLabel:"",callReturnFocus:null,micMuted:false,speakerOutputId:null};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -347,7 +347,7 @@ async function checkServiceWorkerAvailability(){
 }
 function updateCallButtons(){
  const active=!!(state.peerPresent||state.outgoingCall||state.secure?.active||state.callStarted||state.answeringCall);
- els.contactScreenBack.disabled=!els.callScreen.classList.contains("hidden");
+
  els.connect.classList.toggle("hidden",active);
  els.connect.disabled=active||state.connecting;
  els.connect.textContent=state.connecting?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";
@@ -584,26 +584,34 @@ function clearIncomingUi(){
  if(state.incomingTimer){clearTimeout(state.incomingTimer);state.incomingTimer=null}
  state.incomingCall=false;els.answerIncoming.classList.add("hidden");els.dismissIncoming.classList.add("hidden");els.rejectIncoming.classList.add("hidden");updateCallButtons();
 }
+function setCallPeer(peerId,fallbackLabel=""){
+ state.callPeer=NtfySecureSignaling.validUserId(peerId)&&peerId!==state.me?peerId:"";
+ const item=state.callPeer?Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(node=>node.dataset.peer===state.callPeer):null;
+ const label=item?.querySelector(".contact-list-name")?.textContent?.trim()||String(fallbackLabel||"").trim()||"Контакт";
+ state.callPeerLabel=label;
+ els.callScreenName.textContent=label;
+ els.callScreenAvatar.textContent=contactInitials(label);
+ els.callScreenAvatar.style.backgroundColor=contactAvatarColor(state.callPeer);
+}
 function showIncomingCall({peer,peerId,expiresAt}){
  if(state.connecting||state.callStarted||state.incomingCall)return;
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
- const returnSnapshot=captureCallReturnState();
- if(peerId&&NtfySecureSignaling.validUserId(peerId))els.peer.value=peerId;
+ const incomingPeer=peerId||state.secure?.peer||"";
+ if(!NtfySecureSignaling.validUserId(incomingPeer)||incomingPeer===state.me)return;
  if(state.outgoingCall){
   if(state.secure?.role!=="A"||state.secure?.hello)return;
   stopOutgoingCall();
   debug("Одновременный вызов: роль A принимает входящий запрос; исходящий запрос отменён локально.");
  }
- state.incomingCall=true;state.callReturnSnapshot=returnSnapshot;els.answerIncoming.classList.remove("hidden");els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");
- const incomingItem=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(item=>item.dataset.peer===els.peer.value);
- if(incomingItem)openContactScreen(incomingItem,true);
- else openContactScreen({dataset:{peer:els.peer.value},querySelector:()=>null},true);
+ setCallPeer(incomingPeer,peer);
+ state.incomingCall=true;
+ els.answerIncoming.classList.remove("hidden");els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");
  openCallScreen();
  updateCallButtons();
- const peerLabel=els.peer.selectedOptions[0]?.textContent||"контакт";
- setStatus("Входящий вызов","Вам звонит "+peerLabel+". Нажмите «Ответить», «Отклонить» или «Скрыть вызов».","wait");
- debug("Входящий вызов от "+peerLabel+".");
+ els.callScreenStatus.textContent="Входящий вызов";
+ setStatus("Входящий вызов","Вам звонит "+state.callPeerLabel+". Нажмите «Ответить», «Отклонить» или «Скрыть вызов».","wait");
+ debug("Входящий вызов от "+state.callPeerLabel+".");
  startRinging("incoming");
  state.incomingTimer=setTimeout(()=>dismissIncoming(true),remaining);
 }
@@ -634,7 +642,7 @@ function startOutgoingCall({peer,expiresAt}){
  if(state.outgoingCall||state.incomingCall||state.secure?.ready||state.peerPresent)return;
  const remaining=Math.max(0,expiresAt-Date.now());
  if(!remaining)return;
- state.outgoingCall=true;state.outgoingCallExpiresAt=expiresAt;updateCallButtons();const peerLabel=els.peer.selectedOptions[0]?.textContent||"контакт";setStatus("Вызываем "+peerLabel,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
+ state.outgoingCall=true;state.outgoingCallExpiresAt=expiresAt;updateCallButtons();const peerLabel=state.callPeerLabel||"Контакт";els.callScreenStatus.textContent="Вызываем…";setStatus("Вызываем "+peerLabel,"Ожидаем ответа. Вызов завершится автоматически через 45 секунд.","wait");
  if(state.ringingKind!=="outgoing")startRinging("outgoing");
  scheduleOutgoingCallExpiry();
 }
@@ -697,7 +705,7 @@ function logRemoteAudioPlayback(){
   "; error="+(audio.error?.code||"none"));
 }
 function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
- const me=state.me,peer=els.peer.value;
+ const me=state.me,peer=state.callPeer||state.secure?.peer||els.peer.value;
  const audioDiagnostics=els.debugMode.checked||diagnosticPilot;
  return new WebRtcAudio({
   diagnosticPilot,
@@ -737,7 +745,7 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
    if(value==="local-audio-ready")updateCallButtons();
    else if(value==="connection-connected"){
     if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
-    updateCallButtons();els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")
+    updateCallButtons();if(els.callScreenStatus)els.callScreenStatus.textContent="На связи";els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")
    }
    else if(value==="connection-failed"||value==="ice-failed"){
     if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
@@ -786,7 +794,7 @@ function createSecureSignaling(me,peer=""){
    }
   },
   onRejectOutgoing:info=>{finishRejectedCall(info).catch(error=>showError(error.message||String(error)))},
-  onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(els.peer.value,"incoming_call",info.callId,info.expiresAt).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
+  onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(state.callPeer||state.secure?.peer||info.peer,"incoming_call",info.callId,info.expiresAt).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
   onReady:()=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady().catch(showError)},
   onError:e=>showError(e.message||String(e)),
   onDebug:debug
@@ -912,6 +920,7 @@ if("serviceWorker" in navigator){
 async function onSecureReady(){
  state.answeringCall=false;
  state.peerPresent=true;state.role=state.secure.role==="A"?"initiator":"receiver";
+ if(els.callScreenStatus)els.callScreenStatus.textContent="Соединяемся…";
  updateCallButtons();
  setStatus("Защищённый канал установлен","Запускаем голосовой канал.","wait");
  debug("Защищённый канал установлен; secure-role="+state.role+"; peer="+(state.secure?.peer||els.peer.value)+".");
@@ -939,17 +948,21 @@ async function startWebRtcOffer(){
 }
 
 async function connect(){
- if(els.callScreen.classList.contains("hidden"))openCallScreen();
  const answering=state.incomingCall;
- const peer=els.peer.value;
+ if(!answering)setCallPeer(els.peer.value,els.contactScreenName.textContent);
+ const peer=state.callPeer;
  if(!answering&&contactReplyFailures.has(peer)){
   updateCallButtons();
   showError("Нельзя позвонить: ответное приглашение этому контакту не отправлено.");
   return;
  }
+ openCallScreen();
  state.answeringCall=answering;
- if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging()}
- else startRinging("outgoing"); // Start audio synchronously in the user's click gesture, before async signaling/WebRTC work.
+ if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging();els.callScreenStatus.textContent="Соединяемся…"}
+ else{
+  els.callScreenStatus.textContent="Вызов…";
+  startRinging("outgoing"); // Start audio synchronously in the user's click gesture, before async signaling/WebRTC work.
+ }
  clearError();setBusy(true);
  try{
   const me=state.me;
@@ -1156,6 +1169,10 @@ function renderContactList(contacts){
 }
 async function refreshContactOptions(selectUserId=""){
  const contacts=await listContacts();
+ const callOverlayOpen=!els.callScreen.classList.contains("hidden");
+ const previousPeer=els.peer.value;
+ const previousEditName=els.editContactName.value;
+ const previousOriginalEditName=originalEditContactName;
  contacts.sort((a,b)=>{
   const aRequestTime=Date.parse(a.request_received_at||"")||0;
   const bRequestTime=Date.parse(b.request_received_at||"")||0;
@@ -1168,11 +1185,20 @@ async function refreshContactOptions(selectUserId=""){
  els.peer.replaceChildren(new Option("Выберите контакт",""));
  for(const contact of contacts)els.peer.add(new Option(contact.name,contact.user_id));
  els.peer.disabled=contacts.length===0;
- if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId))els.peer.value=selectUserId;
+ if(callOverlayOpen){
+  if(previousPeer&&contacts.some(contact=>contact.user_id===previousPeer))els.peer.value=previousPeer;
+ }else if(selectUserId&&contacts.some(contact=>contact.user_id===selectUserId)){
+  els.peer.value=selectUserId;
+ }
  contactsLoaded=true;
  renderContactList(contacts);
- els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
- originalEditContactName=els.editContactName.value.trim();
+ if(callOverlayOpen){
+  els.editContactName.value=previousEditName;
+  originalEditContactName=previousOriginalEditName;
+ }else{
+  els.editContactName.value=els.peer.selectedOptions[0]?.textContent||"";
+  originalEditContactName=els.editContactName.value.trim();
+ }
  updateReplyInviteStatus();
  updateCallButtons();
 }
@@ -1722,7 +1748,7 @@ document.addEventListener("pointerdown",event=>{
  }
 });
 document.addEventListener("keydown",event=>{
- if(event.key!=="Escape")return;
+ if(event.key!=="Escape"||!els.callScreen.classList.contains("hidden"))return;
  const openMenu=contextMenus.find(menu=>menu.open);
  if(!openMenu)return;
  closeContextMenus();
@@ -1843,68 +1869,29 @@ async function sendChatMessage(){
   updateChatComposerState();
  }
 }
-const CALL_RETURN_SCREEN_IDS=["contact-screen","profile-screen","diagnostic-screen","add-contact-screen","about-screen","settings-screen","contact-edit-screen","contact-delete-screen"];
-function captureCallReturnState(){
- return {
-  screens:Object.fromEntries(CALL_RETURN_SCREEN_IDS.map(id=>[id,$(id)?.classList.contains("hidden")??true])),
-  contactScreenOpen:document.body.classList.contains("contact-screen-open"),
-  peer:els.peer.value,
-  contactName:els.contactScreenName.textContent,
-  contactAvatar:els.contactScreenAvatar.textContent,
-  contactAvatarColor:els.contactScreenAvatar.style.backgroundColor,
-  chatScrollTop:els.chatEvents.scrollTop
- };
-}
-function restoreCallReturnState(snapshot){
- if(!snapshot)return;
- for(const [id,hidden] of Object.entries(snapshot.screens||{})){
-  const screen=$(id);
-  if(!screen)continue;
-  screen.classList.toggle("hidden",hidden);
- }
- document.body.classList.toggle("contact-screen-open",!!snapshot.contactScreenOpen);
- if(snapshot.peer&&els.peer.value!==snapshot.peer){
-  els.peer.value=snapshot.peer;
-  els.peer.dispatchEvent(new Event("change",{bubbles:true}));
- }
- els.contactScreenName.textContent=snapshot.contactName||"";
- els.contactScreenAvatar.textContent=snapshot.contactAvatar||"";
- els.contactScreenAvatar.style.backgroundColor=snapshot.contactAvatarColor||"";
- if(!snapshot.screens?.["contact-screen"]&&snapshot.peer){
-  renderConversation(snapshot.peer).then(()=>{els.chatEvents.scrollTop=snapshot.chatScrollTop||0;})
-   .catch(error=>debug("Не удалось восстановить прежнюю переписку после звонка: "+(error.message||String(error))));
- }
-}
 function openCallScreen(){
- if(els.contactScreen.classList.contains("hidden"))return false;
- if(!state.callReturnSnapshot)state.callReturnSnapshot=captureCallReturnState();
+ if(!els.callScreen.classList.contains("hidden"))return true;
  clearError();
- els.contactScreen.classList.add("hidden");
+ state.callReturnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
  els.callScreen.classList.remove("hidden");
- els.callScreenHeaderSlot.append(els.contactScreenHeader);
- els.contactScreenHeader.classList.add("call-screen-header-mode");
- els.callScreenDiagnosticsSlot.append(els.contactDiagnosticsFooter);
- document.body.classList.add("contact-screen-open");
+ document.body.classList.add("call-screen-open");
  updateCallButtons();
- els.contactScreenBack.focus();
+ els.callScreen.focus({preventScroll:true});
  return true;
 }
 function closeCallScreen(){
  if(els.callScreen.classList.contains("hidden"))return;
  els.callScreen.classList.add("hidden");
- els.contactScreenHeader.classList.remove("call-screen-header-mode");
- els.contactScreenHeaderPlaceholder.insertAdjacentElement("afterend",els.contactScreenHeader);
- els.contactDiagnosticsPlaceholder.insertAdjacentElement("afterend",els.contactDiagnosticsFooter);
- const returnState=state.callReturnSnapshot;
- state.callReturnSnapshot=null;
- if(returnState)restoreCallReturnState(returnState);
- else{
-  els.contactScreen.classList.remove("hidden");
-  document.body.classList.add("contact-screen-open");
- }
+ document.body.classList.remove("call-screen-open");
+ const returnFocus=state.callReturnFocus;
+ state.callReturnFocus=null;
+ state.callPeer="";
+ state.callPeerLabel="";
  clearError();
  updateCallButtons();
- if(!els.contactScreen.classList.contains("hidden"))els.contactScreenBack.focus();
+ if(returnFocus?.isConnected&&!returnFocus.closest(".hidden")){
+  try{returnFocus.focus({preventScroll:true})}catch{}
+ }
 }
 function handleContactScreenBack(){
  if(!els.callScreen.classList.contains("hidden"))return;
@@ -1997,7 +1984,7 @@ els.contactEditScreenBack.addEventListener("click",closeContactEditScreen);
 els.contactDeleteScreenBack.addEventListener("click",closeContactDeleteScreen);
 els.cancelDeleteContact.addEventListener("click",closeContactDeleteScreen);
 document.addEventListener("keydown",event=>{
- if(event.key!=="Escape")return;
+ if(event.key!=="Escape"||!els.callScreen.classList.contains("hidden"))return;
  if(!els.contactDeleteScreen.classList.contains("hidden"))closeContactDeleteScreen();
  else if(!els.contactEditScreen.classList.contains("hidden"))closeContactEditScreen();
  else if(!els.profileScreen.classList.contains("hidden"))closeProfileScreen();

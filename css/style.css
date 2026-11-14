@@ -602,27 +602,28 @@ body.contact-screen-open{overflow:hidden}
 .contact-list-status[data-status-type="error"]{color:#ffabb0!important;font-weight:700}
 
 
-/* Dedicated call screen: the message view stays underneath and is restored after the call. */
+/* Call UI is an independent modal layer; the screen underneath is never hidden or rearranged. */
 .call-screen{
- position:fixed;inset:0;z-index:220;width:100%;height:100%;height:100dvh;
+ position:fixed;inset:0;z-index:300;width:100%;height:100%;height:100dvh;
  display:flex;flex-direction:column;background:var(--bg);
 }
 .call-screen.hidden{display:none}
-.call-screen .contact-screen-header{width:100%}
-.call-screen .contact-screen-header.call-screen-header-mode .contact-screen-call{display:none}
+.call-screen .call-screen-header{width:100%;}
+.call-screen .call-screen-header .contact-screen-name{margin-right:8px}
+.call-screen-status{margin:0;color:var(--muted);font-size:14px;font-weight:600;text-align:center;letter-spacing:.1px}
+body.call-screen-open{overflow:hidden}
 .call-screen-content{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;justify-content:center;padding:24px 16px}
 .call-screen-stage{width:100%;max-width:420px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
 .call-screen-stage .contact-call-actions{width:100%;gap:12px}
 .call-screen-stage .contact-call-actions .button{min-height:48px}
 .call-screen-stage .error-message{margin:0}
-.call-screen #call-screen-diagnostics-slot{flex:0 0 auto;width:100%}
 @media(max-width:520px){
  .call-screen-content{padding:18px 12px}
  .call-screen-stage{gap:14px}
 }
 
 
-/* Diagnostics must appear above the dedicated call screen when opened during a call. */
+/* The call overlay stays above every application screen. */
 #diagnostic-screen{z-index:230}
 
 .log-copy-button{padding:7px 10px;font-size:11px;flex:0 0 auto}

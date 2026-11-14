@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=92">
+  <link rel="stylesheet" href="./css/style.css?v=93">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -38,7 +38,7 @@
     <header class="topbar">
       <button id="brand-about" class="brand brand-button" type="button" aria-label="О приложении Voice Link">
         <span class="brand-mark">V</span>
-        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.14-161</small></span>
+        <span class="brand-copy"><span class="brand-name">voice<span class="brand-light">link</span></span><small id="app-version" class="brand-version">Версия 2026.11.14-162</small></span>
       </button>
       <div class="topbar-actions">
         <details id="header-menu" class="header-menu">
@@ -169,10 +169,14 @@
       </form>
     </section>
 
-    <section id="call-screen" class="call-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-screen-name">
-      <div id="call-screen-header-slot"></div>
+    <section id="call-screen" class="call-screen hidden" role="dialog" aria-modal="true" aria-labelledby="call-screen-name" tabindex="-1">
+      <header class="contact-screen-header call-screen-header">
+        <span id="call-screen-avatar" class="contact-screen-avatar"></span>
+        <h2 id="call-screen-name" class="contact-screen-name">Контакт</h2>
+      </header>
       <div class="call-screen-content">
         <div class="call-screen-stage">
+          <p id="call-screen-status" class="call-screen-status" aria-live="polite">Вызов</p>
           <div class="contact-call-actions">
             <button id="answer-incoming" class="button button-primary call-round-action hidden" type="button" aria-label="Ответить" title="Ответить"><svg class="call-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.84.58 2.8.7A2 2 0 0 1 22 16.92Z"/></svg></button>
             <button id="reject-incoming" class="button button-danger call-round-action call-reject-action hidden" type="button" aria-label="Отклонить" title="Отклонить"><svg class="call-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.84.58 2.8.7A2 2 0 0 1 22 16.92Z"/></svg></button>
@@ -185,7 +189,6 @@
           <p id="call-error-message" class="error-message hidden" role="alert"></p>
         </div>
       </div>
-      <div id="call-screen-diagnostics-slot"></div>
     </section>
 
     <section id="contact-edit-screen" class="contact-edit-screen hidden" role="dialog" aria-modal="true" aria-labelledby="contact-edit-screen-title">
@@ -361,6 +364,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=213"></script>
+  <script type="module" src="./js/app.js?v=214"></script>
 </body>
 </html>
