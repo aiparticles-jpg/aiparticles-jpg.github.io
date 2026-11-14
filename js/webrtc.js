@@ -48,6 +48,7 @@ export class WebRtcAudio {
     this.localStream = null;
     this.outgoingStream = null;
     this.pilotOscillator = null;
+    this.pilotOutputGain = null;
     this.remoteAnalyser = null;
     this.remoteAnalyserBuffer = null;
     this.signalMonitors = new Map();
@@ -70,14 +71,18 @@ export class WebRtcAudio {
         const destination = this.audioContext.createMediaStreamDestination();
         const oscillator = this.audioContext.createOscillator();
         const gain = this.audioContext.createGain();
+        const outputGate = this.audioContext.createGain();
         oscillator.type = "sine";
         oscillator.frequency.value = 997;
         gain.gain.value = 0.025;
+        outputGate.gain.value = this.micEnabled ? 1 : 0;
         oscillator.connect(gain);
         this.createSignalMonitorFromNode(gain, "pilot-source");
-        gain.connect(destination);
+        gain.connect(outputGate);
+        outputGate.connect(destination);
         oscillator.start();
         this.pilotOscillator = oscillator;
+        this.pilotOutputGain = outputGate;
         this.localStream = destination.stream;
         this.outgoingStream = this.localStream;
         this.onState("Симуляция микрофона: генерируется тестовый тон 997 Hz; физический микрофон не используется.");
@@ -95,7 +100,9 @@ export class WebRtcAudio {
       const track = this.localStream.getAudioTracks()[0];
       if (track) {
         // Capture begins only after acceptance; respect the current mute state.
-        track.enabled = this.micEnabled;
+        // Keep a simulated MediaStreamTrack enabled in Firefox/Chrome.
+        // Mute the generated signal upstream with pilotOutputGain instead.
+        track.enabled = this.diagnosticPilot ? true : this.micEnabled;
         await this.attachLocalAudioTrack();
         if (this.audioDiagnostics) {
           this.createSignalMonitorFromStream(this.localStream, "local-track");
@@ -119,7 +126,16 @@ export class WebRtcAudio {
 
   setMicEnabled(enabled) {
     this.micEnabled = !!enabled;
-    if (this.localStream) {
+    if (this.diagnosticPilot) {
+      if (this.pilotOutputGain && this.audioContext) {
+        const now = this.audioContext.currentTime;
+        this.pilotOutputGain.gain.cancelScheduledValues(now);
+        this.pilotOutputGain.gain.setTargetAtTime(this.micEnabled ? 1 : 0, now, 0.015);
+      }
+      // Do not disable the generated track: some browsers couple track.enabled
+      // to capture/playback state. A zero-gain gate mutes only our outgoing tone.
+      for (const track of this.localStream?.getAudioTracks?.() || []) track.enabled = true;
+    } else if (this.localStream) {
       for (const track of this.localStream.getAudioTracks()) track.enabled = this.micEnabled;
     }
     this.onState("Микрофон " + (this.micEnabled ? "включён" : "выключен"));
@@ -128,7 +144,7 @@ export class WebRtcAudio {
   async attachLocalAudioTrack() {
     const track = this.localStream?.getAudioTracks?.()[0];
     if (!track || !this.audioSender) return false;
-    track.enabled = this.micEnabled;
+    track.enabled = this.diagnosticPilot ? true : this.micEnabled;
     await this.audioSender.replaceTrack(track);
     this.onState("local-audio-ready");
     return true;
@@ -701,6 +717,10 @@ export class WebRtcAudio {
       try { this.pilotOscillator.stop(); } catch {}
       this.pilotOscillator.disconnect();
       this.pilotOscillator = null;
+    }
+    if (this.pilotOutputGain) {
+      try { this.pilotOutputGain.disconnect(); } catch {}
+      this.pilotOutputGain = null;
     }
     for (const monitor of this.signalMonitors.values()) {
       try { monitor.analyser.disconnect(); } catch {}
