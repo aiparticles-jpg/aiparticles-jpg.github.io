@@ -78,10 +78,6 @@
         <h2 id="add-contact-screen-title" class="contact-edit-screen-title">Добавить контакт</h2>
       </header>
       <div class="contact-edit-screen-content add-contact-screen-content">
-      <div id="first-contact-welcome" class="first-contact-welcome hidden" aria-live="polite">
-        <h3>Добро пожаловать в VoiceLink!</h3>
-        <p>Здесь не нужно регистрироваться — просто добавьте первый контакт и начинайте звонить!</p>
-      </div>
       <div id="contact-tools" class="contact-tools">
         <div id="contact-invitation-entry">
           <p class="hint">Вставьте сюда ссылку-приглашение, полученную от собеседника, или отсканируйте его QR-код.</p>
@@ -94,21 +90,27 @@
           </div>
           </div>
         </div>
-        <div class="contact-name-section">
-          <label class="field-label" for="contact-name">Как назвать контакт в вашем списке?</label>
-          <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
-          <p class="hint">После добавления мы автоматически отправим собеседнику ваше приглашение с данными для установки связи.</p>
+        <div id="contact-invitation-details" class="hidden">
+          <div id="first-contact-welcome" class="first-contact-welcome hidden" aria-live="polite">
+            <h3>Добро пожаловать в VoiceLink!</h3>
+            <p>Здесь не нужно регистрироваться — просто добавьте первый контакт и начинайте звонить!</p>
+          </div>
+          <div class="contact-name-section">
+            <label class="field-label" for="contact-name">Как назвать контакт в вашем списке?</label>
+            <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
+            <p class="hint">После добавления мы автоматически отправим собеседнику ваше приглашение с данными для установки связи.</p>
+          </div>
+          <div id="response-display-name-section" class="response-display-name-section hidden">
+            <label class="field-label" for="response-display-name">Как вас увидит собеседник?</label>
+            <input id="response-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Например, Алексей">
+            <p class="hint">Указывать необязательно, но так собеседнику будет проще понять, от кого приглашение.</p>
+            <label class="response-display-name-save" for="save-response-display-name">
+              <input id="save-response-display-name" type="checkbox" disabled>
+              <span>Сохранить как имя в вашем профиле</span>
+            </label>
+          </div>
+          <button id="import-contact" class="button button-primary" type="button">Добавить контакт</button>
         </div>
-        <div id="response-display-name-section" class="response-display-name-section hidden">
-          <label class="field-label" for="response-display-name">Как вас увидит собеседник?</label>
-          <input id="response-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Например, Алексей">
-          <p class="hint">Указывать необязательно, но так собеседнику будет проще понять, от кого приглашение.</p>
-          <label class="response-display-name-save" for="save-response-display-name">
-            <input id="save-response-display-name" type="checkbox" disabled>
-            <span>Сохранить как имя в вашем профиле</span>
-          </label>
-        </div>
-        <button id="import-contact" class="button button-primary" type="button">Добавить контакт</button>
         <p id="qr-status" class="hint" aria-live="polite"></p>
       </div>
       </div>
@@ -371,6 +373,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=224"></script>
+  <script type="module" src="./js/app.js?v=225"></script>
 </body>
 </html>

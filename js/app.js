@@ -13,7 +13,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
-  contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
+  contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactInvitationDetails:$("contact-invitation-details"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
 function syncContactScreenOpenClass(){
  const overlayScreens=[
@@ -1343,34 +1343,16 @@ async function copyContactInvitation(event){
 }
 
 async function pasteContactInvitation(event){
- event?.preventDefault();
- event?.stopPropagation();
+ event?.preventDefault();event?.stopPropagation();
  try{
   if(!navigator.clipboard?.readText)throw Error("Чтение буфера обмена не поддерживается этим браузером.");
   const value=await navigator.clipboard.readText();
-  if(!value.trim()){
-   setInlineStatus(els.qrStatus,"Буфер обмена пуст.");
-   return;
-  }
-  const clipboardValue=value.trim();
-  try{
-   const pastedContact=await verifyContactPackage(clipboardValue);
-   const ownIdentity=await getCurrentSignalingIdentity();
-   if(pastedContact.user_id===ownIdentity.user_id){
-    setInlineStatus(els.qrStatus,"Это ваше собственное приглашение. Его нельзя добавить как контакт.",true);
-    return;
-   }
-  }catch{
-   // Некорректные или неподдерживаемые данные останутся на обычной проверке при сохранении.
-  }
-  els.contactPackage.value=clipboardValue;
+  if(!value.trim()){setInlineStatus(els.qrStatus,"Буфер обмена пуст.",true);return}
+  els.contactPackage.value=value.trim();
   els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
-  await suggestContactNameFromInvitation(clipboardValue);
-  setInlineStatus(els.qrStatus,"Содержимое буфера вставлено. Укажите имя контакта.");
-  els.contactName.focus();
+  await validateContactInvitation(els.contactPackage.value,"Вставленная ссылка");
  }catch(error){
   setInlineStatus(els.qrStatus,"Не удалось прочитать буфер обмена. Разрешите доступ браузеру или вставьте ссылку в поле вручную.",true);
-  els.contactPackage.focus();
   debug("Не удалось вставить приглашение из буфера обмена: "+(error.message||String(error)));
  }
 }
@@ -1641,10 +1623,8 @@ async function startQrScan(){
     if(codes.length&&codes[0].rawValue){
      els.contactPackage.value=codes[0].rawValue;
      els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
-     await suggestContactNameFromInvitation(codes[0].rawValue);
      await stopQrScan();
-     els.qrStatus.textContent="QR-код считан. Приглашение добавлено в поле. Укажите имя контакта.";
-     els.contactName.focus();
+     await validateContactInvitation(codes[0].rawValue,"QR-код");
      return;
     }
    }catch(error){debug("Ошибка чтения QR: "+(error.message||String(error)))}
@@ -1658,18 +1638,31 @@ async function startQrScan(){
 }
 
 let contactInvitationLookupRevision=0;
-async function suggestContactNameFromInvitation(value){
- const revision=++contactInvitationLookupRevision;
- const invitation=String(value||"").trim();
- if(!invitation||els.contactName.value.trim())return;
+async function validateContactInvitation(value,source="Ссылка-приглашение"){
+ const revision=++contactInvitationLookupRevision,invitation=String(value||"").trim();
+ els.contactInvitationEntry.classList.add("hidden");
+ els.contactInvitationDetails.classList.add("hidden");els.firstContactWelcome.classList.add("hidden");
+ clearInlineStatus(els.qrStatus);
+ if(!invitation){setInlineStatus(els.qrStatus,"Вставьте ссылку-приглашение или отсканируйте QR-код.",true);return false}
  try{
   const contact=await verifyContactPackage(invitation);
-  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value.trim()||els.contactName.value.trim())return;
-  if(contact.display_name){els.contactName.value=contact.display_name;updateImportContactButton();}
- }catch{}
+  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value.trim())return false;
+  const ownIdentity=await getCurrentSignalingIdentity();
+  if(contact.user_id===ownIdentity.user_id)throw Error("Это ваше собственное приглашение. Его нельзя добавить как контакт.");
+  els.contactInvitationDetails.classList.remove("hidden");
+  els.firstContactWelcome.classList.toggle("hidden",allContacts.length!==0);
+  if(contact.display_name&&!els.contactName.value.trim())els.contactName.value=contact.display_name;
+  updateResponseDisplayNameSection();updateImportContactButton();
+  setInlineStatus(els.qrStatus,source+" проверена. Укажите локальное имя контакта.");
+  els.contactName.focus();return true;
+ }catch(error){
+  if(revision!==contactInvitationLookupRevision)return false;
+  setInlineStatus(els.qrStatus,error.message||"Не удалось проверить приглашение.",true);return false;
+ }
 }
 function updatePasteContactButton(){els.pasteContact.textContent="Вставить";els.pasteContact.disabled=els.contactPackage.value.length>0;}
-els.contactPackage.addEventListener("input",()=>{updateImportContactButton();updatePasteContactButton();suggestContactNameFromInvitation(els.contactPackage.value);});
+els.contactPackage.addEventListener("input",()=>{updateImportContactButton();updatePasteContactButton();});
+els.contactPackage.addEventListener("paste",()=>{setTimeout(()=>validateContactInvitation(els.contactPackage.value,"Вставленная ссылка"),0);});
 els.pasteContact.addEventListener("click",pasteContactInvitation);
 updatePasteContactButton();
 
@@ -1837,21 +1830,16 @@ function updateResponseDisplayNameSection(){
 }
 function openAddContactScreen(pasteFromClipboard=false,{preserveInput=false,fromInvitation=false}={}){
  clearInlineStatus(els.qrStatus);clearError();
- els.contactInvitationEntry.classList.toggle("hidden",fromInvitation);
+ els.contactInvitationEntry.classList.remove("hidden");
+ els.contactInvitationDetails.classList.add("hidden");els.firstContactWelcome.classList.add("hidden");
  if(!preserveInput){
-  els.contactPackage.value="";
-  els.contactName.value="";
-  els.responseDisplayName.value="";
-  els.saveResponseDisplayName.checked=false;
+  els.contactPackage.value="";els.contactName.value="";els.responseDisplayName.value="";els.saveResponseDisplayName.checked=false;
   els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
  }
  updateResponseDisplayNameSection();
- els.firstContactWelcome.classList.toggle("hidden",allContacts.length!==0);
- els.addContactScreen.classList.remove("hidden");
- document.body.classList.add("contact-screen-open");
- els.contactTools.open=true;
- if(pasteFromClipboard)pasteContactInvitation();
- else els.contactPackage.focus();
+ els.addContactScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.contactTools.open=true;
+ if(fromInvitation){els.contactInvitationEntry.classList.add("hidden");validateContactInvitation(els.contactPackage.value,"Ссылка-приглашение")}
+ else if(pasteFromClipboard)pasteContactInvitation();else els.contactPackage.focus();
 }
 function closeAddContactScreen(){
  if(qrScanActive)stopQrScan();
@@ -2202,15 +2190,6 @@ async function initializeApp(){
     els.contactPackage.value=window.location.hash;
     updatePasteContactButton();
     openAddContactScreen(false,{preserveInput:true,fromInvitation:true});
-    try{
-     const invitation=await verifyContactPackage(window.location.hash);
-     if(invitation.display_name&&!els.contactName.value.trim())els.contactName.value=invitation.display_name;
-     updateImportContactButton();
-     els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта.";
-     els.contactName.focus();
-    }catch(invitationError){
-     setInlineStatus(els.qrStatus,invitationError.message||"Не удалось проверить приглашение.",true);
-    }
    }
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
