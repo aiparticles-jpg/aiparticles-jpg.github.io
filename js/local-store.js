@@ -76,16 +76,41 @@ async function openTransaction(storeNames, mode) {
 }
 
 
-export async function createIssuedInvitation({ id, secret, created_at = Date.now(), max_activations = 1 }) {
+export async function createIssuedInvitation({ id, secret, created_at = Date.now(), max_activations = 1, local_contact_name = "" }) {
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id) ||
       typeof secret !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(secret) ||
-      !Number.isFinite(Number(created_at)) || !Number.isInteger(max_activations) || max_activations < 1) {
-    throw new TypeError("A valid invitation ID, 256-bit secret, creation time, and activation limit are required.");
+      !Number.isFinite(Number(created_at)) || !Number.isInteger(max_activations) || max_activations < 1 ||
+      typeof local_contact_name !== "string") {
+    throw new TypeError("A valid invitation ID, 256-bit secret, creation time, activation limit, and local contact name are required.");
   }
   const tx = await openTransaction("invitations", "readwrite");
   const done = transactionDone(tx);
-  tx.objectStore("invitations").add({ id, secret, created_at: Number(created_at), max_activations, activations: [], revoked: false });
+  tx.objectStore("invitations").add({
+    id, secret, created_at: Number(created_at), max_activations,
+    local_contact_name: local_contact_name.trim().slice(0, 60),
+    activations: [], revoked: false
+  });
   await done;
+}
+
+export async function updateIssuedInvitationLocalName(invitationId, localContactName = "") {
+  if (typeof invitationId !== "string" || !/^[0-9a-f-]{36}$/i.test(invitationId) ||
+      typeof localContactName !== "string") {
+    throw new TypeError("A valid invitation ID and local contact name are required.");
+  }
+  const tx = await openTransaction("invitations", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("invitations");
+  const invitation = await requestValue(store.get(invitationId));
+  if (!invitation) {
+    tx.abort();
+    try { await done; } catch {}
+    return null;
+  }
+  invitation.local_contact_name = localContactName.trim().slice(0, 60);
+  store.put(invitation);
+  await done;
+  return invitation;
 }
 
 export async function getIssuedInvitation(invitationId) {
