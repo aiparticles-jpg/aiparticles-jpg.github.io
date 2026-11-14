@@ -1432,10 +1432,10 @@ async function acceptContactRequest(){
  if(!contact?.request_pending)return;
  els.acceptContactRequest.disabled=true;
  try{
-  await saveContact({...contact,request_pending:false});
+  await saveContact({...contact,request_pending:false,last_interaction_at:new Date().toISOString()});
   await refreshContactOptions(peer);
   setStatus("Контакт добавлен","Теперь можно звонить этому контакту.","idle");
-  debug("Запрос принят; контакт "+contact.name+" сохранён на прежнем месте в списке.");
+  debug("Запрос принят; контакт "+contact.name+" поднят на первое место в списке.");
  }catch(error){
   showError("Не удалось добавить контакт: "+(error.message||String(error)));
  }finally{
@@ -1544,9 +1544,10 @@ async function importContactFromInput(){
   if(!localInvitation)await createIssuedInvitation({id:verified.invitation_id,secret:verified.invitation_secret,created_at:verified.shared_secret_created_at,max_activations:1});
   const localGrant=await consumeIssuedInvitation({invitationId:verified.invitation_id,userId:verified.user_id,requestId:crypto.randomUUID()});
   if(!localGrant.accepted)throw Error("Не удалось зарегистрировать локальное разрешение для контакта.");
+  const addedAt=new Date().toISOString();
   await saveContact(existing
-   ?{...existing,...verified,name:existing.name}
-   :{...verified,name});
+   ?{...existing,...verified,name:existing.name,last_interaction_at:addedAt}
+   :{...verified,name,last_interaction_at:addedAt});
   await refreshContactOptions(verified.user_id);
   if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
   if(saveSenderName){
