@@ -907,3 +907,7 @@ body.call-screen-open .topbar{display:none!important}
  .call-screen-stage .contact-call-actions .call-hangup-action,
  .call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{flex-basis:62px!important;width:62px!important;height:62px!important;min-height:62px!important}
 }
+
+
+/* Keep call-control captions above the rounded bottom screen corners. Match the main dock's bottom breathing room. */
+.call-screen-stage{padding-bottom:17px!important}
