@@ -15,6 +15,15 @@ const els={
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
+function syncContactScreenOpenClass(){
+ const overlayScreens=[
+  els.profileScreen,els.diagnosticScreen,els.addContactScreen,
+  els.contactScreen,els.contactEditScreen,els.contactDeleteScreen,
+  els.aboutScreen,els.settingsScreen
+ ];
+ const hasOpenScreen=overlayScreens.some(screen=>screen&&!screen.classList.contains("hidden"));
+ document.body.classList.toggle("contact-screen-open",hasOpenScreen);
+}
 window.voicelinkIsReadingChat=senderId=>
  document.visibilityState==="visible"&&
  !els.contactScreen.classList.contains("hidden")&&
@@ -1648,10 +1657,10 @@ els.inviteTools.addEventListener("toggle",()=>{
  if(els.inviteTools.open)updateInvitationPanel();
 });
 function openProfileScreen(){clearInlineStatus(els.inviteStatus);clearError();els.profileScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.inviteTools.open=true;updateInvitationPanel();els.profileScreenBack.focus();}
-function closeProfileScreen(){clearInlineStatus(els.inviteStatus);els.profileScreen.classList.add("hidden");document.body.classList.remove("contact-screen-open");els.profileDockButton.focus();}
+function closeProfileScreen(){clearInlineStatus(els.inviteStatus);els.profileScreen.classList.add("hidden");syncContactScreenOpenClass();els.profileDockButton.focus();}
 let diagnosticReturnFocus=null;
 function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");resetDiagnosticLogAutoFollow();els.diagnosticScreenBack.focus();}
-function closeDiagnosticScreen(){els.diagnosticScreen.classList.add("hidden");document.body.classList.remove("contact-screen-open");if(diagnosticReturnFocus?.isConnected&&!diagnosticReturnFocus.classList.contains("hidden"))diagnosticReturnFocus.focus();else els.brandAbout.focus();diagnosticReturnFocus=null;}
+function closeDiagnosticScreen(){els.diagnosticScreen.classList.add("hidden");syncContactScreenOpenClass();if(diagnosticReturnFocus?.isConnected&&!diagnosticReturnFocus.classList.contains("hidden"))diagnosticReturnFocus.focus();else els.brandAbout.focus();diagnosticReturnFocus=null;}
 let profileLongPressTimer=null,profileLongPressTriggered=false;
 els.profileDockButton.addEventListener("click",event=>{if(profileLongPressTriggered){event.preventDefault();profileLongPressTriggered=false;return;}openProfileScreen();});
 els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
@@ -1735,7 +1744,7 @@ function openAboutScreen(){
 }
 function closeAboutScreen(){
  els.aboutScreen.classList.add("hidden");
- document.body.classList.remove("contact-screen-open");
+ syncContactScreenOpenClass();
  els.brandAbout.focus();
 }
 function openSettingsScreen(){
@@ -1746,7 +1755,7 @@ function openSettingsScreen(){
 }
 function closeSettingsScreen(){
  els.settingsScreen.classList.add("hidden");
- document.body.classList.remove("contact-screen-open");
+ syncContactScreenOpenClass();
  els.headerMenu.querySelector("summary").focus();
 }
 els.brandAbout.addEventListener("click",openAboutScreen);
@@ -1805,7 +1814,7 @@ function closeAddContactScreen(){
  els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
  clearInlineStatus(els.qrStatus);
  els.addContactScreen.classList.add("hidden");
- document.body.classList.remove("contact-screen-open");
+ syncContactScreenOpenClass();
  els.addContactFab.focus();
 }
 
@@ -1993,7 +2002,7 @@ function closeContactScreen(){
  els.contactEditScreen.classList.add("hidden");
  els.contactDeleteScreen.classList.add("hidden");
  els.contactScreen.classList.add("hidden");
- document.body.classList.remove("contact-screen-open");
+ syncContactScreenOpenClass();
  els.contactScreenMenu.open=false;
 }
 els.contactList.addEventListener("click",event=>{
@@ -2051,12 +2060,18 @@ els.peer.addEventListener("change",()=>{
 
 document.addEventListener("visibilitychange",()=>{
  if(!document.hidden){
+  syncContactScreenOpenClass();
   reconcileOutgoingCallExpiry();
-
  }
 });
-window.addEventListener("pageshow",reconcileOutgoingCallExpiry);
-window.addEventListener("focus",reconcileOutgoingCallExpiry);
+window.addEventListener("pageshow",()=>{
+ syncContactScreenOpenClass();
+ reconcileOutgoingCallExpiry();
+});
+window.addEventListener("focus",()=>{
+ syncContactScreenOpenClass();
+ reconcileOutgoingCallExpiry();
+});
 
 els.hangup.addEventListener("click",hangup);
 els.micToggle.addEventListener("click",()=>{
