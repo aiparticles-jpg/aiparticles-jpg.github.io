@@ -2,7 +2,7 @@ import { WebRtcAudio } from "./webrtc.js?v=32";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, updateIssuedInvitationLocalName, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=16";
-import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=13";
+import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=14";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=4";
 
@@ -1653,7 +1653,7 @@ async function validateContactInvitation(value,source="Ссылка-пригла
   els.firstContactWelcome.classList.toggle("hidden",allContacts.length!==0);
   if(contact.display_name&&!els.contactName.value.trim())els.contactName.value=contact.display_name;
   updateResponseDisplayNameSection();updateImportContactButton();
-  setInlineStatus(els.qrStatus,source+" проверена. Укажите локальное имя контакта.");
+  clearInlineStatus(els.qrStatus);
   els.contactName.focus();return true;
  }catch(error){
   if(revision!==contactInvitationLookupRevision)return false;

@@ -2,7 +2,7 @@ export const INVITATION_FORMAT_VERSION="2026-11-10T14:00:00Z";
 const enc=new TextEncoder(),stable=v=>JSON.stringify(v);
 const b64u=v=>{let s="";for(const b of new Uint8Array(v))s+=String.fromCharCode(b);return btoa(s).replaceAll("+","-").replaceAll("/","_").replace(/=+$/g,"")};
 const un64=s=>{if(typeof s!=="string"||!/^[A-Za-z0-9_-]+$/.test(s))throw TypeError("Некорректное base64url-значение.");s=s.replaceAll("-","+").replaceAll("_","/");return Uint8Array.from(atob(s+"=".repeat((4-s.length%4)%4)),c=>c.charCodeAt(0))};
-function decodeInput(input){const raw=String(input||"").trim();if(!raw)throw Error("Вставьте ссылку или пакет контакта.");let value=raw;try{const u=new URL(raw);value=new URLSearchParams(u.hash.slice(1)).get("contact")||raw}catch{if(raw.startsWith("#"))value=new URLSearchParams(raw.slice(1)).get("contact")||raw}return value.startsWith("{")?JSON.parse(value):JSON.parse(new TextDecoder().decode(un64(value)))}
+function decodeInput(input){const raw=String(input||"").trim();if(!raw)throw Error("Вставьте ссылку или пакет контакта.");let value=raw;try{const u=new URL(raw);value=new URLSearchParams(u.hash.slice(1)).get("contact")||raw}catch{if(raw.startsWith("#"))value=new URLSearchParams(raw.slice(1)).get("contact")||raw}try{return value.startsWith("{")?JSON.parse(value):JSON.parse(new TextDecoder().decode(un64(value)))}catch{throw Error("Ссылка-приглашение повреждена или изменена. Проверьте её и попробуйте ещё раз.")}}
 export async function verifyContactPackage(input){
  const c=typeof input==="string"?decodeInput(input):input;
  if(!c||typeof c!=="object"||Array.isArray(c))throw Error("Некорректный формат приглашения.");
