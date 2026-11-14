@@ -250,7 +250,14 @@ async function copyDiagnosticLog(element,button){
   debug("Не удалось скопировать журнал: "+(error.message||String(error)));
  }
 }
+function notifyServiceWorkerDiagnosticMode(enabled){
+ if(!("serviceWorker" in navigator))return;
+ const send=worker=>{try{worker?.postMessage({type:"VL_SET_DIAGNOSTIC_MODE",enabled:!!enabled})}catch{}};
+ send(navigator.serviceWorker.controller);
+ navigator.serviceWorker.getRegistration().then(reg=>{send(reg?.active);send(reg?.waiting);send(reg?.installing)}).catch(()=>{});
+}
 function debug(message){
+ if(!els.debugMode?.checked)return;
  const now=new Date();
  const perfNow=performance.now();
  if(diagnosticReportStartedPerf===null){
@@ -807,11 +814,12 @@ async function subscribeForUser(me){
 }
 if("serviceWorker" in navigator){
  function requestServiceWorkerLog(target=navigator.serviceWorker.controller){
+  if(!els.debugMode.checked)return;
   target?.postMessage({type:"VL_GET_SW_LOG"});
  }
  let swLogStartedAt=null;
  function appendServiceWorkerLog(stage,details={}){
-  if(!els.swDebugLog)return;
+  if(!els.debugMode.checked||!els.swDebugLog)return;
   const now=new Date();
   if(swLogStartedAt===null)swLogStartedAt=now.getTime();
   const line=formatDiagnosticLogTimestamp(now,now.getTime()-swLogStartedAt)+" "+stage+" "+JSON.stringify(details);
@@ -820,7 +828,7 @@ if("serviceWorker" in navigator){
   if(diagnosticLogAutoFollow.serviceWorker)scrollDiagnosticLogToBottom(els.swDebugLog);
  }
  function renderServiceWorkerLog(logs){
-  if(!els.swDebugLog)return;
+  if(!els.debugMode.checked||!els.swDebugLog)return;
   const entries=Array.isArray(logs)?logs:[];
   const firstTime=entries.length?Number(entries[0].time):NaN;
   swLogStartedAt=Number.isFinite(firstTime)?firstTime:null;
@@ -833,7 +841,7 @@ if("serviceWorker" in navigator){
   if(diagnosticLogAutoFollow.serviceWorker)scrollDiagnosticLogToBottom(els.swDebugLog);
  }
  function requestServiceWorkerStatus(reg){
-  if(!reg)return;
+  if(!els.debugMode.checked||!reg)return;
   const send=(worker,role)=>{
    if(!worker)return;
    appendServiceWorkerLog("registration_worker",{role,state:worker.state||"unknown",scriptURL:worker.scriptURL||null});
@@ -844,14 +852,14 @@ if("serviceWorker" in navigator){
   send(reg.installing,"installing");
  }
  navigator.serviceWorker.addEventListener("controllerchange",()=>{
-  requestServiceWorkerLog();
-  navigator.serviceWorker.getRegistration().then(requestServiceWorkerStatus);
+  notifyServiceWorkerDiagnosticMode(els.debugMode.checked);
+  if(els.debugMode.checked){requestServiceWorkerLog();navigator.serviceWorker.getRegistration().then(requestServiceWorkerStatus)}
  });
  navigator.serviceWorker.ready.then(reg=>{
-  requestServiceWorkerLog(reg.active);
-  requestServiceWorkerStatus(reg);
+  notifyServiceWorkerDiagnosticMode(els.debugMode.checked);
+  if(els.debugMode.checked){requestServiceWorkerLog(reg.active);requestServiceWorkerStatus(reg)}
  });
- navigator.serviceWorker.getRegistration().then(requestServiceWorkerStatus);
+ navigator.serviceWorker.getRegistration().then(reg=>{if(els.debugMode.checked)requestServiceWorkerStatus(reg)});
  navigator.serviceWorker.addEventListener("message",event=>{
   if(event.data?.type==="VL_NOTIFICATION_CLICKED"){
    if(event.data.data?.event==="new_message"){
@@ -1640,6 +1648,7 @@ document.addEventListener("pointerdown",unlockRingingAudio,{passive:true});
 document.addEventListener("keydown",unlockRingingAudio);
 function applyDebugMode(){
  const enabled=els.debugMode.checked;
+ notifyServiceWorkerDiagnosticMode(enabled);
  els.contactDiagnosticsFooter.classList.toggle("hidden",!enabled);
  els.diagnosticDockButton.classList.toggle("hidden",!enabled);
  els.contactDiagnosticButton.classList.toggle("hidden",!enabled);
@@ -1647,9 +1656,18 @@ function applyDebugMode(){
 try{els.debugMode.checked=localStorage.getItem("vl.debugMode.v1")==="1"}catch{els.debugMode.checked=false}
 applyDebugMode();
 els.debugMode.addEventListener("change",()=>{
- try{localStorage.setItem("vl.debugMode.v1",els.debugMode.checked?"1":"0")}catch(error){debug("Не удалось сохранить режим отладки: "+error.message)}
+ try{localStorage.setItem("vl.debugMode.v1",els.debugMode.checked?"1":"0")}catch{}
  applyDebugMode();
- debug("Режим отладки "+(els.debugMode.checked?"включён":"выключен")+".");
+ if(els.debugMode.checked){
+  diagnosticReportStartedPerf=null;
+  els.debugLog.textContent="";
+  els.swDebugLog.textContent="Записей пока нет.";
+  requestAnimationFrame(()=>{requestServiceWorkerLog();navigator.serviceWorker?.getRegistration().then(requestServiceWorkerStatus).catch(()=>{})});
+  debug("Режим диагностики включён.");
+ }else{
+  els.debugLog.textContent="Диагностика выключена. Новые записи не сохраняются.";
+  els.swDebugLog.textContent="Диагностика выключена. Новые записи не сохраняются.";
+ }
 });
 els.pilot.addEventListener("change",()=>{
  try{localStorage.setItem("vl.simulateMicrophone.v1",els.pilot.checked?"1":"0")}catch(error){debug("Не удалось сохранить настройку симуляции микрофона: "+error.message)}

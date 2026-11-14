@@ -1,12 +1,36 @@
 const VL_SW_LOG_DB="voicelink-sw-log-v1";
+function vlOpenLogDb(){
+ return new Promise((resolve,reject)=>{
+  const request=indexedDB.open(VL_SW_LOG_DB,2);
+  request.onupgradeneeded=()=>{
+   const db=request.result;
+   if(!db.objectStoreNames.contains("logs"))db.createObjectStore("logs",{keyPath:"id",autoIncrement:true});
+   if(!db.objectStoreNames.contains("settings"))db.createObjectStore("settings");
+  };
+  request.onsuccess=()=>resolve(request.result);
+  request.onerror=()=>reject(request.error||new Error("Diagnostics database open failed"));
+ });
+}
+async function vlIsDiagnosticEnabled(){
+ const db=await vlOpenLogDb();
+ try{return await new Promise((resolve,reject)=>{
+  const tx=db.transaction("settings","readonly"),request=tx.objectStore("settings").get("enabled");
+  request.onsuccess=()=>resolve(request.result===true);
+  request.onerror=()=>reject(request.error||new Error("Diagnostics setting read failed"));
+ })}finally{db.close()}
+}
+async function vlSetDiagnosticEnabled(enabled){
+ const db=await vlOpenLogDb();
+ try{await new Promise((resolve,reject)=>{
+  const tx=db.transaction("settings","readwrite");
+  tx.objectStore("settings").put(!!enabled,"enabled");
+  tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error("Diagnostics setting write failed"));
+ })}finally{db.close()}
+}
 async function vlWriteLog(stage,details={}){
  try{
-  const db=await new Promise((resolve,reject)=>{
-   const request=indexedDB.open(VL_SW_LOG_DB,1);
-   request.onupgradeneeded=()=>request.result.createObjectStore("logs",{keyPath:"id",autoIncrement:true});
-   request.onsuccess=()=>resolve(request.result);
-   request.onerror=()=>reject(request.error);
-  });
+  if(!(await vlIsDiagnosticEnabled()))return;
+  const db=await vlOpenLogDb();
   await new Promise((resolve,reject)=>{
    const tx=db.transaction("logs","readwrite");
    const store=tx.objectStore("logs");
@@ -26,12 +50,7 @@ async function vlWriteLog(stage,details={}){
  }
 }
 async function vlReadLog(){
- const db=await new Promise((resolve,reject)=>{
-  const request=indexedDB.open(VL_SW_LOG_DB,1);
-  request.onupgradeneeded=()=>request.result.createObjectStore("logs",{keyPath:"id",autoIncrement:true});
-  request.onsuccess=()=>resolve(request.result);
-  request.onerror=()=>reject(request.error);
- });
+ const db=await vlOpenLogDb();
  try{return await new Promise((resolve,reject)=>{
   const tx=db.transaction("logs","readonly"),request=tx.objectStore("logs").getAll();
   request.onsuccess=()=>resolve(request.result||[]);request.onerror=()=>reject(request.error);
@@ -225,6 +244,10 @@ async function vlReadPushes(){
 }
 
 self.addEventListener("message",event=>{
+ if(event.data?.type==="VL_SET_DIAGNOSTIC_MODE"){
+  event.waitUntil(vlSetDiagnosticEnabled(event.data.enabled===true).catch(()=>{}));
+  return;
+ }
  if(event.data?.type==="VL_GET_SW_STATUS"){
   event.source?.postMessage({type:"VL_SW_STATUS",requestRole:event.data.role||"unknown",workerBuild:"2026-11-10-status-1",scriptURL:self.location.href,scope:self.registration.scope});
   return;
