@@ -1697,8 +1697,28 @@ async function validateContactInvitation(value,source="Ссылка-пригла
   setInlineStatus(els.qrStatus,error.message||"Не удалось проверить приглашение.",true);return false;
  }
 }
+let contactInvitationSyntaxError="";
+function checkContactInvitationSyntax(){
+ const value=els.contactPackage.value;
+ let error="";
+ if(/[\\s]/.test(value))error="В ссылке не должно быть пробелов или переносов строк.";
+ else if(value&&!value.startsWith("https://")&&!"https://".startsWith(value))error="Ссылка должна начинаться с https://.";
+ if(error){
+  contactInvitationSyntaxError=error;
+  els.contactInvitationEntry.classList.remove("hidden");
+  els.contactInvitationDetails.classList.add("hidden");
+  els.firstContactWelcome.classList.add("hidden");
+  setInlineStatus(els.qrStatus,error,true);
+ }else if(contactInvitationSyntaxError){
+  contactInvitationSyntaxError="";
+  clearInlineStatus(els.qrStatus);
+ }
+}
 function updatePasteContactButton(){els.pasteContact.textContent=els.contactPackage.value.length?"Очистить":"Вставить";els.pasteContact.disabled=false;}
-els.contactPackage.addEventListener("input",()=>{updateImportContactButton();updatePasteContactButton();});
+els.contactPackage.addEventListener("input",()=>{
+ contactInvitationLookupRevision++;
+ updateImportContactButton();updatePasteContactButton();checkContactInvitationSyntax();
+});
 els.contactPackage.addEventListener("paste",()=>{setTimeout(()=>validateContactInvitation(els.contactPackage.value,"Вставленная ссылка"),0);});
 els.pasteContact.addEventListener("click",pasteContactInvitation);
 updatePasteContactButton();
