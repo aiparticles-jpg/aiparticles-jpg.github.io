@@ -220,14 +220,79 @@ self.addEventListener("notificationclick",event=>{
   if(data.event==="new_message"&&typeof data.sender_id==="string"&&/^[a-f0-9]{64}$/.test(data.sender_id)){
    targetUrl.searchParams.set("openChat",data.sender_id);
   }
-  const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
-  const existing=windows.find(client=>client.url.startsWith(self.registration.scope));
-  if(existing){
-   await existing.focus();
-   existing.postMessage({type:"VL_NOTIFICATION_CLICKED",data});
-   return;
+  await vlWriteLog("notification_click_started",{
+   event:data.event||null,
+   targetUrl:targetUrl.href
+  });
+  try{
+   const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+   await vlWriteLog("notification_click_clients_found",{
+    count:windows.length,
+    clients:windows.map(client=>({
+     url:client.url,
+     visibilityState:client.visibilityState,
+     focused:client.focused,
+     type:client.type
+    }))
+   });
+   const existing=windows.find(client=>client.url.startsWith(self.registration.scope));
+   if(existing){
+    await vlWriteLog("notification_focus_attempt",{
+     url:existing.url,
+     visibilityStateBefore:existing.visibilityState,
+     focusedBefore:existing.focused
+    });
+    try{
+     const focused=await existing.focus();
+     await vlWriteLog("notification_focus_resolved",{
+      requestedUrl:existing.url,
+      returnedUrl:focused?.url||null,
+      returnedVisibilityState:focused?.visibilityState||null,
+      returnedFocused:focused?.focused??null
+     });
+     try{
+      existing.postMessage({type:"VL_NOTIFICATION_CLICKED",data});
+      await vlWriteLog("notification_click_message_sent",{url:existing.url});
+     }catch(error){
+      await vlWriteLog("notification_click_message_failed",{
+       url:existing.url,
+       error:String(error?.message||error)
+      });
+     }
+     return;
+    }catch(error){
+     await vlWriteLog("notification_focus_failed",{
+      url:existing.url,
+      error:String(error?.message||error)
+     });
+     // If focusing an existing tab fails, try opening the app URL instead.
+    }
+   }else{
+    await vlWriteLog("notification_focus_skipped",{reason:"no_matching_window"});
+   }
+   await vlWriteLog("notification_open_window_attempt",{url:targetUrl.href});
+   try{
+    const opened=await self.clients.openWindow(targetUrl.href);
+    await vlWriteLog("notification_open_window_resolved",{
+     opened:!!opened,
+     url:opened?.url||null,
+     visibilityState:opened?.visibilityState||null,
+     focused:opened?.focused??null
+    });
+   }catch(error){
+    await vlWriteLog("notification_open_window_failed",{
+     url:targetUrl.href,
+     error:String(error?.message||error)
+    });
+    throw error;
+   }
+  }catch(error){
+   await vlWriteLog("notification_click_handler_failed",{
+    error:String(error?.message||error),
+    stack:String(error?.stack||"")
+   });
+   throw error;
   }
-  await self.clients.openWindow(targetUrl.href);
  })());
 });
 
