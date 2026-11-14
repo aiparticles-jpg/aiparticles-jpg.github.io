@@ -1648,6 +1648,9 @@ async function validateContactInvitation(value,source="Ссылка-пригла
   if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value.trim())return false;
   const ownIdentity=await getCurrentSignalingIdentity();
   if(contact.user_id===ownIdentity.user_id)throw Error("Это ваше собственное приглашение. Его нельзя добавить как контакт.");
+  const existingContact=await getContact(contact.user_id);
+  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value.trim())return false;
+  if(existingContact?.invitation_id===contact.invitation_id)throw Error("Контакт по этому приглашению уже добавлен.");
   els.contactInvitationDetails.classList.remove("hidden");
   els.firstContactWelcome.classList.toggle("hidden",allContacts.length!==0);
   if(!els.contactName.value.trim())els.contactName.value=contact.display_name||await nextGeneratedContactName();
