@@ -1667,7 +1667,8 @@ els.pasteContact.addEventListener("click",pasteContactInvitation);
 updatePasteContactButton();
 
 els.contactName.addEventListener("input",updateImportContactButton);
-function updateSaveResponseDisplayNameOption(){const hasName=!!els.responseDisplayName.value.trim();els.saveResponseDisplayNameLabel.classList.toggle("hidden",!hasName);els.saveResponseDisplayName.disabled=!hasName;if(!hasName)els.saveResponseDisplayName.checked=false;}
+let responseDisplayNameWasPresent=false;
+function updateSaveResponseDisplayNameOption(){const hasName=!!els.responseDisplayName.value.trim();els.saveResponseDisplayNameLabel.classList.toggle("hidden",!hasName);els.saveResponseDisplayName.disabled=!hasName;if(hasName&&!responseDisplayNameWasPresent)els.saveResponseDisplayName.checked=true;if(!hasName)els.saveResponseDisplayName.checked=false;responseDisplayNameWasPresent=hasName;}
  els.responseDisplayName.addEventListener("input",updateSaveResponseDisplayNameOption);
  updateSaveResponseDisplayNameOption();
 els.importContact.addEventListener("click",importContactFromInput);
