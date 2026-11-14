@@ -1854,7 +1854,9 @@ function syncChatVisualViewport(){
  }
  const viewport=window.visualViewport;
  const height=viewport?.height||window.innerHeight;
- const top=viewport?.offsetTop||0;
+ // Chrome on Android may pan the layout viewport to keep the focused textarea visible.
+ // pageTop includes that automatic page scroll as well as visual-viewport offset.
+ const top=viewport?(Number.isFinite(viewport.pageTop)?viewport.pageTop:(window.scrollY+(viewport.offsetTop||0))):window.scrollY;
  root.style.setProperty("--vl-chat-viewport-height",Math.max(1,height)+"px");
  root.style.setProperty("--vl-chat-viewport-top",Math.max(0,top)+"px");
 }
@@ -1997,6 +1999,7 @@ els.chatMessage.addEventListener("focus",syncChatVisualViewport);
 els.chatMessage.addEventListener("blur",()=>requestAnimationFrame(syncChatVisualViewport));
 window.visualViewport?.addEventListener("resize",syncChatVisualViewport);
 window.visualViewport?.addEventListener("scroll",syncChatVisualViewport);
+window.addEventListener("scroll",syncChatVisualViewport,{passive:true});
 window.addEventListener("resize",syncChatVisualViewport);
 els.chatMessage.addEventListener("input",updateChatComposerState);
 els.chatMessage.addEventListener("keydown",event=>{
