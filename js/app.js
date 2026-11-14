@@ -1333,12 +1333,6 @@ async function copyContactInvitation(event){
  if(!value)return;
  try{
   await navigator.clipboard.writeText(value);
-  const button=event?.currentTarget;
-  if(button===els.copyInviteInline){
-   const originalLabel=button.textContent;
-   button.textContent="Скопировано";
-   window.setTimeout(()=>{button.textContent=originalLabel},1600);
-  }
   setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
  }catch{
   openProfileScreen();

@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=101">
+  <link rel="stylesheet" href="./css/style.css?v=102">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -255,8 +255,8 @@
           <p class="hint invitation-one-use-warning">Важно: приглашение можно использовать только один раз. Кто первым воспользуется ссылкой, тот сможет добавить вас в контакты.</p>
           <label id="invite-url-label" class="field-label" for="invite-url">Ваша ссылка-приглашение</label>
           <div class="invite-url-row">
-            <textarea id="invite-url" rows="3" readonly spellcheck="false" placeholder="Создаём приглашение…"></textarea>
-            <button id="copy-invite-inline" class="button button-secondary invite-copy-inline" type="button" disabled>Копировать</button>
+            <textarea id="invite-url" rows="3" readonly tabindex="-1" spellcheck="false" placeholder="Создаём приглашение…"></textarea>
+            <button id="copy-invite-inline" class="button button-secondary invite-copy-inline" type="button" aria-label="Скопировать приглашение" title="Скопировать приглашение" disabled><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>
           </div>
           <div id="invite-qr" class="invite-qr" aria-label="QR-код моего приглашения"></div>
         </div>
@@ -373,6 +373,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=236"></script>
+  <script type="module" src="./js/app.js?v=237"></script>
 </body>
 </html>
