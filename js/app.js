@@ -1701,7 +1701,7 @@ let contactInvitationSyntaxError="";
 function checkContactInvitationSyntax(){
  const value=els.contactPackage.value;
  let error="";
- if(/[\\s]/.test(value))error="В ссылке не должно быть пробелов или переносов строк.";
+ if(/\s/.test(value))error="В ссылке не должно быть пробелов или переносов строк.";
  else if(value&&!value.startsWith("https://")&&!"https://".startsWith(value))error="Ссылка должна начинаться с https://.";
  if(error){
   contactInvitationSyntaxError=error;
