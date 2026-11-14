@@ -187,7 +187,7 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 .contact-summary{position:relative;padding-right:82px}
 .contact-paste-button{position:absolute;top:50%;right:0;transform:translateY(-50%);padding:7px 11px;margin:0!important;z-index:1;white-space:nowrap}
 .contact-tools[open] .contact-paste-button{display:none}
-.contact-invitation-entry > .hint{margin-bottom:8px}
+#contact-invitation-entry > .hint{margin:12px 0 14px}
 .contact-package-row{display:flex;align-items:stretch;gap:9px}
 .contact-package-row textarea{flex:1;min-width:0}
 .contact-package-actions{display:flex;align-items:stretch;gap:9px;flex:0 0 auto}
