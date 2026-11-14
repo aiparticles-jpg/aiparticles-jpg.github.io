@@ -1718,6 +1718,7 @@ function updatePasteContactButton(){els.pasteContact.textContent=els.contactPack
 els.contactPackage.addEventListener("input",()=>{
  contactInvitationLookupRevision++;
  updateImportContactButton();updatePasteContactButton();checkContactInvitationSyntax();
+ if(!contactInvitationSyntaxError)void validateContactInvitation(els.contactPackage.value,"Ручной ввод");
 });
 els.contactPackage.addEventListener("paste",()=>{setTimeout(()=>validateContactInvitation(els.contactPackage.value,"Вставленная ссылка"),0);});
 els.pasteContact.addEventListener("click",pasteContactInvitation);
