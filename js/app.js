@@ -4,7 +4,7 @@ import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=15";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=13";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId } from "./onesignal.js?v=7";
-import { sendPushEventToContact } from "./push-api.js?v=3";
+import { sendPushEventToContact } from "./push-api.js?v=4";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -255,6 +255,17 @@ function notifyServiceWorkerDiagnosticMode(enabled){
  const send=worker=>{try{worker?.postMessage({type:"VL_SET_DIAGNOSTIC_MODE",enabled:!!enabled})}catch{}};
  send(navigator.serviceWorker.controller);
  navigator.serviceWorker.getRegistration().then(reg=>{send(reg?.active);send(reg?.waiting);send(reg?.installing)}).catch(()=>{});
+}
+function getBrowserDiagnosticName(){
+ const ua=navigator.userAgent||"";
+ if(/EdgA?\//.test(ua))return "Microsoft Edge";
+ if(/OPR\//.test(ua)||/Opera/.test(ua))return "Opera";
+ if(/SamsungBrowser\//.test(ua))return "Samsung Internet";
+ if(/Firefox\//.test(ua)||/FxiOS\//.test(ua))return "Firefox";
+ if(/CriOS\//.test(ua))return "Google Chrome (iOS)";
+ if(/Chrome\//.test(ua))return "Google Chrome";
+ if(/Safari\//.test(ua))return "Safari";
+ return "Не определён (UA: "+ua.slice(0,100)+")";
 }
 function debug(message){
  if(!els.debugMode?.checked)return;
@@ -799,7 +810,7 @@ function createSecureSignaling(me,peer=""){
    }
   },
   onRejectOutgoing:info=>{finishRejectedCall(info).catch(error=>showError(error.message||String(error)))},
-  onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(state.callPeer||state.secure?.peer||info.peer,"incoming_call",info.callId,info.expiresAt).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
+  onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(state.callPeer||state.secure?.peer||info.peer,"incoming_call",info.callId,info.expiresAt,debug).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
   onReady:()=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady().catch(showError)},
   onError:e=>showError(e.message||String(e)),
   onDebug:debug
@@ -1348,7 +1359,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
   markContactRequestSent(peer,invitationId,createdAt);await updateContact(peer,{shared_secret_created_at:createdAt});setContactReplyFailure(peer,false);updateCallButtons();
-  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt);report("Ответное приглашение отправлено. OneSignal принял push-уведомление.");debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
+  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug);report("Ответное приглашение отправлено. OneSignal принял push-уведомление.");debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
   catch(e){report("Ответное приглашение отправлено через ntfy, но push не отправлен: "+(e.message||String(e)),true);debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(e.message||String(e)))}
   return true;
  }catch(e){const d=e.message||String(e),m="Не удалось отправить ответное приглашение: "+d;setContactReplyFailure(peer,true);report(m,true);if(els.debugMode.checked){const dialog=statusElement?.closest('[role="dialog"]');if(dialog&&!dialog.classList.contains("hidden"))showError(d)}debug(m);return false}
@@ -1880,7 +1891,7 @@ async function sendChatMessage(){
    if(!connected||!state.secure?.identity)throw Error("Не удалось подключиться к каналу сообщений. Повторите попытку.");
   }
   await state.secure.sendText(peer,text);
-  sendPushEventToContact(peer,"new_message",crypto.randomUUID(),Date.now()+24*60*60*1000)
+  sendPushEventToContact(peer,"new_message",crypto.randomUUID(),Date.now()+24*60*60*1000,debug)
    .then(()=>debug("OneSignal принял push о новом сообщении."))
    .catch(error=>debug("Push о сообщении не отправлен (сообщение уже доставлено через ntfy): "+(error.message||String(error))));
   if(els.peer.value===peer)els.chatMessage.value="";
@@ -2083,6 +2094,7 @@ els.tcp.classList.add("hidden");
 try{els.pilot.checked=localStorage.getItem("vl.simulateMicrophone.v1")==="1"}catch{els.pilot.checked=false}
 els.dismissIncoming.classList.add("hidden");
 async function initializeApp(){
+ debug("Браузер: "+getBrowserDiagnosticName()+"; платформа: "+(navigator.userAgentData?.platform||navigator.platform||"не определена")+"; UA: "+(navigator.userAgent||"нет"));
  try{
   // Remove obsolete extractable legacy keys; the active identity and trust records live in IndexedDB.
   try{
