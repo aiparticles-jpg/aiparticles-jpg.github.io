@@ -1656,7 +1656,7 @@ async function validateContactInvitation(value,source="Ссылка-пригла
  if(!invitation.trim()){setInlineStatus(els.qrStatus,"Вставьте ссылку-приглашение или отсканируйте QR-код.",true);return false}
  try{
   if(!invitation.startsWith("https://"))throw Error("Ссылка должна начинаться с https://.");
-  if(/\\s/.test(invitation))throw Error("В ссылке не должно быть пробелов или переносов строк.");
+  if(/\s/.test(invitation))throw Error("В ссылке не должно быть пробелов или переносов строк.");
   const contact=await verifyContactPackage(invitation);
   if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value)return false;
   const ownIdentity=await getCurrentSignalingIdentity();
