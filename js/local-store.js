@@ -107,7 +107,8 @@ export async function updateIssuedInvitationLocalName(invitationId, localContact
     try { await done; } catch {}
     return null;
   }
-  invitation.local_contact_name = localContactName.trim().slice(0, 60);
+  if (localContactName.trim()) invitation.local_contact_name = localContactName.trim().slice(0, 60);
+   else delete invitation.local_contact_name;
   store.put(invitation);
   await done;
   return invitation;

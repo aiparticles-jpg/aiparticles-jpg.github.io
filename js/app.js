@@ -47,15 +47,6 @@ function updateInviteUrlLabel(){
  const label=document.getElementById("invite-url-label");
  if(label)label.textContent=name?`Ссылка-приглашение для ${name}`:"Ваша ссылка-приглашение";
 }
-async function persistIssuedInvitationContactName(){
- try{
-  if(!activeIssuedInvitationId&&els.inviteUrl.textContent.trim()){
-   const invitation=await verifyContactPackage(els.inviteUrl.textContent.trim());
-   activeIssuedInvitationId=invitation.invitation_id;
-  }
-  if(activeIssuedInvitationId)await updateIssuedInvitationLocalName(activeIssuedInvitationId,getInviteContactName());
- }catch(error){debug("Не удалось сохранить локальное имя для приглашения: "+(error.message||String(error)))}
-}
 let profileInviteDirty=false;
 let profileInviteRefreshPromise=null;
 async function refreshProfileInvitationIfNeeded(){
@@ -1290,7 +1281,7 @@ async function createContactInvitation({expectedRevision=null}={}){
    shared_secret_created_at:Date.now(),
    ...(displayName?{display_name:displayName}:{})
   };
-  await createIssuedInvitation({id:unsigned.invitation_id,secret:unsigned.invitation_secret,created_at:Date.now(),max_activations:1,local_contact_name:getInviteContactName()});
+  await createIssuedInvitation({id:unsigned.invitation_id,secret:unsigned.invitation_secret,created_at:Date.now(),max_activations:1,local_contact_name:""});
   activeIssuedInvitationId=unsigned.invitation_id;
   await persistIssuedInvitationContactName();
   const contactPackage=unsigned;
@@ -1726,7 +1717,20 @@ els.inviteTools.addEventListener("toggle",()=>{
  if(els.inviteTools.open)updateInvitationPanel();
 });
 function openProfileScreen(){clearInlineStatus(els.inviteStatus);clearError();updateInviteUrlLabel();els.profileScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.inviteTools.open=true;updateInvitationPanel();els.profileScreenBack.focus();}
-function closeProfileScreen(){clearInlineStatus(els.inviteStatus);els.profileScreen.classList.add("hidden");syncContactScreenOpenClass();els.profileDockButton.focus();}
+async function closeProfileScreen(){
+ clearInlineStatus(els.inviteStatus);
+ const invitationId=activeIssuedInvitationId;
+ activeIssuedInvitationId=null;
+ els.inviteContactName.value="";
+ updateInviteUrlLabel();
+ if(invitationId){
+  try{await updateIssuedInvitationLocalName(invitationId,"")}
+  catch(error){debug("Не удалось очистить имя собеседника для приглашения: "+(error.message||String(error)))}
+ }
+ els.profileScreen.classList.add("hidden");
+ syncContactScreenOpenClass();
+ els.profileDockButton.focus();
+}
 let diagnosticReturnFocus=null;
 function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");resetDiagnosticLogAutoFollow();els.diagnosticScreenBack.focus();}
 function closeDiagnosticScreen(){els.diagnosticScreen.classList.add("hidden");syncContactScreenOpenClass();if(diagnosticReturnFocus?.isConnected&&!diagnosticReturnFocus.classList.contains("hidden"))diagnosticReturnFocus.focus();else els.brandAbout.focus();diagnosticReturnFocus=null;}
@@ -1736,7 +1740,7 @@ els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
 els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
 els.profileScreenBack.addEventListener("click",closeProfileScreen);
 els.profileDisplayName.addEventListener("input",handleProfileDisplayNameInput);
- els.inviteContactName.addEventListener("input",()=>{updateInviteUrlLabel();persistIssuedInvitationContactName();});
+ els.inviteContactName.addEventListener("input",updateInviteUrlLabel);
  els.inviteUrl.addEventListener("focus",()=>{if(profileInviteDirty)refreshProfileInvitationIfNeeded();});
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
 els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els.copyDebugLog));
@@ -2207,7 +2211,7 @@ async function initializeApp(){
      const savedPackage=await verifyContactPackage(savedInvitation);
      activeIssuedInvitationId=savedPackage.invitation_id;
      const issuedRecord=await getIssuedInvitation(activeIssuedInvitationId);
-     els.inviteContactName.value=issuedRecord?.local_contact_name||"";
+     els.inviteContactName.value="";
       updateInviteUrlLabel();
     }catch(error){debug("Не удалось восстановить локальное имя приглашения: "+(error.message||String(error)))}
     updateInviteCopyButton();
