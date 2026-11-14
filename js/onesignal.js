@@ -134,3 +134,35 @@ export async function enableOneSignalPush() {
   }
   throw new Error("Разрешение получено, но OneSignal не выдал Subscription ID. Проверьте настройки Web Push и попробуйте ещё раз.");
 }
+
+export async function getOneSignalPushDiagnostics() {
+  const permission = "Notification" in window ? Notification.permission : "unsupported";
+  const result = {
+    permission,
+    supported: "serviceWorker" in navigator && "PushManager" in window,
+    subscriptionIdSuffix: null,
+    optedIn: null,
+    idAvailable: false
+  };
+
+  try {
+    const OneSignal = await initializeOneSignal();
+    const subscription = OneSignal.User?.PushSubscription;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const id = subscription?.id;
+      if (typeof id === "string" && id.trim()) {
+        result.idAvailable = true;
+        result.subscriptionIdSuffix = id.slice(-8);
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    if (typeof subscription?.optedIn === "boolean") {
+      result.optedIn = subscription.optedIn;
+    }
+  } catch (error) {
+    result.error = error?.message || String(error);
+  }
+
+  return result;
+}
