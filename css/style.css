@@ -496,6 +496,7 @@ body.contact-screen-open{overflow:hidden}
 .dock-action:active .dock-icon{transform:scale(.96);background:#243b50}
 .dock-action:focus-visible{outline:2px solid var(--accent);outline-offset:5px;border-radius:12px}
 .profile-display-name{max-width:640px;margin:0 auto 18px}
+#invite-content > .hint:first-child + .profile-display-name{margin-top:18px;}
 .profile-display-name .field-label{margin:0 0 8px}
 .profile-display-name input{display:block;width:100%;margin:0}
 .profile-display-name .hint{margin-top:8px}
