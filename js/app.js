@@ -1358,8 +1358,8 @@ async function pasteContactInvitation(event){
 }
 
 async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus,displayNameOverride=undefined,options={}){
- const peer=peerOverride,senderDisplayName=displayNameOverride===undefined?getProfileDisplayName():String(displayNameOverride||"").trim().slice(0,60),report=(m,e=false)=>{if(els.debugMode.checked)showAppNotice(m,e)};
- if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){const m="Не удалось отправить ответное приглашение: сначала выберите контакт, от которого вы получили приглашение.";report(m,true);debug(m);return false}
+ const peer=peerOverride,senderDisplayName=displayNameOverride===undefined?getProfileDisplayName():String(displayNameOverride||"").trim().slice(0,60);
+ if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){const m="Не удалось отправить ответное приглашение: сначала выберите контакт, от которого вы получили приглашение.";debug(m);return false}
  updateCallButtons();els.replyInvite.disabled=true;clearError();
  try{
   const contact=await getContact(peer);if(!contact?.push_subscription_id||!contact?.invitation_secret||!contact?.invitation_id)throw Error("У контакта отсутствуют данные приглашения. Попросите его прислать новую ссылку.");
@@ -1370,10 +1370,10 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
   markContactRequestSent(peer,invitationId,createdAt);await updateContact(peer,{shared_secret_created_at:createdAt});setContactReplyFailure(peer,false);updateCallButtons();
-  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug);report("Ответное приглашение отправлено. OneSignal принял push-уведомление.");debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
-  catch(e){report("Ответное приглашение отправлено через ntfy, но push не отправлен: "+(e.message||String(e)),true);debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(e.message||String(e)))}
+  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug);debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
+  catch(e){debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(e.message||String(e)))}
   return true;
- }catch(e){const d=e.message||String(e),m="Не удалось отправить ответное приглашение: "+d;setContactReplyFailure(peer,true);report(m,true);if(els.debugMode.checked){const dialog=statusElement?.closest('[role="dialog"]');if(dialog&&!dialog.classList.contains("hidden"))showError(d)}debug(m);return false}
+ }catch(e){const d=e.message||String(e),m="Не удалось отправить ответное приглашение: "+d;setContactReplyFailure(peer,true);if(els.debugMode.checked){const dialog=statusElement?.closest('[role="dialog"]');if(dialog&&!dialog.classList.contains("hidden"))showError(d)}debug(m);return false}
  finally{els.replyInvite.disabled=false;updateCallButtons()}
 }
 
@@ -1558,16 +1558,14 @@ async function importContactFromInput(){
   updatePasteContactButton();
   els.contactName.value="";
   closeAddContactScreen();
-  setInlineStatus(els.qrStatus,"Контакт «"+name+"» успешно проверен и сохранён локально.");
+  clearInlineStatus(els.qrStatus);
   clearError();
   debug("Импортирован и криптографически проверен новый контакт: "+name+".");
   setStatus("Контакт добавлен","Теперь его можно выбрать для звонка.","idle");
   if(!existing){
-   setInlineStatus(els.qrStatus,"Контакт сохранён. Отправляем ответное приглашение…");
    debug("Автоматически отправляем ответное приглашение новому контакту.");
    await sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
   }else{
-   setInlineStatus(els.qrStatus,"Обновляем защищённую связь с контактом…");
    const sent=await sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
    if(!sent)throw Error("Не удалось обновить защищённую связь с контактом.");
   }
