@@ -1649,23 +1649,25 @@ async function startQrScan(){
 }
 let contactInvitationLookupRevision=0;
 async function validateContactInvitation(value,source="Ссылка-приглашение"){
- const revision=++contactInvitationLookupRevision,invitation=String(value||"").trim();
+ const revision=++contactInvitationLookupRevision,invitation=String(value??"");
  els.contactInvitationEntry.classList.add("hidden");
  els.contactInvitationDetails.classList.add("hidden");els.firstContactWelcome.classList.add("hidden");
  clearInlineStatus(els.qrStatus);
- if(!invitation){setInlineStatus(els.qrStatus,"Вставьте ссылку-приглашение или отсканируйте QR-код.",true);return false}
+ if(!invitation.trim()){setInlineStatus(els.qrStatus,"Вставьте ссылку-приглашение или отсканируйте QR-код.",true);return false}
  try{
+  if(!invitation.startsWith("https://"))throw Error("Ссылка должна начинаться с https://.");
+  if(/\\s/.test(invitation))throw Error("В ссылке не должно быть пробелов или переносов строк.");
   const contact=await verifyContactPackage(invitation);
-  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value.trim())return false;
+  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value)return false;
   const ownIdentity=await getCurrentSignalingIdentity();
   if(contact.user_id===ownIdentity.user_id)throw Error("Это ваше собственное приглашение. Его нельзя добавить как контакт.");
   const existingContact=await getContact(contact.user_id);
-  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value.trim())return false;
+  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value)return false;
   if(existingContact?.invitation_id===contact.invitation_id)throw Error("Контакт по этому приглашению уже добавлен.");
   els.contactInvitationDetails.classList.remove("hidden");
   els.firstContactWelcome.classList.toggle("hidden",allContacts.length!==0);
   if(!els.contactName.value.trim())els.contactName.value=contact.display_name||await nextGeneratedContactName();
-  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value.trim())return false;
+  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value)return false;
   updateResponseDisplayNameSection();updateImportContactButton();
   clearInlineStatus(els.qrStatus);
   els.contactName.focus();return true;
