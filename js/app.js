@@ -1579,60 +1579,85 @@ async function stopQrScan(){
  els.qrVideo.classList.add("hidden");
  els.scanQr.textContent="Сканировать QR-код";
 }
+let qrJsDecoderPromise=null;
+async function getQrJsDecoder(){
+ if(!qrJsDecoderPromise){
+  qrJsDecoderPromise=import("https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm").then(module=>{
+   const decoder=module.default||module.jsQR||module;
+   if(typeof decoder!=="function")throw Error("Библиотека QR-сканирования загружена некорректно.");
+   return decoder;
+  }).catch(error=>{
+   qrJsDecoderPromise=null;
+   throw error;
+  });
+ }
+ return qrJsDecoderPromise;
+}
 async function configureQrScannerButton(){
- els.scanQr.classList.add("hidden");
- let supported=false;
- try{
-  if("BarcodeDetector" in window){
-   if(typeof BarcodeDetector.getSupportedFormats==="function"){
-    const formats=await BarcodeDetector.getSupportedFormats();
-    supported=formats.includes("qr_code");
-   }else{
-    new BarcodeDetector({formats:["qr_code"]});
-    supported=true;
-   }
-  }
- }catch(error){supported=false}
- if(supported)els.scanQr.classList.remove("hidden");
+ // Кнопка доступна и в браузерах без BarcodeDetector: для них используется jsQR.
+ els.scanQr.classList.remove("hidden");
 }
 configureQrScannerButton();
 async function startQrScan(){
  if(qrScanActive){await stopQrScan();return}
- if(!("BarcodeDetector" in window)){
-  els.scanQr.classList.add("hidden");
-  els.qrStatus.textContent="В этом браузере нет встроенного сканера QR. Используйте ссылку или вставьте содержимое QR-кода в поле выше.";
-  return;
- }
  try{
-  const detector=new BarcodeDetector({formats:["qr_code"]});
+  if(!navigator.mediaDevices?.getUserMedia)throw Error("Этот браузер не предоставляет доступ к камере. Откройте VoiceLink по HTTPS и разрешите доступ к камере.");
+  let detector=null,jsQR=null;
+  if("BarcodeDetector" in window){
+   try{
+    if(typeof BarcodeDetector.getSupportedFormats!=="function"||
+       (await BarcodeDetector.getSupportedFormats()).includes("qr_code")){
+     detector=new BarcodeDetector({formats:["qr_code"]});
+    }
+   }catch(error){debug("Встроенный QR-сканер недоступен, включаем резервный: "+(error.message||String(error)))}
+  }
+  if(!detector){
+   els.qrStatus.textContent="Подключаем сканер QR-кодов…";
+   jsQR=await getQrJsDecoder();
+  }
   qrStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
   els.qrVideo.srcObject=qrStream;
   els.qrVideo.classList.remove("hidden");
   await els.qrVideo.play();
+  const canvas=document.createElement("canvas");
+  const context=canvas.getContext("2d",{willReadFrequently:true});
+  if(!context)throw Error("Не удалось подготовить изображение с камеры.");
   qrScanActive=true;
   els.scanQr.textContent="Остановить сканирование";
   els.qrStatus.textContent="Наведите камеру на QR-код контакта.";
   const scan=async()=>{
    if(!qrScanActive)return;
    try{
-    const codes=await detector.detect(els.qrVideo);
-    if(codes.length&&codes[0].rawValue){
-     els.contactPackage.value=codes[0].rawValue;
+    let value="";
+    if(els.qrVideo.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA&&els.qrVideo.videoWidth){
+     if(detector){
+      const codes=await detector.detect(els.qrVideo);
+      value=codes.find(code=>code.rawValue)?.rawValue||"";
+     }else{
+      canvas.width=els.qrVideo.videoWidth;
+      canvas.height=els.qrVideo.videoHeight;
+      context.drawImage(els.qrVideo,0,0,canvas.width,canvas.height);
+      const frame=context.getImageData(0,0,canvas.width,canvas.height);
+      const code=jsQR(frame.data,frame.width,frame.height,{inversionAttempts:"dontInvert"});
+      value=code?.data||"";
+     }
+    }
+    if(value){
+     els.contactPackage.value=value;
      els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
      await stopQrScan();
-     await validateContactInvitation(codes[0].rawValue,"QR-код");
+     await validateContactInvitation(value,"QR-код");
      return;
     }
    }catch(error){debug("Ошибка чтения QR: "+(error.message||String(error)))}
-   if(qrScanActive)setTimeout(scan,250);
+   if(qrScanActive)setTimeout(scan,detector?250:180);
   };
   scan();
  }catch(error){
   await stopQrScan();
-  showError("Не удалось запустить камеру для QR-сканирования: "+(error.message||String(error)));
+  showError("Не удалось запустить сканирование QR-кода: "+(error.message||String(error)));
  }
 }
-
 let contactInvitationLookupRevision=0;
 async function validateContactInvitation(value,source="Ссылка-приглашение"){
  const revision=++contactInvitationLookupRevision,invitation=String(value||"").trim();
