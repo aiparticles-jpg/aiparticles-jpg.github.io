@@ -1651,7 +1651,8 @@ async function validateContactInvitation(value,source="Ссылка-пригла
   if(contact.user_id===ownIdentity.user_id)throw Error("Это ваше собственное приглашение. Его нельзя добавить как контакт.");
   els.contactInvitationDetails.classList.remove("hidden");
   els.firstContactWelcome.classList.toggle("hidden",allContacts.length!==0);
-  if(contact.display_name&&!els.contactName.value.trim())els.contactName.value=contact.display_name;
+  if(!els.contactName.value.trim())els.contactName.value=contact.display_name||await nextGeneratedContactName();
+  if(revision!==contactInvitationLookupRevision||invitation!==els.contactPackage.value.trim())return false;
   updateResponseDisplayNameSection();updateImportContactButton();
   clearInlineStatus(els.qrStatus);
   els.contactName.focus();return true;
