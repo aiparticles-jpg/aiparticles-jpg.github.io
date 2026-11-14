@@ -911,3 +911,8 @@ body.call-screen-open .topbar{display:none!important}
 
 /* Keep call-control captions above the rounded bottom screen corners. Match the main dock's bottom breathing room. */
 .call-screen-stage{padding-bottom:17px!important}
+
+
+/* Move the complete call-control row, including its captions, upward together. */
+.call-screen-stage{padding-bottom:calc(18px + env(safe-area-inset-bottom))!important}
+.call-screen-stage .contact-call-actions{transform:translateY(-8px)}
