@@ -13,7 +13,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),
  audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
-  contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
+  contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
 function syncContactScreenOpenClass(){
  const overlayScreens=[
@@ -1835,8 +1835,9 @@ function updateResponseDisplayNameSection(){
   els.saveResponseDisplayName.checked=false;
  }
 }
-function openAddContactScreen(pasteFromClipboard=false,{preserveInput=false}={}){
+function openAddContactScreen(pasteFromClipboard=false,{preserveInput=false,fromInvitation=false}={}){
  clearInlineStatus(els.qrStatus);clearError();
+ els.contactInvitationEntry.classList.toggle("hidden",fromInvitation);
  if(!preserveInput){
   els.contactPackage.value="";
   els.contactName.value="";
@@ -2200,13 +2201,15 @@ async function initializeApp(){
   if(fragment.has("contact")){
     els.contactPackage.value=window.location.hash;
     updatePasteContactButton();
-    suggestContactNameFromInvitation(window.location.hash);
-    openAddContactScreen(false,{preserveInput:true});
+    openAddContactScreen(false,{preserveInput:true,fromInvitation:true});
     try{
-     await verifyContactPackage(window.location.hash);
+     const invitation=await verifyContactPackage(window.location.hash);
+     if(invitation.display_name&&!els.contactName.value.trim())els.contactName.value=invitation.display_name;
+     updateImportContactButton();
      els.qrStatus.textContent="Получена ссылка-приглашение. Укажите локальное имя контакта.";
+     els.contactName.focus();
     }catch(invitationError){
-     setInlineStatus(els.qrStatus,invitationError.message||"Не удалось проверить версию приглашения.",true);
+     setInlineStatus(els.qrStatus,invitationError.message||"Не удалось проверить приглашение.",true);
     }
    }
   const contacts=await listContacts();
