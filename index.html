@@ -236,11 +236,6 @@
         <input id="profile-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Например, Алексей">
         <p class="hint">Это имя будет отправляться вместе с вашим приглашением и показываться собеседнику. Можно указать настоящее имя или псевдоним, а можно оставить поле пустым.</p>
       </div>
-      <div class="profile-display-name">
-        <label class="field-label" for="invite-contact-name">Как назвать контакт в вашем списке? (необязательно)</label>
-        <input id="invite-contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
-        <p class="hint">Если собеседник воспользуется приглашением, это имя будет использовано для контакта в вашем списке.</p>
-      </div>
       <details id="invite-tools" class="contact-tools invite-tools" open>
         <h3 class="invite-section-title">Ваше приглашение</h3>
         <summary class="invite-summary">Поделиться приглашением
@@ -252,6 +247,11 @@
         </div>
         <div id="invite-content" class="hidden">
           <p class="hint">Передайте собеседнику ссылку или QR-код, чтобы он мог добавить вас в контакты.</p>
+      <div class="profile-display-name">
+        <label class="field-label" for="invite-contact-name">Как назвать контакт в вашем списке? (необязательно)</label>
+        <input id="invite-contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
+        <p class="hint">Если собеседник воспользуется приглашением, это имя будет использовано для контакта в вашем списке.</p>
+      </div>
           <p class="hint invitation-one-use-warning">Важно: приглашение можно использовать только один раз. Кто первым воспользуется ссылкой, тот сможет добавить вас в контакты.</p>
           <label class="field-label" for="invite-url">Ваша ссылка-приглашение</label>
           <div class="invite-url-row">
