@@ -745,29 +745,31 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
   onError:error=>showError(error.message||String(error)),
   onState:value=>{
    debug("WebRTC: "+value);
-   if(value==="local-audio-ready")updateCallButtons();
-   else if(value==="connection-connected"){
+   // Normalize diagnostic prefixes such as PC[id] connection-connected.
+   const event=String(value).match(/(?:^|\s)(connection-[a-z]+|ice-[a-z]+)\.?$/)?.[1]||value;
+   if(event==="local-audio-ready")updateCallButtons();
+   else if(event==="connection-connected"){
     if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
     updateCallButtons();if(els.callScreenStatus)els.callScreenStatus.textContent="На связи";els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")
    }
-   else if(value==="connection-failed"||value==="ice-failed"){
+   else if(event==="connection-failed"||event==="ice-failed"){
     if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
     els.transport.textContent="WebRTC: соединение не установлено";setStatus("P2P не получилось","Сигнализация работает, но прямой аудиоканал не установился. TURN-сервер пока не настроен.","error");
     if(state.peerPresent&&!state.hangingUp)hangup({notifyPeer:false,failure:true})
    }
-   else if(value==="connection-connecting"||value==="ice-checking"||value==="ice-connected"||value==="ice-completed"){
-    if((value==="ice-connected"||value==="ice-completed")&&state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
+   else if(event==="connection-connecting"||event==="ice-checking"||event==="ice-connected"||event==="ice-completed"){
+    if((event==="ice-connected"||event==="ice-completed")&&state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
     setStatus("Устанавливаем аудиосоединение","Проверяем сетевые маршруты между устройствами.","wait")
    }
-   else if(value==="connection-disconnected"||value==="ice-disconnected"){
+   else if(event==="connection-disconnected"||event==="ice-disconnected"){
     setStatus("Связь прервалась","Даём WebRTC время восстановить соединение (15 секунд).","wait");
     if(!state.disconnectTimer)state.disconnectTimer=setTimeout(()=>{
      state.disconnectTimer=null;
      if(state.webrtc?.pc?.connectionState==="disconnected"&&!state.hangingUp)hangup({notifyPeer:false,failure:true});
     },15000)
    }
-   else if(value==="control-open"){debug("P2P управляющий канал готов (RTCDataChannel).")}
-   else if(value==="control-closed"){debug("P2P управляющий канал закрыт.")}
+   else if(event==="control-open"){debug("P2P управляющий канал готов (RTCDataChannel).")}
+   else if(event==="control-closed"){debug("P2P управляющий канал закрыт.")}
   }
  });
 }
