@@ -11,7 +11,7 @@ const els={
  contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenHeaderSlot:$("call-screen-header-slot"),callScreenDiagnosticsSlot:$("call-screen-diagnostics-slot"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),
- audio:$("remote-audio"),ringbackAudio:$("ringback-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
+ audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
@@ -401,10 +401,6 @@ function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disa
 function stopRinging({suspend=true}={}){
  const stoppedKind=state.ringingKind;
  state.ringingKind=null;
- if(els.ringbackAudio){
-  els.ringbackAudio.pause();
-  try{els.ringbackAudio.currentTime=0}catch{}
- }
  if(state.ringPulseTimer){clearTimeout(state.ringPulseTimer);state.ringPulseTimer=null}
  for(const timer of state.ringDiagnosticTimers)clearTimeout(timer);
  state.ringDiagnosticTimers.length=0;
@@ -487,22 +483,50 @@ function unlockRingingAudio(event){
 async function startRinging(kind){
  stopRinging({suspend:false});state.ringingKind=kind;state.ringDiagnosticDone=false;
  if(kind==="outgoing"){
-  const audio=els.ringbackAudio;
-  if(!audio){debug("[ring] не найден HTMLAudioElement #ringback-audio.");return}
-  audio.loop=true;
-  try{audio.currentTime=0}catch{}
   try{
-   const playback=audio.play();
-   if(playback&&typeof playback.then==="function"){
-    playback.then(()=>{
-     if(state.ringingKind==="outgoing")debug("[ring] исходящий WAV воспроизводится через HTMLAudioElement; duration="+(Number.isFinite(audio.duration)?audio.duration.toFixed(2):"unknown")+"s.");
-     else audio.pause();
-    }).catch(error=>{
-     if(state.ringingKind==="outgoing")debug("[ring] браузер не разрешил воспроизведение исходящего WAV: "+(error.message||String(error))+".");
+   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+   if(!AudioContextClass)throw Error("Web Audio API недоступен");
+   if(!state.ringContext)state.ringContext=new AudioContextClass({latencyHint:"interactive"});
+   const ringContext=state.ringContext;
+   if(!ringContext.__vlStateLogger){
+    ringContext.__vlStateLogger=true;
+    ringContext.addEventListener("statechange",()=>{
+     debug("[ring] AudioContext statechange: "+ringContext.state+".");
+     if(ringContext.state!=="suspended"||state.ringContext!==ringContext||!["incoming","outgoing"].includes(state.ringingKind)||state.ringResumePromise)return;
+     const ringingKind=state.ringingKind;
+     debug("[ring] AudioContext сам перешёл в suspended во время звонка; автоматически восстанавливаем аудиопоток.");
+     const resumePromise=ringContext.resume()
+      .then(()=>{
+       if(state.ringContext===ringContext&&state.ringingKind===ringingKind)debug("[ring] AudioContext автоматически восстановлен: "+ringContext.state+".");
+      })
+      .catch(error=>debug("[ring] автоматическое восстановление AudioContext не удалось: "+(error.message||String(error))))
+      .finally(()=>{if(state.ringResumePromise===resumePromise)state.ringResumePromise=null});
+     state.ringResumePromise=resumePromise;
     });
    }
-   debug("[ring] запрошен исходящий WAV через HTMLAudioElement непосредственно из click; Web Audio oscillator для исходящего гудка не используется.");
-  }catch(error){debug("[ring] ошибка запуска исходящего WAV: "+(error.message||String(error))+".")}
+   debug("[ring] start outgoing oscillator; AudioContext="+ringContext.state+"; visibility="+document.visibilityState+".");
+   // Вызываем resume до первого await: при исходящем вызове это ещё
+   // находится внутри пользовательского click-жеста.
+   const resumePromise=ringContext.state==="suspended"?ringContext.resume():Promise.resolve();
+   await resumePromise;
+   if(state.ringingKind!=="outgoing"){debug("[ring] запуск исходящего осциллятора отменён.");return}
+   if(ringContext.state!=="running")throw Error("AudioContext не перешёл в running: "+ringContext.state);
+   prepareRingOutput(ringContext);
+   const pulse=()=>{
+    if(state.ringingKind!=="outgoing")return;
+    const now=ringContext.currentTime;
+    // Стандартный двухчастотный ringback: 440 + 480 Hz, 2 секунды звук / 4 секунды пауза.
+    scheduleRingTone(440,now,2,{type:"sine",volume:0.020,ramp:0.04});
+    scheduleRingTone(480,now,2,{type:"sine",volume:0.020,ramp:0.04});
+    state.ringPulseTimer=setTimeout(pulse,6000);
+    debug("[ring] исходящий ringback: два sine-осциллятора 440/480 Hz; 2s on / 4s off.");
+   };
+   pulse();
+   scheduleRingDiagnostic("outgoing-start",120);
+   scheduleRingDiagnostic("outgoing-after-tone",2200);
+  }catch(error){
+   debug("[ring] не удалось включить исходящий осциллятор: "+(error.message||String(error))+"; AudioContext="+(state.ringContext?.state||"нет")+".");
+  }
   return;
  }
  try{
