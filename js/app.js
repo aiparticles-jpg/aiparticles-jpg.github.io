@@ -776,7 +776,14 @@ function createSecureSignaling(me,peer=""){
   onPeerMessage:markContactRequestReceived,
   onConversationEvent:async event=>{await addConversationEvent(event);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить историю контакта: "+(error.message||String(error))))},
   onCancelIncoming:info=>{
-   if(state.incomingCall){clearIncomingUi();stopRinging();state.secure?.dismissIncoming();setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");}
+   if(state.incomingCall){
+    clearIncomingUi();
+    stopRinging();
+    state.secure?.dismissIncoming();
+    setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");
+    debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");
+    closeCallScreen();
+   }
   },
   onRejectOutgoing:info=>{finishRejectedCall(info).catch(error=>showError(error.message||String(error)))},
   onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(els.peer.value,"incoming_call",info.callId,info.expiresAt).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
