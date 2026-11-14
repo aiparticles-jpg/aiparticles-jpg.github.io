@@ -1662,7 +1662,11 @@ els.debugMode.addEventListener("change",()=>{
   diagnosticReportStartedPerf=null;
   els.debugLog.textContent="";
   els.swDebugLog.textContent="Записей пока нет.";
-  requestAnimationFrame(()=>{requestServiceWorkerLog();navigator.serviceWorker?.getRegistration().then(requestServiceWorkerStatus).catch(()=>{})});
+  requestAnimationFrame(()=>{
+   const requestLog=worker=>{try{worker?.postMessage({type:"VL_GET_SW_LOG"})}catch{}};
+   requestLog(navigator.serviceWorker?.controller);
+   navigator.serviceWorker?.getRegistration().then(reg=>requestLog(reg?.active)).catch(()=>{});
+  });
   debug("Режим диагностики включён.");
  }else{
   els.debugLog.textContent="Диагностика выключена. Новые записи не сохраняются.";
