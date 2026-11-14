@@ -346,13 +346,16 @@ async function checkServiceWorkerAvailability(){
  }catch(error){setServiceStatus(els.serviceWorkerStatus,"Ошибка проверки")}
 }
 function updateCallButtons(){
- const active=!!(state.peerPresent||state.outgoingCall||state.secure?.active||state.callStarted||state.answeringCall);
+ const active=!!(state.connecting||state.peerPresent||state.outgoingCall||state.secure?.active||state.callStarted||state.answeringCall);
 
  els.connect.classList.toggle("hidden",active);
  els.connect.disabled=active||state.connecting;
  els.connect.textContent=state.connecting?"Подключаемся…":state.incomingCall?"Ответить":"Подключиться";
  els.hangup.classList.toggle("hidden",!active);
  els.hangup.disabled=!active||state.hangingUp;
+ const dialing=!!(state.outgoingCall||(state.connecting&&!state.answeringCall&&!state.peerPresent));
+ els.hangup.setAttribute("aria-label",dialing?"Отменить вызов":"Завершить звонок");
+ els.hangup.title=dialing?"Отменить вызов":"Завершить звонок";
  els.micToggle.classList.toggle("hidden",!active);
  els.micToggle.disabled=!active||state.hangingUp||!state.webrtc?.localStream;
  const micEnabled=!!state.webrtc?.micEnabled;

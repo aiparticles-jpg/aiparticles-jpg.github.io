@@ -874,3 +874,36 @@ body.contact-screen-open .utility-dock{display:none!important}
  .contacts-search{width:min(52%,190px);gap:5px}
  .contacts-search input{height:32px;padding:6px 8px}
 }
+
+
+/* Call mode: remove the application brand bar and pin all three call controls to one bottom row. */
+body.call-screen-open .topbar{display:none!important}
+.call-screen-content{justify-content:stretch!important;overflow:hidden;padding:12px 12px calc(8px + env(safe-area-inset-bottom))!important}
+.call-screen-stage{flex:1;min-height:0;width:100%;height:100%;max-width:420px;margin:0 auto;display:flex;flex-direction:column;justify-content:space-between;gap:12px;padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+.call-screen-stage .contact-call-actions{
+ display:flex!important;flex:0 0 auto;flex-wrap:nowrap!important;align-items:center;justify-content:space-around;gap:clamp(8px,4vw,20px)!important;
+ width:100%;margin-top:auto;padding:0 4px 4px;
+}
+.call-screen-stage .contact-call-actions .call-round-action,
+.call-screen-stage .contact-call-actions .call-control-action,
+.call-screen-stage .contact-call-actions .call-hangup-action,
+.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{
+ flex:0 1 68px!important;width:68px!important;min-width:0;max-width:68px;height:68px!important;min-height:68px!important;
+ margin:0!important;padding:0!important;border-radius:50%!important;
+}
+.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{order:0!important}
+.call-screen-stage .contact-call-actions #answer-incoming,
+.call-screen-stage .contact-call-actions #reject-incoming,
+.call-screen-stage .contact-call-actions #mic-toggle,
+.call-screen-stage .contact-call-actions #speaker-toggle,
+.call-screen-stage .contact-call-actions #hangup{order:0}
+.call-screen-stage .contact-call-actions .call-round-action::after,
+.call-screen-stage .contact-call-actions .call-control-action::after,
+.call-screen-stage .contact-call-actions .call-hangup-action::after{top:76px;font-size:11px}
+@media(max-width:360px){
+ .call-screen-stage .contact-call-actions{gap:6px!important;padding-left:0;padding-right:0}
+ .call-screen-stage .contact-call-actions .call-round-action,
+ .call-screen-stage .contact-call-actions .call-control-action,
+ .call-screen-stage .contact-call-actions .call-hangup-action,
+ .call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action{flex-basis:62px!important;width:62px!important;height:62px!important;min-height:62px!important}
+}
