@@ -1521,6 +1521,7 @@ async function deleteSelectedContact(){
 }
 
 let importingContact=false;
+let contactScreenReturnTarget="main";
 function updateImportContactButton(){
  els.importContact.disabled=importingContact||!els.contactPackage.value.trim()||!els.contactName.value.trim();
 
@@ -1559,19 +1560,15 @@ async function importContactFromInput(){
   updatePasteContactButton();
   els.contactName.value="";
   closeAddContactScreen();
-  clearInlineStatus(els.qrStatus);
   clearError();
-  debug("Импортирован и криптографически проверен новый контакт: "+name+".");
-  setStatus("Контакт добавлен","Теперь его можно выбрать для звонка.","idle");
-  if(!existing){
-   debug("Автоматически отправляем ответное приглашение новому контакту.");
-   await sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
-  }else{
-   const sent=await sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
-   if(!sent)throw Error("Не удалось обновить защищённую связь с контактом.");
-  }
+  debug("Импортирован и криптографически проверен контакт: "+name+".");
+  const contactItem=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]"))
+   .find(item=>item.dataset.peer===verified.user_id);
+  if(contactItem)openContactScreen(contactItem,false,{returnTo:"main"});
+  else debug("Контакт сохранён, но его карточку не удалось открыть автоматически.");
+  if(!existing)debug("Автоматически отправляем ответное приглашение новому контакту.");
+  void sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
  }catch(error){
-  showError(error.message||String(error));
   setInlineStatus(els.qrStatus,error.message||"Не удалось импортировать контакт.",true);
  }finally{importingContact=false;updateImportContactButton()}
 }
@@ -1981,7 +1978,8 @@ function handleContactScreenBack(){
  if(!els.callScreen.classList.contains("hidden"))return;
  closeContactScreen();
 }
-function openContactScreen(item,preserveSelection=false){
+function openContactScreen(item,preserveSelection=false,{returnTo="main"}={}){
+ contactScreenReturnTarget=returnTo;
  clearError();
  applyDebugMode();
  const peer=item.dataset.peer;
@@ -2041,12 +2039,15 @@ function openContactDeleteScreen(){
  els.contactDeleteScreenBack.focus();
 }
 function closeContactScreen(){
+ const returnTo=contactScreenReturnTarget;
+ contactScreenReturnTarget="main";
  clearError();
  els.contactEditScreen.classList.add("hidden");
  els.contactDeleteScreen.classList.add("hidden");
  els.contactScreen.classList.add("hidden");
  syncContactScreenOpenClass();
  els.contactScreenMenu.open=false;
+ if(returnTo==="add-contact")openAddContactScreen(false);
 }
 els.contactList.addEventListener("click",event=>{
  const item=event.target.closest(".contact-list-item[data-peer]");
