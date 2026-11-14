@@ -1665,10 +1665,14 @@ async function startQrScan(){
 let contactInvitationLookupRevision=0;
 async function validateContactInvitation(value,source="Ссылка-приглашение"){
  const revision=++contactInvitationLookupRevision,invitation=String(value??"");
- els.contactInvitationEntry.classList.add("hidden");
  els.contactInvitationDetails.classList.add("hidden");els.firstContactWelcome.classList.add("hidden");
  clearInlineStatus(els.qrStatus);
- if(!invitation.trim()){setInlineStatus(els.qrStatus,"Вставьте ссылку-приглашение или отсканируйте QR-код.",true);return false}
+ if(!invitation.trim()){
+  els.contactInvitationEntry.classList.remove("hidden");
+  setInlineStatus(els.qrStatus,"Вставьте ссылку-приглашение или отсканируйте QR-код.",true);
+  return false;
+ }
+ els.contactInvitationEntry.classList.add("hidden");
  try{
   if(source!=="Ссылка-приглашение"){
    if(!invitation.startsWith("https://"))throw Error("Ссылка должна начинаться с https://.");
