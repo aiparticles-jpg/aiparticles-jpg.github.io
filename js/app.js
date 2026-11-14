@@ -1844,6 +1844,20 @@ async function renderConversation(contactUserId){
  }
  els.chatEvents.scrollTop=els.chatEvents.scrollHeight;
 }
+function syncChatVisualViewport(){
+ const root=document.documentElement;
+ const inputFocused=document.activeElement===els.chatMessage&&!els.contactScreen.classList.contains("hidden");
+ if(!inputFocused){
+  root.style.removeProperty("--vl-chat-viewport-height");
+  root.style.removeProperty("--vl-chat-viewport-top");
+  return;
+ }
+ const viewport=window.visualViewport;
+ const height=viewport?.height||window.innerHeight;
+ const top=viewport?.offsetTop||0;
+ root.style.setProperty("--vl-chat-viewport-height",Math.max(1,height)+"px");
+ root.style.setProperty("--vl-chat-viewport-top",Math.max(0,top)+"px");
+}
 function updateChatComposerState(){
  const contact=allContacts.find(item=>item.user_id===els.peer.value);
  const allowed=!!contact&&!contact.request_pending&&!contactReplyFailures.has(els.peer.value);
@@ -1979,6 +1993,11 @@ els.addContactScreenBack.addEventListener("click",closeAddContactScreen);
 els.contactScreenBack.addEventListener("click",handleContactScreenBack);
 els.contactScreenCall.addEventListener("click",connect);
 els.chatComposer.addEventListener("submit",event=>{event.preventDefault();sendChatMessage()});
+els.chatMessage.addEventListener("focus",syncChatVisualViewport);
+els.chatMessage.addEventListener("blur",()=>requestAnimationFrame(syncChatVisualViewport));
+window.visualViewport?.addEventListener("resize",syncChatVisualViewport);
+window.visualViewport?.addEventListener("scroll",syncChatVisualViewport);
+window.addEventListener("resize",syncChatVisualViewport);
 els.chatMessage.addEventListener("input",updateChatComposerState);
 els.chatMessage.addEventListener("keydown",event=>{
  if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();sendChatMessage()}
