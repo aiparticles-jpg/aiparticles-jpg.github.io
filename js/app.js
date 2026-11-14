@@ -42,6 +42,11 @@ let profileInviteRefreshTimer=null;
 let profileInviteRevision=0;
 let activeIssuedInvitationId=null;
 function getInviteContactName(){return String(els.inviteContactName.value||"").trim().slice(0,60)}
+function updateInviteUrlLabel(){
+ const name=getInviteContactName();
+ const label=document.getElementById("invite-url-label");
+ if(label)label.textContent=name?`Ссылка-приглашение для ${name}`:"Ваша ссылка-приглашение";
+}
 async function persistIssuedInvitationContactName(){
  try{
   if(!activeIssuedInvitationId&&els.inviteUrl.value.trim()){
@@ -1727,7 +1732,7 @@ function updateInvitationPanel(){
 els.inviteTools.addEventListener("toggle",()=>{
  if(els.inviteTools.open)updateInvitationPanel();
 });
-function openProfileScreen(){clearInlineStatus(els.inviteStatus);clearError();els.profileScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.inviteTools.open=true;updateInvitationPanel();els.profileScreenBack.focus();}
+function openProfileScreen(){clearInlineStatus(els.inviteStatus);clearError();updateInviteUrlLabel();els.profileScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.inviteTools.open=true;updateInvitationPanel();els.profileScreenBack.focus();}
 function closeProfileScreen(){clearInlineStatus(els.inviteStatus);els.profileScreen.classList.add("hidden");syncContactScreenOpenClass();els.profileDockButton.focus();}
 let diagnosticReturnFocus=null;
 function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");resetDiagnosticLogAutoFollow();els.diagnosticScreenBack.focus();}
@@ -1738,7 +1743,7 @@ els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
 els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
 els.profileScreenBack.addEventListener("click",closeProfileScreen);
 els.profileDisplayName.addEventListener("input",handleProfileDisplayNameInput);
- els.inviteContactName.addEventListener("input",persistIssuedInvitationContactName);
+ els.inviteContactName.addEventListener("input",()=>{updateInviteUrlLabel();persistIssuedInvitationContactName();});
  els.inviteUrl.addEventListener("focus",()=>{if(profileInviteDirty)refreshProfileInvitationIfNeeded();});
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
 els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els.copyDebugLog));
@@ -2210,6 +2215,7 @@ async function initializeApp(){
      activeIssuedInvitationId=savedPackage.invitation_id;
      const issuedRecord=await getIssuedInvitation(activeIssuedInvitationId);
      els.inviteContactName.value=issuedRecord?.local_contact_name||"";
+      updateInviteUrlLabel();
     }catch(error){debug("Не удалось восстановить локальное имя приглашения: "+(error.message||String(error)))}
     updateInviteCopyButton();
    if("Notification" in window&&Notification.permission==="granted"){
