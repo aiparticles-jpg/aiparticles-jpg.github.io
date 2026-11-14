@@ -104,7 +104,7 @@
             <label class="field-label" for="response-display-name">Как вас увидит собеседник?</label>
             <input id="response-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Например, Алексей">
             <p class="hint">Указывать необязательно, но так собеседнику будет проще понять, от кого приглашение.</p>
-            <label class="response-display-name-save" for="save-response-display-name">
+            <label id="save-response-display-name-label" class="response-display-name-save hidden" for="save-response-display-name">
               <input id="save-response-display-name" type="checkbox" disabled>
               <span>Сохранить как имя в вашем профиле</span>
             </label>
@@ -373,6 +373,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=225"></script>
+  <script type="module" src="./js/app.js?v=226"></script>
 </body>
 </html>
