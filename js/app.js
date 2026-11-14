@@ -1682,6 +1682,10 @@ async function validateContactInvitation(value,source="Ссылка-пригла
   els.contactName.focus();return true;
  }catch(error){
   if(revision!==contactInvitationLookupRevision)return false;
+  // Keep the manual-entry controls available so the user can correct the link
+  // without leaving the Add Contact screen. Deep-link failures remain compact:
+  // retrying there means opening the invitation URL again.
+  if(source!=="Ссылка-приглашение")els.contactInvitationEntry.classList.remove("hidden");
   setInlineStatus(els.qrStatus,error.message||"Не удалось проверить приглашение.",true);return false;
  }
 }
