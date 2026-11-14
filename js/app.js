@@ -3,7 +3,7 @@ import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=15";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=13";
-import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId } from "./onesignal.js?v=7";
+import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=4";
 
 const $=id=>document.getElementById(id);
@@ -2151,6 +2151,13 @@ async function initializeApp(){
    const oneSignalReady=initializeOneSignal().then(async()=>{
    debug("OneSignal Web Push SDK инициализирован.");
    if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
+   const pushDiagnostics=await getOneSignalPushDiagnostics();
+   debug("[OneSignal subscription] permission="+pushDiagnostics.permission+
+    "; supported="+pushDiagnostics.supported+
+    "; optedIn="+(pushDiagnostics.optedIn===null?"unknown":pushDiagnostics.optedIn)+
+    "; subscriptionId="+(pushDiagnostics.subscriptionIdSuffix?"…"+pushDiagnostics.subscriptionIdSuffix:"UNAVAILABLE")+
+    "; idAvailable="+pushDiagnostics.idAvailable+
+    (pushDiagnostics.error?"; error="+pushDiagnostics.error:"")+".");
    return true;
   }).catch(error=>{
    debug("OneSignal пока недоступен: "+(error.message||String(error)));
