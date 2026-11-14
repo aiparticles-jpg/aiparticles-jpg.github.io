@@ -1194,16 +1194,23 @@ function renderContactList(contacts){
 }
 async function refreshContactOptions(selectUserId=""){
  const contacts=await listContacts();
+ // A contact request can only arrive as a response to an invitation we issued.
+ // That invitation already represents our consent, so migrate legacy pending
+ // entries and accept every newly verified response automatically.
+ for(let i=0;i<contacts.length;i++){
+  if(contacts[i].request_pending===true){
+   const updated=await updateContact(contacts[i].user_id,{
+    request_pending:false,
+    last_interaction_at:contacts[i].last_interaction_at||contacts[i].request_received_at||new Date().toISOString()
+   });
+   if(updated)contacts[i]=updated;
+  }
+ }
  const callOverlayOpen=!els.callScreen.classList.contains("hidden");
  const previousPeer=els.peer.value;
  const previousEditName=els.editContactName.value;
  const previousOriginalEditName=originalEditContactName;
  contacts.sort((a,b)=>{
-  const aRequestTime=Date.parse(a.request_received_at||"")||0;
-  const bRequestTime=Date.parse(b.request_received_at||"")||0;
-  if(aRequestTime&&bRequestTime)return bRequestTime-aRequestTime;
-  if(aRequestTime)return -1;
-  if(bRequestTime)return 1;
   const aTime=Date.parse(a.last_interaction_at||"")||0,bTime=Date.parse(b.last_interaction_at||"")||0;
   return bTime-aTime||a.name.localeCompare(b.name);
  });
@@ -1392,8 +1399,8 @@ function formatInvitationAge(timestamp){
 async function handleIncomingContactRequest(request){
  const id=request?.contact?.user_id;if(!NtfySecureSignaling.validUserId(id)||id===state.me)return;
  try{const existing=await getContact(id);if(existing?.request_id===request.requestId){debug("Повторная доставка уже обработанного запроса контакта пропущена.");return}
- const receivedAt=existing?.request_received_at||new Date().toISOString(),name=existing?.name||request.contact.display_name||"Новый контакт";
- await saveContact({...existing,...request.contact,name,request_pending:existing?existing.request_pending===true:true,...(existing?.request_received_at?{request_received_at:existing.request_received_at}:{request_received_at:receivedAt}),request_id:request.requestId,invitation_created_at:request.invitationCreatedAt,authorized_by_invitation_id:request.invitationId});
+ const receivedAt=new Date().toISOString(),name=existing?.name||request.contact.display_name||"Новый контакт";
+ await saveContact({...existing,...request.contact,name,request_pending:false,...(existing?.request_received_at?{request_received_at:existing.request_received_at}:{request_received_at:receivedAt}),last_interaction_at:existing?.last_interaction_at||receivedAt,request_id:request.requestId,invitation_created_at:request.invitationCreatedAt,authorized_by_invitation_id:request.invitationId});
  await refreshContactOptions(els.peer.value);debug(existing?"Получено обновлённое приглашение от контакта: "+name+". Локальное имя и история сохранены.":"Получено и сохранено приглашение от контакта: "+name+".");
  }catch(e){debug("Не удалось сохранить запрос контакта: "+(e.message||String(e)))}
 }
