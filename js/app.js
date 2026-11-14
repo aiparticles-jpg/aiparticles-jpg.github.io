@@ -1332,6 +1332,21 @@ async function copyContactInvitation(event){
 
 async function pasteContactInvitation(event){
  event?.preventDefault();event?.stopPropagation();
+ if(els.contactPackage.value.length){
+  contactInvitationLookupRevision++;
+  els.contactPackage.value="";
+  els.contactName.value="";
+  els.responseDisplayName.value="";
+  els.saveResponseDisplayName.checked=false;
+  els.contactInvitationEntry.classList.remove("hidden");
+  els.contactInvitationDetails.classList.add("hidden");
+  els.firstContactWelcome.classList.add("hidden");
+  clearInlineStatus(els.qrStatus);
+  els.contactPackage.dispatchEvent(new Event("input",{bubbles:true}));
+  updateResponseDisplayNameSection();
+  els.contactPackage.focus();
+  return;
+ }
  try{
   if(!navigator.clipboard?.readText)throw Error("Чтение буфера обмена не поддерживается этим браузером.");
   const value=await navigator.clipboard.readText();
@@ -1680,7 +1695,7 @@ async function validateContactInvitation(value,source="Ссылка-пригла
   setInlineStatus(els.qrStatus,error.message||"Не удалось проверить приглашение.",true);return false;
  }
 }
-function updatePasteContactButton(){els.pasteContact.textContent="Вставить";els.pasteContact.disabled=els.contactPackage.value.length>0;}
+function updatePasteContactButton(){els.pasteContact.textContent=els.contactPackage.value.length?"Очистить":"Вставить";els.pasteContact.disabled=false;}
 els.contactPackage.addEventListener("input",()=>{updateImportContactButton();updatePasteContactButton();});
 els.contactPackage.addEventListener("paste",()=>{setTimeout(()=>validateContactInvitation(els.contactPackage.value,"Вставленная ссылка"),0);});
 els.pasteContact.addEventListener("click",pasteContactInvitation);
