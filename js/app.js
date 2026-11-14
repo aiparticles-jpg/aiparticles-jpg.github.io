@@ -49,8 +49,8 @@ function updateInviteUrlLabel(){
 }
 async function persistIssuedInvitationContactName(){
  try{
-  if(!activeIssuedInvitationId&&els.inviteUrl.value.trim()){
-   const invitation=await verifyContactPackage(els.inviteUrl.value.trim());
+  if(!activeIssuedInvitationId&&els.inviteUrl.textContent.trim()){
+   const invitation=await verifyContactPackage(els.inviteUrl.textContent.trim());
    activeIssuedInvitationId=invitation.invitation_id;
   }
   if(activeIssuedInvitationId)await updateIssuedInvitationLocalName(activeIssuedInvitationId,getInviteContactName());
@@ -72,7 +72,7 @@ async function refreshProfileInvitationIfNeeded(){
   return false;
  }
  const displayName=getProfileDisplayName();
- const promise=createContactInvitation({focusResult:false,expectedRevision:revision}).then(updated=>{
+ const promise=createContactInvitation({expectedRevision:revision}).then(updated=>{
   if(updated&&revision===profileInviteRevision&&displayName===getProfileDisplayName()){
    profileInviteDirty=false;
    setInlineStatus(els.inviteStatus,displayName?"Имя сохранено. Ссылка и QR-код приглашения обновлены.":"Имя удалено. Ссылка и QR-код приглашения обновлены.");
@@ -1274,7 +1274,7 @@ async function ensureQrCodeLibrary(){
  });
  if(!window.QRCode)throw new Error("Библиотека QR-кодов не инициализировалась.");
 }
-async function createContactInvitation({focusResult=true,expectedRevision=null}={}){
+async function createContactInvitation({expectedRevision=null}={}){
  const profileRevision=profileInviteRevision;
  const displayName=getProfileDisplayName();
  els.createInvite.disabled=true;
@@ -1299,7 +1299,7 @@ async function createContactInvitation({focusResult=true,expectedRevision=null}=
   if(profileRevision!==profileInviteRevision||displayName!==getProfileDisplayName()||
      (expectedRevision!==null&&expectedRevision!==profileInviteRevision))return false;
   await saveMyInvitation(url);
-  els.inviteUrl.value=url;
+  els.inviteUrl.textContent=url;
   updateInviteCopyButton();
   els.inviteQr.replaceChildren();
   try{
@@ -1309,7 +1309,6 @@ async function createContactInvitation({focusResult=true,expectedRevision=null}=
   }catch(qrError){
    setInlineStatus(els.inviteStatus,"Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError)),true);
   }
-  if(focusResult){els.inviteUrl.focus();els.inviteUrl.select()}
   debug("Создано защищённое приглашение с действующим OneSignal Subscription ID.");
   if(profileRevision===profileInviteRevision&&displayName===getProfileDisplayName())profileInviteDirty=false;
   updateInvitationPanel();
@@ -1321,7 +1320,7 @@ async function createContactInvitation({focusResult=true,expectedRevision=null}=
   }finally{els.createInvite.disabled=false}
 }
 function updateInviteCopyButton(){
- const disabled=!els.inviteUrl.value.trim();
+ const disabled=!els.inviteUrl.textContent.trim();
  els.copyInvite.disabled=disabled;
  els.copyInviteInline.disabled=disabled;
 }
@@ -1329,15 +1328,14 @@ async function copyContactInvitation(event){
  event?.preventDefault();
  event?.stopPropagation();
  if(!await refreshProfileInvitationIfNeeded())return;
- const value=els.inviteUrl.value.trim();
+ const value=els.inviteUrl.textContent.trim();
  if(!value)return;
  try{
   await navigator.clipboard.writeText(value);
   setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
  }catch{
   openProfileScreen();
-  els.inviteUrl.focus();els.inviteUrl.select();
-  setInlineStatus(els.inviteStatus,"Выделите ссылку и скопируйте её вручную.");
+  setInlineStatus(els.inviteStatus,"Не удалось скопировать автоматически. Нажмите и удерживайте ссылку, чтобы выделить её.");
  }
 }
 
@@ -1711,12 +1709,12 @@ function updateInvitationPanel(){
  const granted="Notification" in window&&Notification.permission==="granted";
  els.invitePermission.classList.toggle("hidden",granted);
  els.inviteContent.classList.toggle("hidden",!granted);
- if(granted&&!els.inviteUrl.value&&!els.createInvite.disabled)createContactInvitation();
- if(granted&&els.inviteUrl.value&&!els.inviteQr.childElementCount){
+ if(granted&&!els.inviteUrl.textContent&&!els.createInvite.disabled)createContactInvitation();
+ if(granted&&els.inviteUrl.textContent&&!els.inviteQr.childElementCount){
   (async()=>{
    try{
     await ensureQrCodeLibrary();
-    if(!els.inviteQr.childElementCount)new window.QRCode(els.inviteQr,{text:els.inviteUrl.value,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
+    if(!els.inviteQr.childElementCount)new window.QRCode(els.inviteQr,{text:els.inviteUrl.textContent,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
    }catch(error){setInlineStatus(els.inviteStatus,"Ссылка доступна, но QR-код пока не удалось восстановить.",true)}
   })();
  }
@@ -1745,13 +1743,13 @@ els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els
 els.copySwDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.swDebugLog,els.copySwDebugLog));
 els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;try{els.profileDockButton.setPointerCapture(event.pointerId)}catch{}profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;els.profileDockLabel.textContent="Отпустите";},550);});
 async function completeProfileLongPress(){
- if(els.inviteUrl.value.trim()&&!await refreshProfileInvitationIfNeeded()){
+ if(els.inviteUrl.textContent.trim()&&!await refreshProfileInvitationIfNeeded()){
   openProfileScreen();
   return;
  }
- if(!els.inviteUrl.value.trim()){els.profileDockLabel.textContent="Профиль";openProfileScreen();setInlineStatus(els.inviteStatus,"Ссылка появится после разрешения push-уведомлений.");return;}
+ if(!els.inviteUrl.textContent.trim()){els.profileDockLabel.textContent="Профиль";openProfileScreen();setInlineStatus(els.inviteStatus,"Ссылка появится после разрешения push-уведомлений.");return;}
  try{
-  await navigator.clipboard.writeText(els.inviteUrl.value.trim());
+  await navigator.clipboard.writeText(els.inviteUrl.textContent.trim());
   els.profileDockLabel.textContent="Скопировано";
   setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
   window.setTimeout(()=>{els.profileDockLabel.textContent="Профиль"},1500);
@@ -2204,7 +2202,7 @@ async function initializeApp(){
   }
   const savedInvitation=await getMyInvitation();
   if(savedInvitation){
-    els.inviteUrl.value=savedInvitation;
+    els.inviteUrl.textContent=savedInvitation;
     try{
      const savedPackage=await verifyContactPackage(savedInvitation);
      activeIssuedInvitationId=savedPackage.invitation_id;
