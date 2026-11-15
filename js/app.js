@@ -2337,7 +2337,7 @@ async function initializeApp(){
    await openChatFromNotification(requestedChat);
    const cleanUrl=new URL(window.location.href);
    cleanUrl.searchParams.delete("openChat");
-   history.replaceState(null,"",cleanUrl.pathname+cleanUrl.search+cleanUrl.hash);
+   window.history.replaceState(null,"",cleanUrl.href);
   }
 
   const fragment=new URLSearchParams(window.location.hash.slice(1));
@@ -2347,7 +2347,9 @@ async function initializeApp(){
     openAddContactScreen(false,{preserveInput:true,fromInvitation:true});
     // Keep the invitation in the form, but remove it from the address bar
     // so a page refresh does not reopen the same deep link.
-    history.replaceState(null,"",window.location.pathname+window.location.search);
+    const cleanUrl=new URL(window.location.href);
+     cleanUrl.hash="";
+     window.history.replaceState(null,"",cleanUrl.href);
    }
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
