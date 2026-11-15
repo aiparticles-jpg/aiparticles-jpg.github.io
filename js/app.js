@@ -1322,7 +1322,7 @@ async function createContactInvitationNow({expectedRevision=null}={}){
    new window.QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
    setInlineStatus(els.inviteStatus,"");
   }catch(qrError){
-   setInlineStatus(els.inviteStatus,"Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError)),true);
+   setInlineStatus(els.invitationScreenStatus,"Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError)),true);
   }
   debug("Создано защищённое приглашение с действующим OneSignal Subscription ID.");
   
@@ -1853,22 +1853,8 @@ els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els
 els.copySwDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.swDebugLog,els.copySwDebugLog));
 els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;try{els.profileDockButton.setPointerCapture(event.pointerId)}catch{}profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;els.profileDockLabel.textContent="Отпустите";},550);});
 async function completeProfileLongPress(){
- if(els.inviteUrl.textContent.trim()&&!await refreshProfileInvitationIfNeeded()){
-  openProfileScreen();
-  return;
- }
- if(!els.inviteUrl.textContent.trim()){els.profileDockLabel.textContent="Профиль";openProfileScreen();setInlineStatus(els.inviteStatus,"Ссылка появится после разрешения push-уведомлений.");return;}
- try{
-  await navigator.clipboard.writeText(els.inviteUrl.textContent.trim());
-  els.profileDockLabel.textContent="Скопировано";
-  setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
-  window.setTimeout(()=>{els.profileDockLabel.textContent="Профиль"},1500);
- }catch(error){
-  els.profileDockLabel.textContent="Профиль";
-  openProfileScreen();
-  els.inviteUrl.focus();els.inviteUrl.select();
-  setInlineStatus(els.inviteStatus,"Не удалось скопировать автоматически. Скопируйте ссылку из поля вручную.",true);
- }
+ els.profileDockLabel.textContent="Профиль";
+ openProfileScreen();
 }
 function cancelProfileLongPress(){if(profileLongPressTimer!==null){window.clearTimeout(profileLongPressTimer);profileLongPressTimer=null;}}
 els.profileDockButton.addEventListener("pointerup",()=>{const wasLongPress=profileLongPressTriggered;cancelProfileLongPress();if(wasLongPress)completeProfileLongPress();else els.profileDockLabel.textContent="Профиль";});
