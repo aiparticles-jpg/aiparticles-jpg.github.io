@@ -75,17 +75,25 @@ function isUuid(value) {
 
 function validateRequest(body, now) {
   if (!body || typeof body !== "object" || Array.isArray(body) || body.v !== 1) return null;
-  const { user_id, timestamp, event, call_id, recipient_subscription_id, expires_at, sender_name } = body;
+  const { user_id, timestamp, event, call_id, recipient_subscription_id, expires_at, sender_name, invitation_id } = body;
   if (typeof user_id !== "string" || !/^[a-f0-9]{64}$/.test(user_id)) return null;
   if (!Number.isSafeInteger(timestamp) || Math.abs(now - timestamp) > WINDOW_MS) return null;
   if (!ALLOWED_EVENTS.has(event)) return null;
   if (!isUuid(call_id)) return null;
+  if (event === "contact_request" && !isUuid(invitation_id)) return null;
   if (typeof recipient_subscription_id !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(recipient_subscription_id)) return null;
   if (!Number.isSafeInteger(expires_at)) return null;
   if (sender_name !== undefined && (typeof sender_name !== "string" || sender_name.length > 60 || sender_name.trim() !== sender_name || /[\u0000-\u001f\u007f]/.test(sender_name))) return null;
 
-  return { user_id, event, call_id, recipient_subscription_id, expires_at };
+  return {
+    user_id,
+    event,
+    call_id,
+    recipient_subscription_id,
+    expires_at,
+    ...(event === "contact_request" ? { invitation_id } : {})
+  };
 }
 
 function notificationText(event) {
@@ -125,7 +133,8 @@ async function submitOneSignal(event) {
         event: event.event,
         sender_id: event.user_id,
         call_id: event.call_id,
-        expires_at: event.expires_at
+        expires_at: event.expires_at,
+        ...(event.event === "contact_request" ? { invitation_id: event.invitation_id } : {})
       }
     })
   });
