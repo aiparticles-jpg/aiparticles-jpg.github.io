@@ -98,11 +98,11 @@
           </div>
           <div class="contact-name-section">
             <label class="field-label" for="contact-name">Как назвать контакт в вашем списке?</label>
-            <input id="contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
+            <input id="contact-name" type="text" maxlength="40" autocomplete="off" placeholder="Например, Иван">
           </div>
           <div id="response-display-name-section" class="response-display-name-section hidden">
             <label class="field-label" for="response-display-name">Как вас увидит собеседник? (необязательно)</label>
-            <input id="response-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Например, Алексей">
+            <input id="response-display-name" type="text" maxlength="40" autocomplete="nickname" placeholder="Например, Алексей">
             <p class="hint">Так собеседнику будет проще понять, кто принял его приглашение.</p>
             <label id="save-response-display-name-label" class="response-display-name-save hidden" for="save-response-display-name">
               <input id="save-response-display-name" type="checkbox" disabled>
@@ -210,7 +210,7 @@
       <div class="contact-edit-screen-content">
         <div id="contact-edit-tools" class="contact-edit-tools hidden">
           <label class="field-label" for="edit-contact-name">Как назвать контакт?</label>
-          <input id="edit-contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
+          <input id="edit-contact-name" type="text" maxlength="40" autocomplete="off" placeholder="Например, Иван">
           <button id="save-contact-name" class="button button-primary" type="button" disabled>Сохранить имя</button>
         </div>
       </div>
@@ -240,7 +240,7 @@
       <div class="contact-edit-screen-content profile-screen-content">
       <div class="profile-display-name">
         <label class="field-label" for="profile-display-name">Ваше имя (необязательно)</label>
-        <input id="profile-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Например, Алексей">
+        <input id="profile-display-name" type="text" maxlength="40" autocomplete="nickname" placeholder="Например, Алексей">
         <p class="hint">Это имя будет отправляться вместе с вашим приглашением, чтобы показать от кого оно.</p>
       </div>
       <details id="invite-tools" class="contact-tools invite-tools" open>
@@ -256,7 +256,7 @@
           <p class="hint">Передайте собеседнику ссылку или QR-код, чтобы начать обмен контактами.</p>
       <div class="profile-display-name">
         <label class="field-label" for="invite-contact-name">Как назвать собеседника у себя? (необязательно)</label>
-        <input id="invite-contact-name" type="text" maxlength="60" autocomplete="off" placeholder="Например, Иван">
+        <input id="invite-contact-name" type="text" maxlength="40" autocomplete="off" placeholder="Например, Иван">
         <p class="hint">Если собеседник воспользуется приглашением, вы потом узнаете его в списке контактов по этому имени.</p>
       </div>
           <p class="hint invitation-one-use-warning">Важно: приглашение можно использовать только один раз. Передавайте ссылку лично тому, кого хотите добавить в контакты, чтобы ею не смогли воспользоваться посторонние.</p>
@@ -381,6 +381,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=253"></script>
+  <script type="module" src="./js/app.js?v=254"></script>
 </body>
 </html>
