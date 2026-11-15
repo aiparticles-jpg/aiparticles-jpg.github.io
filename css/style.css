@@ -929,8 +929,9 @@ body.contact-screen-open .contact-screen{height:var(--vl-chat-viewport-height,10
 .call-remote-video.hidden{display:none}
 .call-remote-video-placeholder{position:absolute;inset:0;display:grid;place-items:center;padding:24px;color:#a9b8ce;text-align:center;font-size:14px;background:radial-gradient(ellipse at center,#17253a 0%,#080e18 72%)}
 .call-remote-video-placeholder.hidden{display:none}
-.call-local-video{position:absolute;right:12px;bottom:12px;z-index:2;width:clamp(88px,28%,150px);aspect-ratio:3/4;object-fit:cover;border:2px solid rgba(255,255,255,.82);border-radius:12px;background:#101827;box-shadow:0 4px 16px rgba(0,0,0,.45);transform:scaleX(-1)}
+.call-local-video{position:absolute;right:12px;bottom:12px;z-index:2;width:clamp(88px,28%,150px);aspect-ratio:3/4;object-fit:cover;border:2px solid rgba(255,255,255,.82);border-radius:12px;background:#101827;box-shadow:0 4px 16px rgba(0,0,0,.45)}
 .call-local-video.hidden{display:none}
+.call-local-video.is-front-camera{transform:scaleX(-1)}
 .call-control-action .camera-off-icon{display:none}
 .call-control-action[data-enabled="true"] .camera-on-icon{display:none}
 .call-control-action[data-enabled="true"] .camera-off-icon{display:block}
