@@ -13,7 +13,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),cameraToggle:$("camera-toggle"),cameraSwitch:$("camera-switch"),
  audio:$("remote-audio"),remoteVideo:$("remote-video"),localVideo:$("local-video"),callVideoStage:$("call-video-stage"),remoteVideoPlaceholder:$("remote-video-placeholder"),pilot:$("diagnostic-pilot"),cameraPilot:$("diagnostic-camera-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
-  contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactInvitationDetails:$("contact-invitation-details"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),saveResponseDisplayNameLabel:$("save-response-display-name-label"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
+  contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactInvitationDetails:$("contact-invitation-details"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),saveResponseDisplayNameLabel:$("save-response-display-name-label"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
 function syncContactScreenOpenClass(){
  const overlayScreens=[
@@ -1336,7 +1336,6 @@ async function createContactInvitationNow({expectedRevision=null}={}){
   }
   debug("Создано защищённое приглашение с действующим OneSignal Subscription ID.");
   
-  updateInvitationPanel();
   return true;
   }catch(error){
    const message=error.message||String(error);
@@ -1790,11 +1789,6 @@ updateImportContactButton();
 els.replyInvite.addEventListener("click",()=>{els.contactScreenMenu.open=false;sendContactRequest()});
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
-function updateInvitationPanel(){
- if("Notification" in window&&Notification.permission==="denied"){
-  setInlineStatus(els.inviteStatus,"Уведомления запрещены. Разрешите их для VoiceLink в настройках сайта браузера, затем нажмите «Создать приглашение» ещё раз.",true);
- }
-}
 async function handleCreateInvitationClick(){
  clearInlineStatus(els.inviteStatus);
  clearInlineStatus(els.invitationScreenStatus);
@@ -1825,9 +1819,8 @@ function openProfileScreen(){
  els.profileScreen.classList.remove("hidden");
  syncContactScreenOpenClass();
  els.profileScreenBack.focus();
- updateInvitationPanel();
 }
-async function closeProfileScreen(){
+function closeProfileScreen(){
  clearInlineStatus(els.inviteStatus);clearError();
  profileInviteRevision++;
  els.inviteContactName.value="";
@@ -1867,7 +1860,7 @@ els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
 els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els.copyDebugLog));
 els.copySwDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.swDebugLog,els.copySwDebugLog));
 els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;try{els.profileDockButton.setPointerCapture(event.pointerId)}catch{}profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;els.profileDockLabel.textContent="Отпустите";},550);});
-async function completeProfileLongPress(){
+function completeProfileLongPress(){
  els.profileDockLabel.textContent="Профиль";
  openProfileScreen();
 }
