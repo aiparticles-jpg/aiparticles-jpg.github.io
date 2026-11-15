@@ -1046,3 +1046,14 @@ body{
  .contact-edit-screen>.contact-edit-screen-header,
  .add-contact-screen>.contact-edit-screen-header{min-height:58px}
 }
+
+
+/* Keep the profile invitation action clearly visible above the safe-area inset. */
+#profile-screen #create-invite.button-primary{
+  color:#092019;
+  background:var(--accent);
+  opacity:1;
+}
+#profile-screen #create-invite.button-primary:hover:not(:disabled){
+  background:#a2efd4;
+}
