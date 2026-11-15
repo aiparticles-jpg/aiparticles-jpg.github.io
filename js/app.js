@@ -4,7 +4,7 @@ import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, updateIssuedInvitationLocalName, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=17";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
-import { sendPushEventToContact } from "./push-api.js?v=4";
+import { sendPushEventToContact } from "./push-api.js?v=5";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -1440,7 +1440,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
   markContactRequestSent(peer,invitationId,createdAt);await updateContact(peer,{shared_secret_created_at:createdAt});setContactReplyFailure(peer,false);updateCallButtons();
-  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug);debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
+  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug,{invitation_id:invitationId});debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
   catch(e){debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(e.message||String(e)))}
   return true;
  }catch(e){const d=e.message||String(e),m="Не удалось отправить ответное приглашение: "+d;setContactReplyFailure(peer,true);if(els.debugMode.checked){const dialog=statusElement?.closest('[role="dialog"]');if(dialog&&!dialog.classList.contains("hidden"))showError(d)}debug(m);return false}
