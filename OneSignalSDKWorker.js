@@ -98,6 +98,40 @@ async function vlClearPushes(){
   });
  }finally{db.close()}
 }
+
+const VL_CONTACT_REQUEST_DEDUP_DB="voicelink-contact-request-dedup-v1";
+function vlOpenContactRequestDedupDb(){
+ return new Promise((resolve,reject)=>{
+  const request=indexedDB.open(VL_CONTACT_REQUEST_DEDUP_DB,1);
+  request.onupgradeneeded=()=>{
+   const db=request.result;
+   if(!db.objectStoreNames.contains("shown"))db.createObjectStore("shown",{keyPath:"invitationId"});
+  };
+  request.onsuccess=()=>resolve(request.result);
+  request.onerror=()=>reject(request.error||new Error("Contact request dedup database open failed"));
+ });
+}
+async function vlClaimContactRequestNotification(invitationId){
+ if(typeof invitationId!=="string"||!/^[0-9a-f-]{36}$/i.test(invitationId))return true;
+ const db=await vlOpenContactRequestDedupDb();
+ try{
+  return await new Promise((resolve,reject)=>{
+   let claimed=false;
+   const tx=db.transaction("shown","readwrite");
+   const store=tx.objectStore("shown");
+   const request=store.get(invitationId);
+   request.onsuccess=()=>{
+    if(request.result)return;
+    claimed=true;
+    store.put({invitationId,shownAt:Date.now()});
+   };
+   request.onerror=()=>{try{tx.abort()}catch{}};
+   tx.oncomplete=()=>resolve(claimed);
+   tx.onerror=()=>reject(tx.error||new Error("Contact request dedup transaction failed"));
+   tx.onabort=()=>reject(tx.error||new Error("Contact request dedup transaction aborted"));
+  });
+ }finally{db.close()}
+}
 function vlDecodeData(value){
  if(typeof value==="string"){
   try{return JSON.parse(value)}catch{return {}}
@@ -186,13 +220,20 @@ async function vlShouldSuppressNotification(data,windows){
  return results.some(Boolean);
 }
 async function vlShowCustomNotification(data){
+ if(data.event==="contact_request"){
+  const claimed=await vlClaimContactRequestNotification(data.invitation_id);
+  if(!claimed){
+   await vlWriteLog("contact_request_duplicate_ignored",{invitationId:data.invitation_id||null});
+   return false;
+  }
+ }
  const localInvitationName=data.event==="contact_request"?await vlFindInvitationName(data.invitation_id):"";
  const senderName=data.event==="contact_request"&&typeof data.sender_name==="string"?data.sender_name.trim().slice(0,40):"";
  const name=data.event==="contact_request"?(localInvitationName||senderName):await vlFindContactName(data.sender_id);
  await vlWriteLog("contact_lookup",{event:data.event,found:!!name,name:name||null});
  const options={
   body:vlNotificationBody(data,name),
-  tag:"voicelink-"+String(data.event||"event")+"-"+String(data.sender_id||"unknown"),
+  tag:data.event==="contact_request"&&typeof data.invitation_id==="string"?"voicelink-contact-request-"+data.invitation_id:"voicelink-"+String(data.event||"event")+"-"+String(data.sender_id||"unknown"),
   data:{voicelink:true,event:data.event||"",sender_id:data.sender_id||"",call_id:data.call_id||"",invitation_id:data.invitation_id||"",expires_at:data.expires_at||0}
  };
  await self.registration.showNotification(vlNotificationTitle(data,name),options);
@@ -231,7 +272,7 @@ async function vlHandlePush(event){
   }catch(error){
    await vlWriteLog("notification_error",{event:data.event,error:String(error?.message||error)});
    // Keep app events out of OneSignal's generic notification path.
-   try{await self.registration.showNotification(vlNotificationTitle(data,""),{body:vlNotificationBody(data,""),tag:"voicelink-event-"+String(data.event||"unknown")})}catch{}
+   try{await self.registration.showNotification(vlNotificationTitle(data,""),{body:vlNotificationBody(data,""),tag:data.event==="contact_request"&&typeof data.invitation_id==="string"?"voicelink-contact-request-"+data.invitation_id:"voicelink-event-"+String(data.event||"unknown")})}catch{}
   }
  })());
 }
