@@ -153,12 +153,18 @@ async function vlFindInvitationName(invitationId){
   });
  }catch{return ""}finally{db?.close()}
 }
+function vlNotificationTitle(data,name){
+ if(data.event==="contact_request"){
+  return (name||"Неизвестный контакт")+" откликнулся на ваше приглашение";
+ }
+ return "VoiceLink";
+}
 function vlNotificationBody(data,name){
- const who=name||"неизвестного контакта";
+ const who=name||"неизвестный контакт";
  switch(data.event){
   case "incoming_call":return "Входящий звонок от "+who+".";
   case "new_message":return "Новое сообщение от "+who+".";
-  case "contact_request":return "Приглашение от "+who+".";
+  case "contact_request":return who+" хочет добавить вас в контакты.";
   case "call_cancelled":return "Вызов от "+who+" отменён.";
   case "call_ignored":return "Вызов от "+who+" отклонён.";
   case "call_ended":return "Звонок с "+who+" завершён.";
@@ -189,7 +195,7 @@ async function vlShowCustomNotification(data){
   tag:"voicelink-"+String(data.event||"event")+"-"+String(data.sender_id||"unknown"),
   data:{voicelink:true,event:data.event||"",sender_id:data.sender_id||"",call_id:data.call_id||"",invitation_id:data.invitation_id||"",expires_at:data.expires_at||0}
  };
- await self.registration.showNotification("VoiceLink",options);
+ await self.registration.showNotification(vlNotificationTitle(data,name),options);
   await vlWriteLog("notification_shown",{event:data.event,withName:!!name});
 }
 async function vlHandlePush(event){
@@ -225,7 +231,7 @@ async function vlHandlePush(event){
   }catch(error){
    await vlWriteLog("notification_error",{event:data.event,error:String(error?.message||error)});
    // Keep app events out of OneSignal's generic notification path.
-   try{await self.registration.showNotification("VoiceLink",{body:vlNotificationBody(data,""),tag:"voicelink-event-"+String(data.event||"unknown")})}catch{}
+   try{await self.registration.showNotification(vlNotificationTitle(data,""),{body:vlNotificationBody(data,""),tag:"voicelink-event-"+String(data.event||"unknown")})}catch{}
   }
  })());
 }
