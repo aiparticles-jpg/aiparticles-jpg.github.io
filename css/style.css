@@ -509,8 +509,18 @@ body.contact-screen-open{overflow:hidden}
 @media(max-width:520px){.shell{padding-bottom:calc(128px + env(safe-area-inset-bottom))}.utility-dock{height:calc(100px + env(safe-area-inset-bottom));min-height:calc(100px + env(safe-area-inset-bottom));gap:8px}}
 
 
+/* Fill the available viewport with the contacts area above the fixed dock. */
+.shell{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
+.contacts-list-panel{flex:1 1 auto;height:auto;min-height:190px;max-height:none;margin-bottom:0}
 
 
+/* Let the contacts list grow naturally; the document, not an inner panel, scrolls. */
+.shell{display:block;min-height:0}
+.contacts-list-panel{display:block;flex:none;height:auto;min-height:0;max-height:none;overflow:visible;margin-bottom:0}
+.contacts-list{display:block;flex:none;height:auto;min-height:0;overflow:visible;overscroll-behavior:auto;scrollbar-width:auto}
+.contacts-list-items{min-height:0}
+.contacts-list-empty{min-height:70px}
+@media(max-width:520px){.topbar{min-height:58px}}
 
 
 /* The diagnostics log occupies the remaining viewport height and scrolls internally. */
@@ -857,7 +867,6 @@ details > summary::-webkit-details-marker {
 body.contact-screen-open .topbar,
 body.contact-screen-open .contacts-list-panel,
 body.contact-screen-open .utility-dock{display:none!important}
-body:not(.contact-screen-open) .utility-dock{display:flex!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;z-index:150!important;}
 @media(max-width:520px){
  :root{--vl-dock-height:100px}
  .contacts-list-panel{margin:0}

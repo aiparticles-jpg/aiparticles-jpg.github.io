@@ -1108,7 +1108,7 @@ function formatLastInteraction(value){
 let contactsLoaded=false;
 let allContacts=[];
 
-
+// Coordinated pull gesture: keep one continuous drag across the search strip and contact list.
 (()=>{
  const list=els.contactList;
  const search=document.querySelector(".contacts-search-strip");
@@ -2382,6 +2382,5 @@ try{els.cameraPilot.checked=localStorage.getItem("vl.simulateCamera.v1")==="1"}c
 els.pilot.addEventListener("change",()=>{try{localStorage.setItem("vl.simulateMicrophone.v1",els.pilot.checked?"1":"0")}catch{}});
 els.cameraPilot.addEventListener("change",()=>{try{localStorage.setItem("vl.simulateCamera.v1",els.cameraPilot.checked?"1":"0")}catch{}});
 els.dismissIncoming.classList.add("hidden");
-syncContactScreenOpenClass();
 initializeApp();
 
