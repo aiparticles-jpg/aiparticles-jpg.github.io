@@ -180,7 +180,9 @@ async function vlShouldSuppressNotification(data,windows){
  return results.some(Boolean);
 }
 async function vlShowCustomNotification(data){
- const name=data.event==="contact_request"?await vlFindInvitationName(data.invitation_id):await vlFindContactName(data.sender_id);
+ const localInvitationName=data.event==="contact_request"?await vlFindInvitationName(data.invitation_id):"";
+ const senderName=data.event==="contact_request"&&typeof data.sender_name==="string"?data.sender_name.trim().slice(0,40):"";
+ const name=data.event==="contact_request"?(localInvitationName||senderName):await vlFindContactName(data.sender_id);
  await vlWriteLog("contact_lookup",{event:data.event,found:!!name,name:name||null});
  const options={
   body:vlNotificationBody(data,name),
