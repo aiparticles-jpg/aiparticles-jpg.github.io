@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=34";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=18";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=19";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
@@ -1313,16 +1313,16 @@ async function ensureQrCodeLibrary(){
  });
  if(!window.QRCode)throw new Error("Библиотека QR-кодов не инициализировалась.");
 }
-let profileInvitationCreationPromise=null;
-async function createContactInvitation(options={}){
- if(profileInvitationCreationPromise){
-  await profileInvitationCreationPromise;
-  if(Number.isInteger(options.expectedRevision)&&options.expectedRevision!==profileInviteRevision)return false;
- }
- const promise=createContactInvitationNow(options);
- profileInvitationCreationPromise=promise;
- try{return await promise}
- finally{if(profileInvitationCreationPromise===promise)profileInvitationCreationPromise=null}
+let profileInvitationCreationQueue=Promise.resolve();
+function createContactInvitation(options={}){
+ const requestedRevision=Number.isInteger(options.expectedRevision)?options.expectedRevision:profileInviteRevision;
+ const promise=profileInvitationCreationQueue.then(()=>{
+  if(requestedRevision!==profileInviteRevision)return false;
+  return createContactInvitationNow({...options,expectedRevision:requestedRevision});
+ });
+ // Serialize every generation so overlapping edits cannot race.
+ profileInvitationCreationQueue=promise.catch(()=>false);
+ return promise;
 }
 async function createContactInvitationNow({expectedRevision=null}={}){
  const profileRevision=profileInviteRevision;
@@ -1357,13 +1357,19 @@ async function createContactInvitationNow({expectedRevision=null}={}){
    return false;
   }
   await saveMyInvitation(url);
-  if(!isCurrentRevision())return false;
+  if(!isCurrentRevision()){
+   await deleteUnusedIssuedInvitation(unsigned.invitation_id);
+   await clearMyInvitation(url);
+   return false;
+  }
   activeIssuedInvitationId=unsigned.invitation_id;
   els.inviteUrl.textContent=url;
   updateInviteCopyButton();
   els.inviteQr.replaceChildren();
   try{
    await ensureQrCodeLibrary();
+   if(!isCurrentRevision())return false;
+   els.inviteQr.replaceChildren();
    new window.QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
    setInlineStatus(els.inviteStatus,"");
   }catch(qrError){
@@ -1854,12 +1860,46 @@ function updateInvitationPanel(){
 els.inviteTools.addEventListener("toggle",()=>{
  if(els.inviteTools.open)updateInvitationPanel();
 });
-function openProfileScreen(){clearInlineStatus(els.inviteStatus);clearError();updateInviteUrlLabel();els.profileScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");els.inviteTools.open=true;updateInvitationPanel();els.profileScreenBack.focus();}
+async function openProfileScreen(){
+ clearInlineStatus(els.inviteStatus);clearError();
+ if(profileInviteRefreshTimer!==null){clearTimeout(profileInviteRefreshTimer);profileInviteRefreshTimer=null;}
+ profileInviteRevision++;
+ profileInviteDirty=false;
+ const previousUrl=els.inviteUrl.textContent.trim();
+ els.inviteContactName.value="";
+ els.inviteUrl.textContent="";
+ els.inviteQr.replaceChildren();
+ activeIssuedInvitationId=null;
+ updateInviteUrlLabel();
+ updateInviteCopyButton();
+ els.profileScreen.classList.remove("hidden");
+ document.body.classList.add("contact-screen-open");
+ els.inviteTools.open=true;
+ els.profileScreenBack.focus();
+ if(previousUrl){
+  try{await clearMyInvitation(previousUrl)}catch(error){debug("Не удалось очистить указатель старого приглашения: "+(error.message||String(error)))}
+ }
+ updateInvitationPanel();
+}
 async function closeProfileScreen(){
  clearInlineStatus(els.inviteStatus);
+ if(profileInviteRefreshTimer!==null){clearTimeout(profileInviteRefreshTimer);profileInviteRefreshTimer=null;}
+ profileInviteRevision++;
+ profileInviteDirty=false;
+ const issuedUrl=els.inviteUrl.textContent.trim();
+ // Clear only the profile draft. Keep local_contact_name in the issued record.
+ els.inviteContactName.value="";
+ els.inviteUrl.textContent="";
+ els.inviteQr.replaceChildren();
+ activeIssuedInvitationId=null;
+ updateInviteUrlLabel();
+ updateInviteCopyButton();
  els.profileScreen.classList.add("hidden");
  syncContactScreenOpenClass();
  els.profileDockButton.focus();
+ if(issuedUrl){
+  try{await clearMyInvitation(issuedUrl)}catch(error){debug("Не удалось очистить указатель приглашения: "+(error.message||String(error)))}
+ }
 }
 let diagnosticReturnFocus=null;
 function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");resetDiagnosticLogAutoFollow();els.diagnosticScreenBack.focus();}
@@ -2359,8 +2399,7 @@ async function initializeApp(){
     try{
      const savedPackage=await verifyContactPackage(savedInvitation);
      activeIssuedInvitationId=savedPackage.invitation_id;
-     const issuedRecord=await getIssuedInvitation(activeIssuedInvitationId);
-     els.inviteContactName.value=String(issuedRecord?.local_contact_name||"").slice(0,40);
+     // Recipient aliases belong to individual issued invitations, not to the profile form.
      updateInviteUrlLabel();
     }catch(error){debug("Не удалось восстановить локальное имя приглашения: "+(error.message||String(error)))}
     updateInviteCopyButton();
