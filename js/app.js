@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js?v=5";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),invitationScreen:$("invitation-screen"),invitationScreenBack:$("invitation-screen-back"),invitationScreenStatus:$("invitation-screen-status"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
+ contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),invitationScreen:$("invitation-screen"),invitationScreenBack:$("invitation-screen-back"),invitationScreenStatus:$("invitation-screen-status"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),cameraToggle:$("camera-toggle"),cameraSwitch:$("camera-switch"),
  audio:$("remote-audio"),remoteVideo:$("remote-video"),localVideo:$("local-video"),callVideoStage:$("call-video-stage"),remoteVideoPlaceholder:$("remote-video-placeholder"),pilot:$("diagnostic-pilot"),cameraPilot:$("diagnostic-camera-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
@@ -40,7 +40,6 @@ window.voicelinkIsReadingChat=senderId=>
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
 function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,40)}
 let profileInviteRevision=0;
-let activeIssuedInvitationId=null;
 function getInviteContactName(){return String(els.inviteContactName.value||"").trim().slice(0,40)}
 function updateInviteUrlLabel(){
  const name=getInviteContactName();
@@ -1313,7 +1312,6 @@ async function createContactInvitationNow({expectedRevision=null}={}){
    await clearMyInvitation(url);
    return false;
   }
-  activeIssuedInvitationId=unsigned.invitation_id;
   els.inviteUrl.textContent=url;
   updateInviteCopyButton();
   els.inviteQr.replaceChildren();
@@ -1322,7 +1320,6 @@ async function createContactInvitationNow({expectedRevision=null}={}){
    if(!isCurrentRevision()){
     await deleteUnusedIssuedInvitation(unsigned.invitation_id);
     await clearMyInvitation(url);
-    activeIssuedInvitationId=null;
     els.inviteUrl.textContent="";
     els.inviteQr.replaceChildren();
     updateInviteCopyButton();
@@ -1835,7 +1832,6 @@ async function closeInvitationScreen(){
  els.inviteContactName.value="";
  els.inviteUrl.textContent="";
  els.inviteQr.replaceChildren();
- activeIssuedInvitationId=null;
  clearInlineStatus(els.invitationScreenStatus);
  updateInviteUrlLabel();
  updateInviteCopyButton();
