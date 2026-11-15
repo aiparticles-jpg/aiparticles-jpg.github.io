@@ -123,6 +123,19 @@ export async function getIssuedInvitation(invitationId) {
   return record || null;
 }
 
+export async function deleteUnusedIssuedInvitation(invitationId) {
+  if (typeof invitationId !== "string" || !/^[0-9a-f-]{36}$/i.test(invitationId)) return false;
+  const tx = await openTransaction("invitations", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("invitations");
+  const invitation = await requestValue(store.get(invitationId));
+  if (invitation && !(Array.isArray(invitation.activations) && invitation.activations.length)) {
+    store.delete(invitationId);
+  }
+  await done;
+  return !!invitation && !(Array.isArray(invitation.activations) && invitation.activations.length);
+}
+
 export async function listIssuedInvitations() {
   const tx = await openTransaction("invitations", "readonly");
   const done = transactionDone(tx);
