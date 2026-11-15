@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=34";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=19";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=19";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
@@ -46,57 +46,6 @@ function updateInviteUrlLabel(){
  const name=getInviteContactName();
  const label=document.getElementById("invite-url-label");
  if(label)label.textContent=name?`Ссылка-приглашение для ${name}`:"Ваша ссылка-приглашение";
-}
-let profileInviteDirty=false;
-let profileInviteRefreshPromise=null;
-async function refreshProfileInvitationIfNeeded(){
- if(!profileInviteDirty)return true;
- if(profileInviteRefreshTimer!==null){clearTimeout(profileInviteRefreshTimer);profileInviteRefreshTimer=null;}
- const revision=profileInviteRevision;
- if(profileInviteRefreshPromise){
-  await profileInviteRefreshPromise;
-  if(!profileInviteDirty)return true;
-  if(revision!==profileInviteRevision)return refreshProfileInvitationIfNeeded();
- }
- if(!("Notification" in window)||Notification.permission!=="granted"){
-  setInlineStatus(els.inviteStatus,"Чтобы обновить приглашение с новым именем, разрешите push-уведомления.",true);
-  return false;
- }
- const displayName=getProfileDisplayName();
- const inviteContactName=getInviteContactName();
- const promise=createContactInvitation({expectedRevision:revision}).then(updated=>{
-  if(updated&&revision===profileInviteRevision&&displayName===getProfileDisplayName()&&inviteContactName===getInviteContactName()){
-   profileInviteDirty=false;
-   setInlineStatus(els.inviteStatus,"Ссылка и QR-код приглашения обновлены.");
-   return true;
-  }
-  return false;
- }).finally(()=>{
-  if(profileInviteRefreshPromise===promise)profileInviteRefreshPromise=null;
-  updateInviteCopyButton();
- });
- profileInviteRefreshPromise=promise;
- const updated=await promise;
- if(!updated&&profileInviteDirty&&revision!==profileInviteRevision)return refreshProfileInvitationIfNeeded();
- return updated;
-}
-function scheduleProfileInvitationRefresh(){
- profileInviteRevision++;
- profileInviteDirty=true;
- updateInviteCopyButton();
- if(profileInviteRefreshTimer!==null)clearTimeout(profileInviteRefreshTimer);
- profileInviteRefreshTimer=null;
- if("Notification" in window&&Notification.permission==="granted"){
-  profileInviteRefreshTimer=window.setTimeout(()=>{profileInviteRefreshTimer=null;refreshProfileInvitationIfNeeded();},500);
- }
-}
-function handleProfileDisplayNameInput(){
- persistProfileDisplayName();
- scheduleProfileInvitationRefresh();
-}
-function handleInviteContactNameInput(){
- updateInviteUrlLabel();
- scheduleProfileInvitationRefresh();
 }
 function persistProfileDisplayName(){
  const value=getProfileDisplayName();
@@ -1376,7 +1325,7 @@ async function createContactInvitationNow({expectedRevision=null}={}){
    setInlineStatus(els.inviteStatus,"Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError)),true);
   }
   debug("Создано защищённое приглашение с действующим OneSignal Subscription ID.");
-  if(profileRevision===profileInviteRevision&&displayName===getProfileDisplayName()&&inviteContactName===getInviteContactName())profileInviteDirty=false;
+  
   updateInvitationPanel();
   return true;
   }catch(error){
@@ -1645,7 +1594,7 @@ async function importContactFromInput(){
   if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
   if(saveSenderName){
    els.profileDisplayName.value=senderDisplayName;
-   handleProfileDisplayNameInput();
+   persistProfileDisplayName();
    debug("Имя отправителя сохранено в профиле по выбору пользователя.");
   }
   els.contactPackage.value="";
@@ -1898,6 +1847,7 @@ els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
 els.profileScreenBack.addEventListener("click",closeProfileScreen);
 els.invitationScreenBack.addEventListener("click",closeInvitationScreen);
 els.profileDisplayName.addEventListener("input",persistProfileDisplayName);
+els.inviteContactName.addEventListener("input",updateInviteUrlLabel);
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
 els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els.copyDebugLog));
 els.copySwDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.swDebugLog,els.copySwDebugLog));
@@ -2378,26 +2328,7 @@ async function initializeApp(){
    cleanUrl.searchParams.delete("openChat");
    history.replaceState(null,"",cleanUrl.pathname+cleanUrl.search+cleanUrl.hash);
   }
-  const savedInvitation=await getMyInvitation();
-  if(savedInvitation){
-    els.inviteUrl.textContent=savedInvitation;
-    try{
-     const savedPackage=await verifyContactPackage(savedInvitation);
-     activeIssuedInvitationId=savedPackage.invitation_id;
-     // Recipient aliases belong to individual issued invitations, not to the profile form.
-     updateInviteUrlLabel();
-    }catch(error){debug("Не удалось восстановить локальное имя приглашения: "+(error.message||String(error)))}
-    updateInviteCopyButton();
-   if("Notification" in window&&Notification.permission==="granted"){
-    try{
-     await ensureQrCodeLibrary();
-     new window.QRCode(els.inviteQr,{text:savedInvitation,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-     setInlineStatus(els.inviteStatus,"");
-    }catch(qrError){
-     setInlineStatus(els.inviteStatus,"Ссылка-приглашение восстановлена; QR-код пока недоступен.",true);
-    }
-   }
-  }
+
   const fragment=new URLSearchParams(window.location.hash.slice(1));
   if(fragment.has("contact")){
     els.contactPackage.value=window.location.hash;
@@ -2416,7 +2347,7 @@ async function initializeApp(){
    checkPushBackendAvailability();
    const oneSignalReady=initializeOneSignal().then(async()=>{
    debug("OneSignal Web Push SDK инициализирован.");
-   if("Notification" in window&&Notification.permission==="granted")await createContactInvitation();
+   
    const pushDiagnostics=await getOneSignalPushDiagnostics();
    debug("[OneSignal subscription] permission="+pushDiagnostics.permission+
     "; supported="+pushDiagnostics.supported+
