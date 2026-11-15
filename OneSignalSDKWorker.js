@@ -189,7 +189,7 @@ async function vlFindInvitationName(invitationId){
 }
 function vlNotificationTitle(data,name){
  if(data.event==="contact_request"){
-  return (name||"Неизвестный контакт")+" откликнулся на ваше приглашение";
+  return (name||"Неизвестный контакт")+" откликнулся на ваше приглашение и добавил вас в контакты.";
  }
  return "VoiceLink";
 }
@@ -198,7 +198,7 @@ function vlNotificationBody(data,name){
  switch(data.event){
   case "incoming_call":return "Входящий звонок от "+who+".";
   case "new_message":return "Новое сообщение от "+who+".";
-  case "contact_request":return who+" хочет добавить вас в контакты.";
+  case "contact_request":return "";
   case "call_cancelled":return "Вызов от "+who+" отменён.";
   case "call_ignored":return "Вызов от "+who+" отклонён.";
   case "call_ended":return "Звонок с "+who+" завершён.";
