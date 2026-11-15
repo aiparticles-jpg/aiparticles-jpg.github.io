@@ -1806,15 +1806,16 @@ async function handleCreateInvitationClick(){
  els.invitationScreenBack.focus();
  const value=els.inviteUrl.textContent.trim();
  if(!value)return;
+ const qrNote=els.inviteQr.childElementCount?"":" QR-код пока недоступен.";
  try{
   if(navigator.clipboard?.writeText){
    await navigator.clipboard.writeText(value);
-   setInlineStatus(els.invitationScreenStatus,"Приглашение создано и скопировано.");
+   setInlineStatus(els.invitationScreenStatus,"Приглашение создано и скопировано."+qrNote,!!qrNote);
    return;
   }
  }catch{}
- if(copyInviteFallback(value))setInlineStatus(els.invitationScreenStatus,"Приглашение создано и скопировано.");
- else setInlineStatus(els.invitationScreenStatus,"Приглашение создано. Если ссылка не скопировалась автоматически, нажмите кнопку копирования.",true);
+ if(copyInviteFallback(value))setInlineStatus(els.invitationScreenStatus,"Приглашение создано и скопировано."+qrNote,!!qrNote);
+ else setInlineStatus(els.invitationScreenStatus,"Приглашение создано. Если ссылка не скопировалась автоматически, нажмите кнопку копирования."+qrNote,true);
 }
 els.createInvite.addEventListener("click",handleCreateInvitationClick);
 function openProfileScreen(){
