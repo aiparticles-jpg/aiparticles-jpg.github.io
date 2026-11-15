@@ -70,7 +70,10 @@ async function refreshProfileInvitationIfNeeded(){
    return true;
   }
   return false;
- }).finally(()=>{if(profileInviteRefreshPromise===promise)profileInviteRefreshPromise=null;});
+ }).finally(()=>{
+  if(profileInviteRefreshPromise===promise)profileInviteRefreshPromise=null;
+  updateInviteCopyButton();
+ });
  profileInviteRefreshPromise=promise;
  const updated=await promise;
  if(!updated&&profileInviteDirty&&revision!==profileInviteRevision)return refreshProfileInvitationIfNeeded();
@@ -80,6 +83,7 @@ function handleProfileDisplayNameInput(){
  persistProfileDisplayName();
  profileInviteRevision++;
  profileInviteDirty=true;
+ updateInviteCopyButton();
  if(profileInviteRefreshTimer!==null)clearTimeout(profileInviteRefreshTimer);
  profileInviteRefreshTimer=null;
  if("Notification" in window&&Notification.permission==="granted"){
@@ -1317,9 +1321,11 @@ async function createContactInvitation({expectedRevision=null}={}){
    shared_secret_created_at:Date.now(),
    ...(displayName?{display_name:displayName}:{})
   };
-  await createIssuedInvitation({id:unsigned.invitation_id,secret:unsigned.invitation_secret,created_at:Date.now(),max_activations:1,local_contact_name:""});
+  await createIssuedInvitation({
+   id:unsigned.invitation_id,secret:unsigned.invitation_secret,created_at:Date.now(),
+   max_activations:1,local_contact_name:getInviteContactName()
+  });
   activeIssuedInvitationId=unsigned.invitation_id;
-  await persistIssuedInvitationContactName();
   const contactPackage=unsigned;
   const encoded=toBase64UrlBytes(new TextEncoder().encode(JSON.stringify(contactPackage)));
   const url=window.location.origin+window.location.pathname+"#contact="+encoded;
@@ -1347,23 +1353,48 @@ async function createContactInvitation({expectedRevision=null}={}){
   }finally{els.createInvite.disabled=false}
 }
 function updateInviteCopyButton(){
- const disabled=!els.inviteUrl.textContent.trim();
+ const disabled=!els.inviteUrl.textContent.trim()||profileInviteDirty||!!profileInviteRefreshPromise||profileInviteRefreshTimer!==null;
  els.copyInvite.disabled=disabled;
  els.copyInviteInline.disabled=disabled;
 }
-async function copyContactInvitation(event){
+function copyInviteFallback(value){
+ const field=document.createElement("textarea");
+ field.value=value;
+ field.setAttribute("readonly","");
+ field.style.position="fixed";
+ field.style.opacity="0";
+ field.style.pointerEvents="none";
+ document.body.append(field);
+ field.select();
+ field.setSelectionRange(0,field.value.length);
+ let copied=false;
+ try{copied=document.execCommand("copy")}catch{}
+ field.remove();
+ return copied;
+}
+function copyContactInvitation(event){
  event?.preventDefault();
  event?.stopPropagation();
- if(!await refreshProfileInvitationIfNeeded())return;
+ if(profileInviteDirty||profileInviteRefreshPromise||profileInviteRefreshTimer!==null){
+  setInlineStatus(els.inviteStatus,"Приглашение обновляется. Подождите немного и нажмите копирование ещё раз.");
+  return;
+ }
  const value=els.inviteUrl.textContent.trim();
  if(!value)return;
- try{
-  await navigator.clipboard.writeText(value);
-  setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
- }catch{
+ const copied=()=>setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
+ const failed=()=>{
+  if(copyInviteFallback(value)){copied();return;}
   openProfileScreen();
-  setInlineStatus(els.inviteStatus,"Не удалось скопировать автоматически. Нажмите и удерживайте ссылку, чтобы выделить её.");
- }
+  setInlineStatus(els.inviteStatus,"Не удалось скопировать автоматически. Нажмите и удерживайте ссылку, чтобы выделить её.",true);
+ };
+ try{
+  if(navigator.clipboard?.writeText){
+   // Start the clipboard write synchronously in the click handler. Do not
+   // await invitation refresh/network work first: Chrome Android requires
+   // transient user activation for clipboard writes.
+   navigator.clipboard.writeText(value).then(copied,failed);
+  }else failed();
+ }catch{failed()}
 }
 
 async function pasteContactInvitation(event){
