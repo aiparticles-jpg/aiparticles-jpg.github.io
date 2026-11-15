@@ -37,11 +37,11 @@ window.voicelinkIsReadingChat=senderId=>
  els.contactDeleteScreen.classList.contains("hidden")&&
  els.peer.value===senderId;
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
-function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,60)}
+function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,40)}
 let profileInviteRefreshTimer=null;
 let profileInviteRevision=0;
 let activeIssuedInvitationId=null;
-function getInviteContactName(){return String(els.inviteContactName.value||"").trim().slice(0,60)}
+function getInviteContactName(){return String(els.inviteContactName.value||"").trim().slice(0,40)}
 function updateInviteUrlLabel(){
  const name=getInviteContactName();
  const label=document.getElementById("invite-url-label");
@@ -1428,7 +1428,7 @@ async function pasteContactInvitation(event){
 }
 
 async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus,displayNameOverride=undefined,options={}){
- const peer=peerOverride,senderDisplayName=displayNameOverride===undefined?getProfileDisplayName():String(displayNameOverride||"").trim().slice(0,60);
+ const peer=peerOverride,senderDisplayName=displayNameOverride===undefined?getProfileDisplayName():String(displayNameOverride||"").trim().slice(0,40);
  if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){const m="Не удалось отправить ответное приглашение: сначала выберите контакт, от которого вы получили приглашение.";debug(m);return false}
  updateCallButtons();els.replyInvite.disabled=true;clearError();
  try{
@@ -1440,7 +1440,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
   markContactRequestSent(peer,invitationId,createdAt);await updateContact(peer,{shared_secret_created_at:createdAt});setContactReplyFailure(peer,false);updateCallButtons();
-  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug,{invitation_id:invitationId});debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
+  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug,{invitation_id:invitationId,sender_name:senderDisplayName});debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
   catch(e){debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(e.message||String(e)))}
   return true;
  }catch(e){const d=e.message||String(e),m="Не удалось отправить ответное приглашение: "+d;setContactReplyFailure(peer,true);if(els.debugMode.checked){const dialog=statusElement?.closest('[role="dialog"]');if(dialog&&!dialog.classList.contains("hidden"))showError(d)}debug(m);return false}
@@ -1604,7 +1604,7 @@ async function importContactFromInput(){
   if(verified.user_id===state.me)throw Error("Это ваше собственное приглашение. Его нельзя добавить в контакты.");
   const name=els.contactName.value.trim();
   const profileName=getProfileDisplayName();
-  const senderDisplayName=profileName||String(els.responseDisplayName.value||"").trim().slice(0,60);
+  const senderDisplayName=profileName||String(els.responseDisplayName.value||"").trim().slice(0,40);
   const saveSenderName=!profileName&&!!senderDisplayName&&els.saveResponseDisplayName.checked;
   if(!name)throw Error("Укажите имя, под которым контакт будет сохранён только на этом устройстве.");
   const existing=await getContact(verified.user_id);
