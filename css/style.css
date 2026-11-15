@@ -978,3 +978,64 @@ body{overflow:hidden}
  .main-layout>.topbar{height:64px;min-height:64px;margin:0}
  .main-layout>.utility-dock{gap:8px}
 }
+
+
+/* Shared viewport grid for full-screen application views. */
+.contact-edit-screen,
+.add-contact-screen,
+.contact-screen,
+.call-screen{
+ height:100vh;height:100dvh;
+ display:grid;
+ grid-template-rows:auto minmax(0,1fr);
+ min-height:0;
+ overflow:hidden;
+}
+.contact-edit-screen.hidden,
+.add-contact-screen.hidden,
+.contact-screen.hidden,
+.call-screen.hidden{display:none!important}
+
+.contact-edit-screen>.contact-edit-screen-header,
+.add-contact-screen>.contact-edit-screen-header,
+.contact-screen>.contact-screen-header,
+.call-screen>.call-screen-header{grid-row:1;min-width:0}
+
+.contact-edit-screen>.contact-edit-screen-content,
+.add-contact-screen>.contact-edit-screen-content{grid-row:2;min-height:0;overflow:auto;overscroll-behavior:contain}
+
+.contact-screen{
+ grid-template-rows:auto minmax(0,1fr) auto auto;
+}
+#contact-screen-header-placeholder,
+#contact-diagnostics-placeholder{display:none!important}
+.contact-screen>.contact-screen-header{grid-row:1}
+.contact-screen>.contact-screen-content{grid-row:2;min-height:0;overflow:hidden}
+.contact-screen>.contact-diagnostics-footer{grid-row:3}
+.contact-screen>.chat-composer{grid-row:4;min-width:0}
+
+.call-screen{grid-template-rows:auto minmax(0,1fr)}
+.call-screen>.call-screen-content{grid-row:2;min-height:0;overflow:hidden}
+
+/* Primary form actions remain reachable while longer screen content scrolls. */
+#profile-screen #create-invite,
+#add-contact-screen #import-contact,
+#contact-edit-screen #save-contact-name,
+#contact-delete-screen .contact-delete-actions{
+ position:sticky;
+ bottom:calc(-18px - env(safe-area-inset-bottom));
+ z-index:2;
+ padding-top:12px;
+ padding-bottom:calc(12px + env(safe-area-inset-bottom));
+ background:linear-gradient(180deg,rgba(11,18,32,0),var(--bg) 18%);
+}
+.contact-edit-screen-content,
+.add-contact-screen-content{scroll-padding-block:18px calc(24px + env(safe-area-inset-bottom))}
+@media(max-width:520px){
+ .contact-edit-screen,
+ .add-contact-screen,
+ .contact-screen,
+ .call-screen{height:100vh;height:100dvh}
+ .contact-edit-screen>.contact-edit-screen-header,
+ .add-contact-screen>.contact-edit-screen-header{min-height:58px}
+}
