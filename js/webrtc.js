@@ -1,9 +1,10 @@
 import { STUN_URL } from "./config.js";
 
 export class WebRtcAudio {
-  constructor({ sendSignal, onRemoteStream, onState, onError, onRemoteHangup, initiator = false, diagnosticPilot = false, audioDiagnostics = false }) {
+  constructor({ sendSignal, onRemoteStream, onLocalVideoStream, onState, onError, onRemoteHangup, initiator = false, diagnosticPilot = false, diagnosticCamera = false, audioDiagnostics = false }) {
     this.sendSignal = sendSignal;
     this.onRemoteStream = onRemoteStream;
+    this.onLocalVideoStream = onLocalVideoStream || (() => {});
     this.onState = onState || (() => {});
     this.onError = onError || (() => {});
     this.onRemoteHangup = onRemoteHangup || (() => {});
@@ -14,7 +15,15 @@ export class WebRtcAudio {
     this.pendingHangup = null;
     this.remoteHangupHandled = false;
     this.diagnosticPilot = diagnosticPilot;
-    this.audioDiagnostics = diagnosticPilot || audioDiagnostics;
+    this.diagnosticCamera = diagnosticCamera;
+    this.videoEnabled = false;
+    this.cameraFacingMode = "user";
+    this.videoStream = null;
+    this.videoTransceiver = null;
+    this.videoSender = null;
+    this.simulatedCameraCanvas = null;
+    this.simulatedCameraAnimation = 0;
+    this.audioDiagnostics = diagnosticPilot || diagnosticCamera || audioDiagnostics;
     this.audioContext = null;
     this.audioContextResumePromise = null;
     // Create/resume the context while Connect is still running in the user's click
@@ -115,6 +124,158 @@ export class WebRtcAudio {
       }
     }
     return this.localStream;
+  }
+
+  async setVideoEnabled(enabled) {
+    enabled = !!enabled;
+    if (enabled === this.videoEnabled) return this.videoEnabled;
+    if (!this.videoSender) throw new Error("Видеоканал WebRTC ещё не готов.");
+    if (!enabled) {
+      await this.videoSender.replaceTrack(null);
+      this.videoEnabled = false;
+      this.stopVideoStream();
+      this.onLocalVideoStream(null);
+      this.onState("Камера выключена.");
+      return false;
+    }
+    let stream;
+    try {
+      stream = this.diagnosticCamera
+        ? this.createSimulatedCameraStream()
+        : await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              facingMode: { ideal: this.cameraFacingMode },
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              frameRate: { ideal: 24, max: 30 }
+            }
+          });
+      const track = stream.getVideoTracks()[0];
+      if (!track) throw new Error("Видеоустройство не вернуло видеотрек.");
+      await this.videoSender.replaceTrack(track);
+      this.videoStream = stream;
+      this.videoEnabled = true;
+      track.addEventListener("ended", () => {
+        if (this.videoEnabled && this.videoStream === stream) {
+          this.videoEnabled = false;
+          this.stopVideoStream();
+          this.onLocalVideoStream(null);
+          this.onState("Камера остановлена устройством.");
+        }
+      }, { once: true });
+      this.onLocalVideoStream(stream);
+      this.onState(this.diagnosticCamera
+        ? "Симуляция камеры включена: передаётся тестовое изображение."
+        : "Камера включена: видеотрек готов к передаче.");
+      return true;
+    } catch (error) {
+      if (stream) stream.getTracks().forEach(track => track.stop());
+      if (this.simulatedCameraCanvas) {
+        if (this.simulatedCameraAnimation) cancelAnimationFrame(this.simulatedCameraAnimation);
+        this.simulatedCameraAnimation = 0;
+        this.simulatedCameraCanvas = null;
+      }
+      this.videoEnabled = false;
+      throw error;
+    }
+  }
+
+  createSimulatedCameraStream() {
+    const canvas = document.createElement("canvas");
+    canvas.width = 640;
+    canvas.height = 480;
+    const context = canvas.getContext("2d");
+    if (!context || typeof canvas.captureStream !== "function") {
+      throw new Error("Симуляция камеры не поддерживается этим браузером.");
+    }
+    this.simulatedCameraCanvas = canvas;
+    const colors = ["#e34b4b", "#e9a33b", "#e8d94b", "#43ad69", "#398bd1", "#7957bd", "#bd5b9b"];
+    const draw = timestamp => {
+      if (this.simulatedCameraCanvas !== canvas) return;
+      const seconds = timestamp / 1000, width = canvas.width, height = canvas.height;
+      context.fillStyle = "#101827";
+      context.fillRect(0, 0, width, height);
+      const barWidth = width / colors.length;
+      colors.forEach((color, index) => {
+        context.fillStyle = color;
+        context.fillRect(index * barWidth, 0, barWidth + 1, height * 0.62);
+      });
+      context.fillStyle = "rgba(5,12,22,.78)";
+      context.fillRect(0, height * 0.62, width, height * 0.38);
+      const x = width * (0.5 + 0.32 * Math.sin(seconds * 1.25));
+      const y = height * (0.31 + 0.16 * Math.sin(seconds * 1.8));
+      const radius = 35 + 7 * Math.sin(seconds * 2.4);
+      const gradient = context.createRadialGradient(x - 10, y - 10, 3, x, y, radius);
+      gradient.addColorStop(0, "#ffffff");
+      gradient.addColorStop(1, "#172b48");
+      context.fillStyle = gradient;
+      context.beginPath();
+      context.arc(x, y, radius, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#ffffff";
+      context.font = "600 30px system-ui, sans-serif";
+      context.textAlign = "center";
+      context.fillText("VOICELINK · CAMERA TEST", width / 2, height * 0.77);
+      context.font = "22px system-ui, sans-serif";
+      context.fillStyle = "#b8c7dc";
+      context.fillText(new Date().toLocaleTimeString(), width / 2, height * 0.86);
+      this.simulatedCameraAnimation = requestAnimationFrame(draw);
+    };
+    this.simulatedCameraAnimation = requestAnimationFrame(draw);
+    return canvas.captureStream(15);
+  }
+
+  stopVideoStream() {
+    if (this.simulatedCameraAnimation) {
+      cancelAnimationFrame(this.simulatedCameraAnimation);
+      this.simulatedCameraAnimation = 0;
+    }
+    if (this.videoStream) {
+      this.videoStream.getTracks().forEach(track => track.stop());
+      this.videoStream = null;
+    }
+    this.simulatedCameraCanvas = null;
+  }
+
+  async switchCamera() {
+    if (!this.videoEnabled || this.diagnosticCamera || !this.videoSender) return false;
+    const nextFacingMode = this.cameraFacingMode === "user" ? "environment" : "user";
+    const nextStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: nextFacingMode },
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 24, max: 30 }
+      }
+    });
+    const nextTrack = nextStream.getVideoTracks()[0];
+    if (!nextTrack) {
+      nextStream.getTracks().forEach(track => track.stop());
+      throw new Error("Не удалось получить изображение с выбранной камеры.");
+    }
+    const previousStream = this.videoStream;
+    try {
+      await this.videoSender.replaceTrack(nextTrack);
+    } catch (error) {
+      nextStream.getTracks().forEach(track => track.stop());
+      throw error;
+    }
+    this.videoStream = nextStream;
+    this.cameraFacingMode = nextFacingMode;
+    nextTrack.addEventListener("ended", () => {
+      if (this.videoEnabled && this.videoStream === nextStream) {
+        this.videoEnabled = false;
+        this.stopVideoStream();
+        this.onLocalVideoStream(null);
+        this.onState("Камера остановлена устройством.");
+      }
+    }, { once: true });
+    previousStream?.getTracks().forEach(track => track.stop());
+    this.onLocalVideoStream(nextStream);
+    this.onState("Переключена камера: " + (nextFacingMode === "user" ? "фронтальная." : "основная."));
+    return true;
   }
 
   setCallAccepted(accepted) {
@@ -255,6 +416,9 @@ export class WebRtcAudio {
     // track later, after the user accepts the call.
     this.audioTransceiver=pc.addTransceiver("audio",{direction:"sendrecv"});
     this.audioSender=this.audioTransceiver.sender;
+    // Reserve the video m-line in the initial offer; later camera toggles use replaceTrack().
+    this.videoTransceiver=pc.addTransceiver("video",{direction:"sendrecv"});
+    this.videoSender=this.videoTransceiver.sender;
     if(this.localStream)await this.attachLocalAudioTrack();
     this.ensureControlChannel(pc);this.signalEnabled=true;
     pc.onicecandidate=event=>{
@@ -733,6 +897,8 @@ export class WebRtcAudio {
       this.remoteAnalyser = null;
       this.remoteAnalyserBuffer = null;
     }
+    this.stopVideoStream();
+    this.onLocalVideoStream(null);
     if (this.outgoingStream) {
       this.outgoingStream.getTracks().forEach(track => track.stop());
       this.outgoingStream = null;
@@ -745,6 +911,9 @@ export class WebRtcAudio {
     this.pendingLocalCandidates = [];
     this.remoteDescriptionSet = false;
     this.audioSender = null;
+    this.videoSender = null;
+    this.videoTransceiver = null;
+    this.videoEnabled = false;
     this.signalEnabled = false;
     this.callAccepted = false;
     this.micEnabled = false;

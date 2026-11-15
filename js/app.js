@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=32";
+import { WebRtcAudio } from "./webrtc.js?v=33";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, getMyInvitation, createIssuedInvitation, getIssuedInvitation, updateIssuedInvitationLocalName, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=17";
@@ -10,8 +10,8 @@ const $=id=>document.getElementById(id);
 const els={
  contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
- transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),
- audio:$("remote-audio"),pilot:$("diagnostic-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
+ transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),cameraToggle:$("camera-toggle"),cameraSwitch:$("camera-switch"),
+ audio:$("remote-audio"),remoteVideo:$("remote-video"),localVideo:$("local-video"),callVideoStage:$("call-video-stage"),remoteVideoPlaceholder:$("remote-video-placeholder"),pilot:$("diagnostic-pilot"),cameraPilot:$("diagnostic-camera-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactInvitationDetails:$("contact-invitation-details"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),saveResponseDisplayNameLabel:$("save-response-display-name-label"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteTools:$("invite-tools"),invitePermission:$("invite-permission"),inviteContent:$("invite-content"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInvite:$("copy-invite"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
@@ -372,6 +372,16 @@ async function checkServiceWorkerAvailability(){
   setServiceStatus(els.serviceWorkerStatus,registration?.active?"Активен":registration?"Зарегистрирован, запускается":"Не зарегистрирован");
  }catch(error){setServiceStatus(els.serviceWorkerStatus,"Ошибка проверки")}
 }
+function updateCallVideoStage(){
+ const localActive=!!state.webrtc?.videoEnabled;
+ const remoteTrack=els.remoteVideo.srcObject?.getVideoTracks?.().find(track=>track.readyState==="live");
+ const remoteActive=!!remoteTrack&&!remoteTrack.muted;
+ els.callVideoStage.classList.toggle("hidden",!localActive&&!remoteActive);
+ els.remoteVideo.classList.toggle("hidden",!remoteActive);
+ els.remoteVideoPlaceholder.classList.toggle("hidden",remoteActive);
+ els.localVideo.classList.toggle("hidden",!localActive);
+ els.remoteVideoPlaceholder.textContent=localActive?"Ожидаем видео собеседника":"Видео собеседника выключено";
+}
 function updateCallButtons(){
  const active=!!(state.connecting||state.peerPresent||state.outgoingCall||state.secure?.active||state.callStarted||state.answeringCall);
 
@@ -397,6 +407,17 @@ function updateCallButtons(){
  els.speakerToggle.setAttribute("aria-pressed",String(!!state.speakerOutputId));
  els.speakerToggle.setAttribute("aria-label",state.speakerOutputId?"Вернуть аудиовыход по умолчанию":"Динамик");
  els.speakerToggle.title=canSelectOutput?(state.speakerOutputId?"Вернуть аудиовыход по умолчанию":"Выбрать аудиовыход"):"Переключение аудиовыхода не поддерживается этим браузером";
+ const canUseCamera=!!(active&&state.peerPresent&&!state.outgoingCall&&!state.hangingUp&&state.webrtc?.videoSender);
+ els.cameraToggle.classList.toggle("hidden",!active);
+ els.cameraToggle.disabled=!canUseCamera;
+ const cameraEnabled=!!state.webrtc?.videoEnabled;
+ els.cameraToggle.setAttribute("aria-pressed",String(cameraEnabled));
+ els.cameraToggle.setAttribute("aria-label",cameraEnabled?"Выключить камеру":"Включить камеру");
+ els.cameraToggle.title=cameraEnabled?"Выключить камеру":"Включить камеру";
+ els.cameraToggle.dataset.enabled=String(cameraEnabled);
+ els.cameraSwitch.classList.toggle("hidden",!cameraEnabled||!!state.webrtc?.diagnosticCamera);
+ els.cameraSwitch.disabled=!canUseCamera||!cameraEnabled;
+ updateCallVideoStage();
  els.answerIncoming.disabled=state.connecting;
  els.dismissIncoming.disabled=state.connecting;
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
@@ -702,7 +723,7 @@ async function finishRejectedCall(info){
  if(!state.outgoingCall)return;
  stopRemoteAudioDiagnostics();stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
- els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
+ els.audio.srcObject=null;els.remoteVideo.srcObject=null;els.localVideo.srcObject=null;updateCallVideoStage();els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  state.callStarted=false;state.peerPresent=false;updateCallButtons();
  setStatus("Вызов отклонён",(info.peer||"Контакт")+" отклонил входящий вызов.","idle");
  debug("Получен подписанный отказ от вызова "+info.sid+".");
@@ -712,7 +733,7 @@ async function finishNoAnswer(){
  if(!state.outgoingCall)return;
  stopRemoteAudioDiagnostics();stopOutgoingCall();clearIncomingUi();state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
- els.audio.srcObject=null;els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
+ els.audio.srcObject=null;els.remoteVideo.srcObject=null;els.localVideo.srcObject=null;updateCallVideoStage();els.hangup.disabled=true;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  state.callStarted=false;state.peerPresent=false;updateCallButtons();
  setStatus("Нет ответа","Время ожидания истекло. Вызов завершён только на этом устройстве; уведомление об отмене не отправлялось.","idle");
  debug("Исходящий вызов истёк через 45 секунд; отменяющий POST не отправлялся.");
@@ -734,18 +755,32 @@ function logRemoteAudioPlayback(){
   "; track="+(track?("readyState="+track.readyState+",enabled="+track.enabled+",muted="+track.muted):"none")+
   "; error="+(audio.error?.code||"none"));
 }
-function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
+function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera=els.cameraPilot.checked){
  const me=state.me,peer=state.callPeer||state.secure?.peer||els.peer.value;
- const audioDiagnostics=els.debugMode.checked||diagnosticPilot;
+ const audioDiagnostics=els.debugMode.checked||diagnosticPilot||diagnosticCamera;
  return new WebRtcAudio({
   diagnosticPilot,
+  diagnosticCamera,
   audioDiagnostics,
   initiator:NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer,
   onRemoteHangup:()=>handleRemoteHangup(),
   sendSignal:payload=>state.secure.sendSignal(payload),
+  onLocalVideoStream:stream=>{
+   els.localVideo.srcObject=stream;
+   if(stream){const playResult=els.localVideo.play();if(playResult?.catch)playResult.catch(error=>debug("Не удалось показать локальное видео: "+error.message));}
+   updateCallVideoStage();
+  },
   onRemoteStream:stream=>{
    stopRemoteAudioDiagnostics();
    els.audio.srcObject=stream;
+   els.remoteVideo.srcObject=stream;
+   for(const videoTrack of stream.getVideoTracks?.()||[]){
+    videoTrack.addEventListener("mute",updateCallVideoStage);
+    videoTrack.addEventListener("unmute",updateCallVideoStage);
+    videoTrack.addEventListener("ended",updateCallVideoStage);
+   }
+   const videoPlay=els.remoteVideo.play();if(videoPlay?.catch)videoPlay.catch(error=>debug("Не удалось включить удалённое видео: "+error.message));
+   updateCallVideoStage();
    const track=stream.getAudioTracks?.()[0];
    if(track){
     track.addEventListener("mute",()=>debug("Remote audio track event: mute"));
@@ -774,7 +809,7 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked){
    debug("WebRTC: "+value);
    // Normalize diagnostic prefixes such as PC[id] connection-connected.
    const event=String(value).match(/(?:^|\s)(connection-[a-z]+|ice-[a-z]+)\.?$/)?.[1]||value;
-   if(event==="local-audio-ready")updateCallButtons();
+   if(event==="local-audio-ready"||event==="Симуляция камеры включена: передаётся тестовое изображение."||event==="Камера выключена."||event==="Камера остановлена устройством.")updateCallButtons();
    else if(event==="connection-connected"){
     if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
     updateCallButtons();if(els.callScreenStatus)els.callScreenStatus.textContent="На связи";els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")
@@ -1055,7 +1090,7 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
  state.secure?.resetSession();
  if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
- els.audio.srcObject=null;try{if(typeof els.audio.setSinkId==="function")await els.audio.setSinkId("");}catch(error){debug("Не удалось вернуть аудиовыход по умолчанию: "+error.message)}state.speakerOutputId=null;els.pilot.disabled=false;els.transport.textContent="Не выбран";
+ els.audio.srcObject=null;els.remoteVideo.srcObject=null;els.localVideo.srcObject=null;updateCallVideoStage();try{if(typeof els.audio.setSinkId==="function")await els.audio.setSinkId("");}catch(error){debug("Не удалось вернуть аудиовыход по умолчанию: "+error.message)}state.speakerOutputId=null;els.pilot.disabled=false;els.transport.textContent="Не выбран";
  state.callStarted=false;state.peerPresent=false;state.answeringCall=false;state.hangingUp=false;updateCallButtons();
  if(remote)setStatus("Собеседник завершил звонок","Удалённая сторона отправила P2P-сообщение HANGUP; звонок завершён.","idle");
  else if(failure)setStatus("Соединение потеряно","WebRTC не восстановил связь за отведённое время. Звонок завершён.","error");
@@ -2193,6 +2228,24 @@ window.addEventListener("focus",()=>{
 });
 
 els.hangup.addEventListener("click",hangup);
+els.cameraToggle.addEventListener("click",async()=>{
+ if(!state.webrtc||state.hangingUp||!state.peerPresent||state.outgoingCall)return;
+ try{
+  const enabled=!state.webrtc.videoEnabled;
+  await state.webrtc.setVideoEnabled(enabled);
+  updateCallButtons();
+  debug(enabled?"Видео включено пользователем.":"Видео выключено пользователем.");
+ }catch(error){
+  updateCallButtons();
+  debug("Не удалось включить/выключить камеру: "+(error.name||"Error")+": "+(error.message||String(error)));
+  showError("Не удалось включить камеру: "+(error.message||String(error)));
+ }
+});
+els.cameraSwitch.addEventListener("click",async()=>{
+ if(!state.webrtc||state.hangingUp||!state.webrtc.videoEnabled||state.webrtc.diagnosticCamera)return;
+ try{await state.webrtc.switchCamera();updateCallButtons();}
+ catch(error){showError("Не удалось переключить камеру: "+(error.message||String(error)));}
+});
 els.micToggle.addEventListener("click",()=>{
  if(!state.webrtc?.localStream||state.hangingUp)return;
  const enabled=!state.webrtc.micEnabled;
@@ -2226,6 +2279,7 @@ els.saveContactName.addEventListener("click",saveSelectedContactName);
 els.editContactName.addEventListener("input",updateCallButtons);
 els.tcp.classList.add("hidden");
 try{els.pilot.checked=localStorage.getItem("vl.simulateMicrophone.v1")==="1"}catch{els.pilot.checked=false}
+try{els.cameraPilot.checked=localStorage.getItem("vl.simulateCamera.v1")==="1"}catch{els.cameraPilot.checked=false}
 els.dismissIncoming.classList.add("hidden");
 async function initializeApp(){
  debug("Браузер: "+getBrowserDiagnosticName()+"; платформа: "+(navigator.userAgentData?.platform||navigator.platform||"не определена")+"; UA: "+(navigator.userAgent||"нет"));
@@ -2313,6 +2367,9 @@ async function initializeApp(){
 }
 els.tcp.classList.add("hidden");
 try{els.pilot.checked=localStorage.getItem("vl.simulateMicrophone.v1")==="1"}catch{els.pilot.checked=false}
+try{els.cameraPilot.checked=localStorage.getItem("vl.simulateCamera.v1")==="1"}catch{els.cameraPilot.checked=false}
+els.pilot.addEventListener("change",()=>{try{localStorage.setItem("vl.simulateMicrophone.v1",els.pilot.checked?"1":"0")}catch{}});
+els.cameraPilot.addEventListener("change",()=>{try{localStorage.setItem("vl.simulateCamera.v1",els.cameraPilot.checked?"1":"0")}catch{}});
 els.dismissIncoming.classList.add("hidden");
 initializeApp();
 
