@@ -15,15 +15,24 @@ const els={
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
   contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactInvitationDetails:$("contact-invitation-details"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),saveResponseDisplayNameLabel:$("save-response-display-name-label"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteStatus:$("invite-status"),invitePushHint:$("invite-push-hint"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
+const contactOverlayScreens=[
+ els.profileScreen,els.invitationScreen,els.diagnosticScreen,els.addContactScreen,
+ els.contactScreen,els.contactEditScreen,els.contactDeleteScreen,
+ els.aboutScreen,els.settingsScreen
+];
 function syncContactScreenOpenClass(){
- const overlayScreens=[
-  els.profileScreen,els.invitationScreen,els.diagnosticScreen,els.addContactScreen,
-  els.contactScreen,els.contactEditScreen,els.contactDeleteScreen,
-  els.aboutScreen,els.settingsScreen
- ];
- const hasOpenScreen=overlayScreens.some(screen=>screen&&!screen.classList.contains("hidden"));
+ const hasOpenScreen=contactOverlayScreens.some(screen=>screen&&!screen.classList.contains("hidden"));
  document.body.classList.toggle("contact-screen-open",hasOpenScreen);
 }
+// Keep the body state aligned even when an overlay is hidden by a path that
+// does not call its dedicated close handler.
+if(typeof MutationObserver!=="undefined"){
+ const contactOverlayObserver=new MutationObserver(syncContactScreenOpenClass);
+ for(const screen of contactOverlayScreens){
+  if(screen)contactOverlayObserver.observe(screen,{attributes:true,attributeFilter:["class"]});
+ }
+}
+syncContactScreenOpenClass();
 window.voicelinkIsReadingChat=senderId=>
  document.visibilityState==="visible"&&
  !els.contactScreen.classList.contains("hidden")&&
