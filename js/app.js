@@ -8,7 +8,7 @@ import { sendPushEventToContact } from "./push-api.js?v=5";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
+ contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),invitationScreen:$("invitation-screen"),invitationScreenBack:$("invitation-screen-back"),invitationScreenStatus:$("invitation-screen-status"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),deletePeer:$("delete-peer"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),cameraToggle:$("camera-toggle"),cameraSwitch:$("camera-switch"),
  audio:$("remote-audio"),remoteVideo:$("remote-video"),localVideo:$("local-video"),callVideoStage:$("call-video-stage"),remoteVideoPlaceholder:$("remote-video-placeholder"),pilot:$("diagnostic-pilot"),cameraPilot:$("diagnostic-camera-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
@@ -17,7 +17,7 @@ const els={
 };
 function syncContactScreenOpenClass(){
  const overlayScreens=[
-  els.profileScreen,els.diagnosticScreen,els.addContactScreen,
+  els.profileScreen,els.invitationScreen,els.diagnosticScreen,els.addContactScreen,
   els.contactScreen,els.contactEditScreen,els.contactDeleteScreen,
   els.aboutScreen,els.settingsScreen
  ];
@@ -29,6 +29,7 @@ window.voicelinkIsReadingChat=senderId=>
  !els.contactScreen.classList.contains("hidden")&&
  els.callScreen.classList.contains("hidden")&&
  els.profileScreen.classList.contains("hidden")&&
+ els.invitationScreen.classList.contains("hidden")&&
  els.diagnosticScreen.classList.contains("hidden")&&
  els.addContactScreen.classList.contains("hidden")&&
  els.aboutScreen.classList.contains("hidden")&&
@@ -38,7 +39,6 @@ window.voicelinkIsReadingChat=senderId=>
  els.peer.value===senderId;
 const PROFILE_DISPLAY_NAME_KEY="vl.profileDisplayName.v1";
 function getProfileDisplayName(){return String(els.profileDisplayName.value||"").trim().slice(0,40)}
-let profileInviteRefreshTimer=null;
 let profileInviteRevision=0;
 let activeIssuedInvitationId=null;
 function getInviteContactName(){return String(els.inviteContactName.value||"").trim().slice(0,40)}
@@ -1386,9 +1386,7 @@ async function createContactInvitationNow({expectedRevision=null}={}){
   }finally{els.createInvite.disabled=false}
 }
 function updateInviteCopyButton(){
- const disabled=!els.inviteUrl.textContent.trim()||profileInviteDirty||!!profileInviteRefreshPromise||profileInviteRefreshTimer!==null;
- els.copyInvite.disabled=disabled;
- els.copyInviteInline.disabled=disabled;
+ els.copyInviteInline.disabled=!els.inviteUrl.textContent.trim();
 }
 function copyInviteFallback(value){
  const field=document.createElement("textarea");
@@ -1408,25 +1406,16 @@ function copyInviteFallback(value){
 function copyContactInvitation(event){
  event?.preventDefault();
  event?.stopPropagation();
- if(profileInviteDirty||profileInviteRefreshPromise||profileInviteRefreshTimer!==null){
-  setInlineStatus(els.inviteStatus,"Приглашение обновляется. Подождите немного и нажмите копирование ещё раз.");
-  return;
- }
  const value=els.inviteUrl.textContent.trim();
  if(!value)return;
- const copied=()=>setInlineStatus(els.inviteStatus,"Ссылка скопирована.");
+ const copied=()=>setInlineStatus(els.invitationScreenStatus,"Ссылка скопирована.");
  const failed=()=>{
   if(copyInviteFallback(value)){copied();return;}
-  openProfileScreen();
-  setInlineStatus(els.inviteStatus,"Не удалось скопировать автоматически. Нажмите и удерживайте ссылку, чтобы выделить её.",true);
+  setInlineStatus(els.invitationScreenStatus,"Не удалось скопировать автоматически. Попробуйте ещё раз или выделите ссылку вручную.",true);
  };
  try{
-  if(navigator.clipboard?.writeText){
-   // Start the clipboard write synchronously in the click handler. Do not
-   // await invitation refresh/network work first: Chrome Android requires
-   // transient user activation for clipboard writes.
-   navigator.clipboard.writeText(value).then(copied,failed);
-  }else failed();
+  if(navigator.clipboard?.writeText)navigator.clipboard.writeText(value).then(copied,failed);
+  else failed();
  }catch{failed()}
 }
 
@@ -1838,65 +1827,63 @@ updateImportContactButton();
 els.replyInvite.addEventListener("click",()=>{els.contactScreenMenu.open=false;sendContactRequest()});
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
-els.createInvite.addEventListener("click",createContactInvitation);
 function updateInvitationPanel(){
- updateInviteCopyButton();
- const granted="Notification" in window&&Notification.permission==="granted";
- els.invitePermission.classList.toggle("hidden",granted);
- els.inviteContent.classList.toggle("hidden",!granted);
- if(granted&&!els.inviteUrl.textContent&&!els.createInvite.disabled)createContactInvitation();
- if(granted&&els.inviteUrl.textContent&&!els.inviteQr.childElementCount){
-  (async()=>{
-   try{
-    await ensureQrCodeLibrary();
-    if(!els.inviteQr.childElementCount)new window.QRCode(els.inviteQr,{text:els.inviteUrl.textContent,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
-   }catch(error){setInlineStatus(els.inviteStatus,"Ссылка доступна, но QR-код пока не удалось восстановить.",true)}
-  })();
- }
- if(!granted&&"Notification" in window&&Notification.permission==="denied"){
-  setInlineStatus(els.inviteStatus,"Уведомления уже запрещены. Разрешите их для VoiceLink в настройках сайта вашего браузера, затем закройте и снова откройте этот раздел.",true);
+ if("Notification" in window&&Notification.permission==="denied"){
+  setInlineStatus(els.inviteStatus,"Уведомления запрещены. Разрешите их для VoiceLink в настройках сайта браузера, затем нажмите «Создать приглашение» ещё раз.",true);
  }
 }
-els.inviteTools.addEventListener("toggle",()=>{
- if(els.inviteTools.open)updateInvitationPanel();
-});
-async function openProfileScreen(){
+async function handleCreateInvitationClick(){
+ clearInlineStatus(els.inviteStatus);
+ clearInlineStatus(els.invitationScreenStatus);
+ const created=await createContactInvitation({expectedRevision:profileInviteRevision});
+ if(!created)return;
+ els.profileScreen.classList.add("hidden");
+ els.invitationScreen.classList.remove("hidden");
+ syncContactScreenOpenClass();
+ els.invitationScreenBack.focus();
+ const value=els.inviteUrl.textContent.trim();
+ if(!value)return;
+ try{
+  if(navigator.clipboard?.writeText){
+   await navigator.clipboard.writeText(value);
+   setInlineStatus(els.invitationScreenStatus,"Приглашение создано и скопировано.");
+   return;
+  }
+ }catch{}
+ if(copyInviteFallback(value))setInlineStatus(els.invitationScreenStatus,"Приглашение создано и скопировано.");
+ else setInlineStatus(els.invitationScreenStatus,"Приглашение создано. Если ссылка не скопировалась автоматически, нажмите кнопку копирования.",true);
+}
+els.createInvite.addEventListener("click",handleCreateInvitationClick);
+function openProfileScreen(){
  clearInlineStatus(els.inviteStatus);clearError();
- if(profileInviteRefreshTimer!==null){clearTimeout(profileInviteRefreshTimer);profileInviteRefreshTimer=null;}
- profileInviteRevision++;
- profileInviteDirty=false;
- const previousUrl=els.inviteUrl.textContent.trim();
  els.inviteContactName.value="";
- els.inviteUrl.textContent="";
- els.inviteQr.replaceChildren();
- activeIssuedInvitationId=null;
  updateInviteUrlLabel();
- updateInviteCopyButton();
  els.profileScreen.classList.remove("hidden");
- document.body.classList.add("contact-screen-open");
- els.inviteTools.open=true;
+ syncContactScreenOpenClass();
  els.profileScreenBack.focus();
- if(previousUrl){
-  try{await clearMyInvitation(previousUrl)}catch(error){debug("Не удалось очистить указатель старого приглашения: "+(error.message||String(error)))}
- }
  updateInvitationPanel();
 }
 async function closeProfileScreen(){
- clearInlineStatus(els.inviteStatus);
- if(profileInviteRefreshTimer!==null){clearTimeout(profileInviteRefreshTimer);profileInviteRefreshTimer=null;}
+ clearInlineStatus(els.inviteStatus);clearError();
  profileInviteRevision++;
- profileInviteDirty=false;
+ els.inviteContactName.value="";
+ els.profileScreen.classList.add("hidden");
+ syncContactScreenOpenClass();
+ els.profileDockButton.focus();
+}
+async function closeInvitationScreen(){
  const issuedUrl=els.inviteUrl.textContent.trim();
- // Clear only the profile draft. Keep local_contact_name in the issued record.
+ els.invitationScreen.classList.add("hidden");
+ els.profileScreen.classList.remove("hidden");
  els.inviteContactName.value="";
  els.inviteUrl.textContent="";
  els.inviteQr.replaceChildren();
  activeIssuedInvitationId=null;
+ clearInlineStatus(els.invitationScreenStatus);
  updateInviteUrlLabel();
  updateInviteCopyButton();
- els.profileScreen.classList.add("hidden");
  syncContactScreenOpenClass();
- els.profileDockButton.focus();
+ els.profileScreenBack.focus();
  if(issuedUrl){
   try{await clearMyInvitation(issuedUrl)}catch(error){debug("Не удалось очистить указатель приглашения: "+(error.message||String(error)))}
  }
@@ -1909,9 +1896,8 @@ els.profileDockButton.addEventListener("click",event=>{if(profileLongPressTrigge
 els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
 els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
 els.profileScreenBack.addEventListener("click",closeProfileScreen);
-els.profileDisplayName.addEventListener("input",handleProfileDisplayNameInput);
- els.inviteContactName.addEventListener("input",handleInviteContactNameInput);
- els.inviteUrl.addEventListener("focus",()=>{if(profileInviteDirty)refreshProfileInvitationIfNeeded();});
+els.invitationScreenBack.addEventListener("click",closeInvitationScreen);
+els.profileDisplayName.addEventListener("input",persistProfileDisplayName);
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
 els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els.copyDebugLog));
 els.copySwDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.swDebugLog,els.copySwDebugLog));
@@ -1938,7 +1924,6 @@ function cancelProfileLongPress(){if(profileLongPressTimer!==null){window.clearT
 els.profileDockButton.addEventListener("pointerup",()=>{const wasLongPress=profileLongPressTriggered;cancelProfileLongPress();if(wasLongPress)completeProfileLongPress();else els.profileDockLabel.textContent="Профиль";});
 els.profileDockButton.addEventListener("pointerleave",event=>{if(event.pointerType==="mouse"&&!profileLongPressTriggered){cancelProfileLongPress();}});
 els.profileDockButton.addEventListener("pointercancel",()=>{cancelProfileLongPress();profileLongPressTriggered=false;els.profileDockLabel.textContent="Профиль";});
-els.copyInvite.addEventListener("click",copyContactInvitation);
 els.copyInviteInline.addEventListener("click",copyContactInvitation);
 els.scanQr.addEventListener("click",startQrScan);
 window.addEventListener("pagehide",()=>{if(qrStream)for(const track of qrStream.getTracks())track.stop()});
