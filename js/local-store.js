@@ -226,6 +226,18 @@ export async function getMyInvitation() {
   return record?.value?.url || "";
 }
 
+export async function clearMyInvitation(expectedUrl = "") {
+  if (typeof expectedUrl !== "string") throw new TypeError("Expected invitation URL must be a string.");
+  const tx = await openTransaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("meta");
+  const record = await requestValue(store.get("my_invitation"));
+  const matches = !expectedUrl || record?.value?.url === expectedUrl;
+  if (matches && record) store.delete("my_invitation");
+  await done;
+  return !!(matches && record);
+}
+
 function requestValue(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
