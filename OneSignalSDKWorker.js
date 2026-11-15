@@ -126,12 +126,33 @@ async function vlFindContactName(userId){
    request.onsuccess=()=>resolve(request.result);
    request.onerror=()=>reject(request.error||new Error("IndexedDB open failed"));
   });
-  if(!db.objectStoreNames.contains("contacts"))return "";
+  const stores=["contacts","invitations"].filter(name=>db.objectStoreNames.contains(name));
+  if(!stores.length)return "";
   return await new Promise((resolve,reject)=>{
-   const tx=db.transaction("contacts","readonly");
-   const request=tx.objectStore("contacts").get(userId);
-   request.onsuccess=()=>resolve(typeof request.result?.name==="string"?request.result.name.trim():"");
-   request.onerror=()=>reject(request.error||new Error("Contact lookup failed"));
+   const tx=db.transaction(stores,"readonly");
+   let contactName="";
+   let invitationName="";
+   if(stores.includes("contacts")){
+    const request=tx.objectStore("contacts").get(userId);
+    request.onsuccess=()=>{contactName=typeof request.result?.name==="string"?request.result.name.trim():""};
+    request.onerror=()=>reject(request.error||new Error("Contact lookup failed"));
+   }
+   if(stores.includes("invitations")){
+    const request=tx.objectStore("invitations").getAll();
+    request.onsuccess=()=>{
+     const matches=(Array.isArray(request.result)?request.result:[])
+      .filter(invitation=>!invitation.revoked&&
+       typeof invitation.local_contact_name==="string"&&invitation.local_contact_name.trim()&&
+       Array.isArray(invitation.activations)&&
+       invitation.activations.some(activation=>activation?.user_id===userId))
+      .sort((a,b)=>(Number(b.created_at)||0)-(Number(a.created_at)||0));
+     invitationName=matches[0]?.local_contact_name?.trim()||"";
+    };
+    request.onerror=()=>reject(request.error||new Error("Issued invitation lookup failed"));
+   }
+   tx.oncomplete=()=>resolve(contactName||invitationName);
+   tx.onerror=()=>reject(tx.error||new Error("Contact name lookup transaction failed"));
+   tx.onabort=()=>reject(tx.error||new Error("Contact name lookup transaction aborted"));
   });
  }catch{return ""}finally{db?.close()}
 }
