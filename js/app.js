@@ -2360,6 +2360,9 @@ async function initializeApp(){
     els.contactPackage.value=window.location.hash;
     updatePasteContactButton();
     openAddContactScreen(false,{preserveInput:true,fromInvitation:true});
+    // Keep the invitation in the form, but remove it from the address bar
+    // so a page refresh does not reopen the same deep link.
+    history.replaceState(null,"",window.location.pathname+window.location.search);
    }
   const contacts=await listContacts();
   els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
