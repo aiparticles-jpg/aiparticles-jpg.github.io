@@ -1278,6 +1278,8 @@ async function createContactInvitationNow({expectedRevision=null}={}){
  const displayName=getProfileDisplayName();
  const inviteContactName=getInviteContactName();
  els.createInvite.disabled=true;
+ els.profileDisplayName.disabled=true;
+ els.inviteContactName.disabled=true;
  setInlineStatus(els.inviteStatus,"Проверяем разрешение на push-уведомления…");
  clearError();
  try{
@@ -1317,7 +1319,15 @@ async function createContactInvitationNow({expectedRevision=null}={}){
   els.inviteQr.replaceChildren();
   try{
    await ensureQrCodeLibrary();
-   if(!isCurrentRevision())return false;
+   if(!isCurrentRevision()){
+    await deleteUnusedIssuedInvitation(unsigned.invitation_id);
+    await clearMyInvitation(url);
+    activeIssuedInvitationId=null;
+    els.inviteUrl.textContent="";
+    els.inviteQr.replaceChildren();
+    updateInviteCopyButton();
+    return false;
+   }
    els.inviteQr.replaceChildren();
    new window.QRCode(els.inviteQr,{text:url,width:220,height:220,colorDark:"#101827",colorLight:"#ffffff",correctLevel:window.QRCode.CorrectLevel.M});
    setInlineStatus(els.inviteStatus,"");
@@ -1332,7 +1342,11 @@ async function createContactInvitationNow({expectedRevision=null}={}){
    const message=error.message||String(error);
    setInlineStatus(els.inviteStatus,"Приглашение не создано. "+message,true);
    return false;
-  }finally{els.createInvite.disabled=false}
+  }finally{
+  els.createInvite.disabled=false;
+  els.profileDisplayName.disabled=false;
+  els.inviteContactName.disabled=false;
+ }
 }
 function updateInviteCopyButton(){
  els.copyInviteInline.disabled=!els.inviteUrl.textContent.trim();
