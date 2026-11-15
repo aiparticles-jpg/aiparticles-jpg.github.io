@@ -126,33 +126,30 @@ async function vlFindContactName(userId){
    request.onsuccess=()=>resolve(request.result);
    request.onerror=()=>reject(request.error||new Error("IndexedDB open failed"));
   });
-  const stores=["contacts","invitations"].filter(name=>db.objectStoreNames.contains(name));
-  if(!stores.length)return "";
+  if(!db.objectStoreNames.contains("contacts"))return "";
   return await new Promise((resolve,reject)=>{
-   const tx=db.transaction(stores,"readonly");
-   let contactName="";
-   let invitationName="";
-   if(stores.includes("contacts")){
-    const request=tx.objectStore("contacts").get(userId);
-    request.onsuccess=()=>{contactName=typeof request.result?.name==="string"?request.result.name.trim():""};
-    request.onerror=()=>reject(request.error||new Error("Contact lookup failed"));
-   }
-   if(stores.includes("invitations")){
-    const request=tx.objectStore("invitations").getAll();
-    request.onsuccess=()=>{
-     const matches=(Array.isArray(request.result)?request.result:[])
-      .filter(invitation=>!invitation.revoked&&
-       typeof invitation.local_contact_name==="string"&&invitation.local_contact_name.trim()&&
-       Array.isArray(invitation.activations)&&
-       invitation.activations.some(activation=>activation?.user_id===userId))
-      .sort((a,b)=>(Number(b.created_at)||0)-(Number(a.created_at)||0));
-     invitationName=matches[0]?.local_contact_name?.trim()||"";
-    };
-    request.onerror=()=>reject(request.error||new Error("Issued invitation lookup failed"));
-   }
-   tx.oncomplete=()=>resolve(contactName||invitationName);
-   tx.onerror=()=>reject(tx.error||new Error("Contact name lookup transaction failed"));
-   tx.onabort=()=>reject(tx.error||new Error("Contact name lookup transaction aborted"));
+   const tx=db.transaction("contacts","readonly");
+   const request=tx.objectStore("contacts").get(userId);
+   request.onsuccess=()=>resolve(typeof request.result?.name==="string"?request.result.name.trim():"");
+   request.onerror=()=>reject(request.error||new Error("Contact lookup failed"));
+  });
+ }catch{return ""}finally{db?.close()}
+}
+async function vlFindInvitationName(invitationId){
+ if(typeof invitationId!=="string"||!/^[0-9a-f-]{36}$/i.test(invitationId))return "";
+ let db;
+ try{
+  db=await new Promise((resolve,reject)=>{
+   const request=indexedDB.open("voicelink-local");
+   request.onsuccess=()=>resolve(request.result);
+   request.onerror=()=>reject(request.error||new Error("IndexedDB open failed"));
+  });
+  if(!db.objectStoreNames.contains("invitations"))return "";
+  return await new Promise((resolve,reject)=>{
+   const tx=db.transaction("invitations","readonly");
+   const request=tx.objectStore("invitations").get(invitationId);
+   request.onsuccess=()=>resolve(typeof request.result?.local_contact_name==="string"?request.result.local_contact_name.trim():"");
+   request.onerror=()=>reject(request.error||new Error("Invitation lookup failed"));
   });
  }catch{return ""}finally{db?.close()}
 }
@@ -183,12 +180,12 @@ async function vlShouldSuppressNotification(data,windows){
  return results.some(Boolean);
 }
 async function vlShowCustomNotification(data){
- const name=await vlFindContactName(data.sender_id);
+ const name=data.event==="contact_request"?await vlFindInvitationName(data.invitation_id):await vlFindContactName(data.sender_id);
  await vlWriteLog("contact_lookup",{event:data.event,found:!!name,name:name||null});
  const options={
   body:vlNotificationBody(data,name),
   tag:"voicelink-"+String(data.event||"event")+"-"+String(data.sender_id||"unknown"),
-  data:{voicelink:true,event:data.event||"",sender_id:data.sender_id||"",call_id:data.call_id||"",expires_at:data.expires_at||0}
+  data:{voicelink:true,event:data.event||"",sender_id:data.sender_id||"",call_id:data.call_id||"",invitation_id:data.invitation_id||"",expires_at:data.expires_at||0}
  };
  await self.registration.showNotification("VoiceLink",options);
   await vlWriteLog("notification_shown",{event:data.event,withName:!!name});
