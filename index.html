@@ -251,6 +251,7 @@
              <input id="invite-contact-name" type="text" maxlength="40" autocomplete="off" placeholder="Например, Иван">
              <p class="hint">Если собеседник воспользуется приглашением, вы потом узнаете его в списке контактов по этому имени.</p>
            </div>
+           <p class="hint">При создании потребуется разрешить push-уведомления — они нужны для оповещений о входящих звонках, даже когда VoiceLink не открыт.</p>
            <p class="hint invitation-one-use-warning">Важно: приглашение можно использовать только один раз. Передавайте ссылку лично тому, кого хотите добавить в контакты, чтобы ею не смогли воспользоваться посторонние.</p>
            <button id="create-invite" class="button button-primary" type="button">Создать приглашение</button>
            <p id="invite-status" class="hint" aria-live="polite"></p>
@@ -380,6 +381,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=258"></script>
+  <script type="module" src="./js/app.js?v=259"></script>
 </body>
 </html>
