@@ -17,6 +17,7 @@ export class WebRtcAudio {
     this.diagnosticPilot = diagnosticPilot;
     this.diagnosticCamera = diagnosticCamera;
     this.videoEnabled = false;
+    this.remoteStream = null;
     this.cameraFacingMode = "user";
     this.videoStream = null;
     this.videoTransceiver = null;
@@ -453,7 +454,19 @@ export class WebRtcAudio {
     };
     pc.onsignalingstatechange=()=>this.onState("PC["+this.pcDiagnosticId+"] signaling-"+pc.signalingState+".");
     pc.oniceconnectionstatechange=()=>{const state=pc.iceConnectionState;this.onState("PC["+this.pcDiagnosticId+"] ice-"+state+".");if(this.signalEnabled)this.logSelectedCandidatePair("ice-"+state,pc)};
-    pc.ontrack=event=>{const remoteStream=event.streams&&event.streams[0]?event.streams[0]:new MediaStream([event.track]);this.attachRemoteMonitor(remoteStream);this.onRemoteStream(remoteStream)};
+    pc.ontrack=event=>{
+      let remoteStream=this.remoteStream;
+      if(!remoteStream){
+        remoteStream=event.streams?.[0]||new MediaStream();
+        this.remoteStream=remoteStream;
+      }
+      for(const track of event.streams?.[0]?.getTracks?.()||[]){
+        if(!remoteStream.getTracks().some(existing=>existing.id===track.id))remoteStream.addTrack(track);
+      }
+      if(!remoteStream.getTracks().some(existing=>existing.id===event.track.id))remoteStream.addTrack(event.track);
+      if(event.track.kind==="audio")this.attachRemoteMonitor(remoteStream);
+      this.onRemoteStream(remoteStream);
+    };
     pc.onconnectionstatechange=()=>{
       const connectionState=pc.connectionState;
       this.onState("PC["+this.pcDiagnosticId+"] connection-"+connectionState+".");
@@ -914,6 +927,7 @@ export class WebRtcAudio {
     this.videoSender = null;
     this.videoTransceiver = null;
     this.videoEnabled = false;
+    this.remoteStream = null;
     this.signalEnabled = false;
     this.callAccepted = false;
     this.micEnabled = false;

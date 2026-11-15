@@ -767,6 +767,7 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera
   sendSignal:payload=>state.secure.sendSignal(payload),
   onLocalVideoStream:stream=>{
    els.localVideo.srcObject=stream;
+   els.localVideo.classList.toggle("is-front-camera",state.webrtc?.cameraFacingMode==="user");
    if(stream){const playResult=els.localVideo.play();if(playResult?.catch)playResult.catch(error=>debug("Не удалось показать локальное видео: "+error.message));}
    updateCallVideoStage();
   },
