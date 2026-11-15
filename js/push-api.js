@@ -16,7 +16,7 @@ export async function sendPushEventToContact(userId, event, callId, expiresAt, o
     const subscriptionId = String(contact.push_subscription_id);
     report("TARGET event=" + event + "; recipient_subscription_suffix=…" + subscriptionId.slice(-8));
     const identity = await getCurrentSignalingIdentity();
-    const request = { v: 1, user_id: identity.user_id, timestamp: Date.now(), event, call_id: callId, recipient_subscription_id: subscriptionId, expires_at: expiresAt, ...(event === "contact_request" && typeof extraData.invitation_id === "string" ? { invitation_id: extraData.invitation_id } : {}) };
+    const request = { v: 1, user_id: identity.user_id, timestamp: Date.now(), event, call_id: callId, recipient_subscription_id: subscriptionId, expires_at: expiresAt, ...(event === "contact_request" ? { ...(typeof extraData.invitation_id === "string" ? { invitation_id: extraData.invitation_id } : {}), ...(typeof extraData.sender_name === "string" && extraData.sender_name.trim() ? { sender_name: extraData.sender_name.trim().slice(0, 40) } : {}) } : {}) };
     report("FETCH_START event=" + event + "; method=POST; path=/v1/push");
     let response;
     try {
