@@ -84,7 +84,7 @@ function validateRequest(body, now) {
   if (typeof recipient_subscription_id !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(recipient_subscription_id)) return null;
   if (!Number.isSafeInteger(expires_at)) return null;
-  if (sender_name !== undefined && (typeof sender_name !== "string" || sender_name.length > 60 || sender_name.trim() !== sender_name || /[\u0000-\u001f\u007f]/.test(sender_name))) return null;
+  if (sender_name !== undefined && (typeof sender_name !== "string" || sender_name.length > 40 || sender_name.trim() !== sender_name || /[\u0000-\u001f\u007f]/.test(sender_name))) return null;
 
   return {
     user_id,
@@ -92,7 +92,7 @@ function validateRequest(body, now) {
     call_id,
     recipient_subscription_id,
     expires_at,
-    ...(event === "contact_request" ? { invitation_id } : {})
+    ...(event === "contact_request" ? { invitation_id, ...(typeof sender_name === "string" && sender_name ? { sender_name } : {}) } : {})
   };
 }
 
@@ -134,7 +134,7 @@ async function submitOneSignal(event) {
         sender_id: event.user_id,
         call_id: event.call_id,
         expires_at: event.expires_at,
-        ...(event.event === "contact_request" ? { invitation_id: event.invitation_id } : {})
+        ...(event.event === "contact_request" ? { invitation_id: event.invitation_id, ...(event.sender_name ? { sender_name: event.sender_name } : {}) } : {})
       }
     })
   });
