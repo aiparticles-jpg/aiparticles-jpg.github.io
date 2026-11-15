@@ -1863,10 +1863,9 @@ async function closeInvitationScreen(){
 let diagnosticReturnFocus=null;
 function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");resetDiagnosticLogAutoFollow();els.diagnosticScreenBack.focus();}
 function closeDiagnosticScreen(){els.diagnosticScreen.classList.add("hidden");syncContactScreenOpenClass();if(diagnosticReturnFocus?.isConnected&&!diagnosticReturnFocus.classList.contains("hidden"))diagnosticReturnFocus.focus();else els.brandAbout.focus();diagnosticReturnFocus=null;}
-let profileLongPressTimer=null,profileLongPressTriggered=false;
 window.addEventListener("focus",()=>{if(!els.profileScreen.classList.contains("hidden"))updateInvitePushHint();});
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&!els.profileScreen.classList.contains("hidden"))updateInvitePushHint();});
-els.profileDockButton.addEventListener("click",event=>{if(profileLongPressTriggered){event.preventDefault();profileLongPressTriggered=false;return;}openProfileScreen();});
+els.profileDockButton.addEventListener("click",openProfileScreen);
 els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
 els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
 els.profileScreenBack.addEventListener("click",closeProfileScreen);
@@ -1876,15 +1875,7 @@ els.inviteContactName.addEventListener("input",updateInviteUrlLabel);
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
 els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els.copyDebugLog));
 els.copySwDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.swDebugLog,els.copySwDebugLog));
-els.profileDockButton.addEventListener("pointerdown",event=>{if(event.button!==undefined&&event.button!==0)return;try{els.profileDockButton.setPointerCapture(event.pointerId)}catch{}profileLongPressTriggered=false;cancelProfileLongPress();profileLongPressTimer=window.setTimeout(()=>{profileLongPressTimer=null;profileLongPressTriggered=true;els.profileDockLabel.textContent="Отпустите";},550);});
-function completeProfileLongPress(){
- els.profileDockLabel.textContent="Профиль";
- openProfileScreen();
-}
-function cancelProfileLongPress(){if(profileLongPressTimer!==null){window.clearTimeout(profileLongPressTimer);profileLongPressTimer=null;}}
-els.profileDockButton.addEventListener("pointerup",()=>{const wasLongPress=profileLongPressTriggered;cancelProfileLongPress();if(wasLongPress)completeProfileLongPress();else els.profileDockLabel.textContent="Профиль";});
-els.profileDockButton.addEventListener("pointerleave",event=>{if(event.pointerType==="mouse"&&!profileLongPressTriggered){cancelProfileLongPress();}});
-els.profileDockButton.addEventListener("pointercancel",()=>{cancelProfileLongPress();profileLongPressTriggered=false;els.profileDockLabel.textContent="Профиль";});
+
 els.copyInviteInline.addEventListener("click",copyContactInvitation);
 els.scanQr.addEventListener("click",startQrScan);
 window.addEventListener("pagehide",()=>{if(qrStream)for(const track of qrStream.getTracks())track.stop()});
