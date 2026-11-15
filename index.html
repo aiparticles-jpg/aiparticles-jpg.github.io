@@ -245,14 +245,14 @@
          </div>
          <div id="invite-tools" class="contact-tools invite-tools">
            <h3 class="invite-section-title">Как пригласить собеседника</h3>
-           <p class="hint">Укажите, как вы хотите сохранить собеседника у себя. Приглашение будет создано только после нажатия кнопки.</p>
+           <p class="hint">Создайте приглашение и передайте его собеседнику.</p>
+           <br>
            <div class="profile-display-name">
              <label class="field-label" for="invite-contact-name">Как назвать собеседника у себя? (необязательно)</label>
              <input id="invite-contact-name" type="text" maxlength="40" autocomplete="off" placeholder="Например, Иван">
              <p class="hint">Если собеседник воспользуется приглашением, вы потом узнаете его в списке контактов по этому имени.</p>
            </div>
            <p class="hint">При создании потребуется разрешить push-уведомления — они нужны для оповещений о входящих звонках, даже когда VoiceLink не открыт.</p>
-           <p class="hint invitation-one-use-warning">Важно: приглашение можно использовать только один раз. Передавайте ссылку лично тому, кого хотите добавить в контакты, чтобы ею не смогли воспользоваться посторонние.</p>
            <button id="create-invite" class="button button-primary" type="button">Создать приглашение</button>
            <p id="invite-status" class="hint" aria-live="polite"></p>
          </div>
@@ -268,6 +268,7 @@
            <button id="copy-invite-inline" class="button button-secondary invite-copy-inline" type="button" aria-label="Скопировать приглашение" title="Скопировать приглашение" disabled><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9"/></svg></button>
          </div>
          <div id="invite-qr" class="invite-qr" aria-label="QR-код моего приглашения"></div>
+         <p class="hint invitation-one-use-warning">Важно: приглашение можно использовать только один раз. Передавайте ссылку лично тому, кого хотите добавить в контакты, чтобы ею не смогли воспользоваться посторонние.</p>
          <p id="invitation-screen-status" class="hint" aria-live="polite"></p>
        </div>
      </section>
