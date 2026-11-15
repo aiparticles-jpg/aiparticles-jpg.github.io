@@ -13,7 +13,7 @@ const els={
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),cameraToggle:$("camera-toggle"),cameraSwitch:$("camera-switch"),
  audio:$("remote-audio"),remoteVideo:$("remote-video"),localVideo:$("local-video"),callVideoStage:$("call-video-stage"),remoteVideoPlaceholder:$("remote-video-placeholder"),pilot:$("diagnostic-pilot"),cameraPilot:$("diagnostic-camera-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
  copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
-  contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactInvitationDetails:$("contact-invitation-details"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),saveResponseDisplayNameLabel:$("save-response-display-name-label"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteStatus:$("invite-status"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
+  contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactInvitationDetails:$("contact-invitation-details"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),saveResponseDisplayNameLabel:$("save-response-display-name-label"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteStatus:$("invite-status"),invitePushHint:$("invite-push-hint"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
 function syncContactScreenOpenClass(){
  const overlayScreens=[
@@ -288,6 +288,24 @@ function showAppNotice(message,isError=false){
  appNoticeTimer=window.setTimeout(()=>{els.appNotice.classList.add("hidden");els.appNotice.textContent="";appNoticeTimer=null},10000);
 }
 function setServiceStatus(element,message){if(element)element.textContent=message}
+function updateInvitePushHint(){
+ if(!els.invitePushHint)return;
+ if(!( "Notification" in window)){
+  els.invitePushHint.textContent="Этот браузер не поддерживает push-уведомления.";
+  els.invitePushHint.classList.remove("hidden");
+  return;
+ }
+ const permission=Notification.permission;
+ if(permission==="granted"){
+  els.invitePushHint.classList.add("hidden");
+ }else if(permission==="denied"){
+  els.invitePushHint.textContent="Уведомления для VoiceLink запрещены. Чтобы получать оповещения о входящих звонках, разрешите их для этого сайта в настройках браузера.";
+  els.invitePushHint.classList.remove("hidden");
+ }else{
+  els.invitePushHint.textContent="Для оповещений о входящих звонках VoiceLink использует push-уведомления. Если разрешение ещё не предоставлено, браузер предложит разрешить их при создании приглашения.";
+  els.invitePushHint.classList.remove("hidden");
+ }
+}
 function updateWebPushStatus(){
  const permission="Notification" in window?Notification.permission:"unsupported";
  const label=permission==="granted"?"Разрешены":permission==="denied"?"Запрещены":permission==="default"?"Ожидают разрешения":"Не поддерживается";
@@ -1810,6 +1828,7 @@ async function handleCreateInvitationClick(){
 }
 els.createInvite.addEventListener("click",handleCreateInvitationClick);
 function openProfileScreen(){
+ updateInvitePushHint();
  clearInlineStatus(els.inviteStatus);clearError();
  els.inviteContactName.value="";
  updateInviteUrlLabel();
@@ -1845,6 +1864,8 @@ let diagnosticReturnFocus=null;
 function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");resetDiagnosticLogAutoFollow();els.diagnosticScreenBack.focus();}
 function closeDiagnosticScreen(){els.diagnosticScreen.classList.add("hidden");syncContactScreenOpenClass();if(diagnosticReturnFocus?.isConnected&&!diagnosticReturnFocus.classList.contains("hidden"))diagnosticReturnFocus.focus();else els.brandAbout.focus();diagnosticReturnFocus=null;}
 let profileLongPressTimer=null,profileLongPressTriggered=false;
+window.addEventListener("focus",()=>{if(!els.profileScreen.classList.contains("hidden"))updateInvitePushHint();});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&!els.profileScreen.classList.contains("hidden"))updateInvitePushHint();});
 els.profileDockButton.addEventListener("click",event=>{if(profileLongPressTriggered){event.preventDefault();profileLongPressTriggered=false;return;}openProfileScreen();});
 els.diagnosticDockButton.addEventListener("click",openDiagnosticScreen);
 els.contactDiagnosticButton.addEventListener("click",openDiagnosticScreen);
