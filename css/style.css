@@ -1057,3 +1057,79 @@ body{
 #profile-screen #create-invite.button-primary:hover:not(:disabled){
   background:#a2efd4;
 }
+
+
+/* Unified call controls: consistent round geometry, state icons and two-line captions. */
+.call-screen-stage .contact-call-actions .call-round-action,
+.call-screen-stage .contact-call-actions .call-control-action,
+.call-screen-stage .contact-call-actions .call-hangup-action,
+.call-screen-stage .contact-call-actions .call-camera-action,
+.call-screen-stage .contact-call-actions .call-camera-switch {
+  flex: 0 0 68px !important;
+  width: 68px !important;
+  min-width: 68px !important;
+  max-width: 68px !important;
+  height: 68px !important;
+  min-height: 68px !important;
+  border-radius: 50% !important;
+}
+.call-screen-stage .contact-call-actions .call-hangup-action {
+  background: #e5484d !important;
+  color: #fff !important;
+}
+.call-screen-stage .contact-call-actions .call-control-action,
+.call-screen-stage .contact-call-actions .call-camera-action {
+  background: #34445b !important;
+  color: #fff !important;
+}
+.call-screen-stage .contact-call-actions .call-control-action:hover:not(:disabled),
+.call-screen-stage .contact-call-actions .call-camera-action:hover:not(:disabled) {
+  background: #435873 !important;
+}
+.call-screen-stage .contact-call-actions .call-speaker-action[aria-pressed="true"] {
+  background: #34445b !important;
+  color: #fff !important;
+}
+.call-control-action .speaker-off-icon { display: none; }
+.call-control-action[data-enabled="false"] .speaker-on-icon { display: none; }
+.call-control-action[data-enabled="false"] .speaker-off-icon { display: block; }
+.call-control-action .camera-on-icon { display: block; }
+.call-control-action .camera-off-icon { display: none; }
+.call-control-action[data-enabled="false"] .camera-on-icon { display: none; }
+.call-control-action[data-enabled="false"] .camera-off-icon { display: block; }
+.call-control-action[data-muted="true"] .mic-on-icon { display: none; }
+.call-control-action[data-muted="true"] .mic-off-icon { display: block; }
+.call-control-action::after,
+.call-hangup-action::after,
+.call-camera-action::after {
+  top: 76px !important;
+  width: 88px;
+  max-width: 88px;
+  white-space: pre-line !important;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+  content: attr(data-caption) !important;
+}
+@media(max-width:420px) {
+  .call-screen-stage .contact-call-actions .call-round-action,
+  .call-screen-stage .contact-call-actions .call-control-action,
+  .call-screen-stage .contact-call-actions .call-hangup-action,
+  .call-screen-stage .contact-call-actions .call-camera-action,
+  .call-screen-stage .contact-call-actions .call-camera-switch {
+    flex: 0 0 56px !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    max-width: 56px !important;
+    height: 56px !important;
+    min-height: 56px !important;
+  }
+  .call-control-action::after,
+  .call-hangup-action::after,
+  .call-camera-action::after {
+    top: 64px !important;
+    width: 76px;
+    max-width: 76px;
+    font-size: 10px !important;
+  }
+}
