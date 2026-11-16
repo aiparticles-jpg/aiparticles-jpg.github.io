@@ -2130,19 +2130,12 @@ async function renderConversation(contactUserId){
    time.dateTime=event.created_at;
    time.textContent=new Date(event.created_at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
    meta.append(time);
-   if(event.direction==="outgoing"){
+   if(event.direction==="outgoing"&&event.delivery_status!=="sending"){
     const status=document.createElement("span");
     status.className="chat-message-status";
-    status.setAttribute("aria-label",event.delivery_status==="delivered"?"Доставлено": "Отправлено");
-    const first=document.createElement("span");
-    first.className="chat-message-check chat-message-check-first";
-    first.textContent="✓";
-    const second=document.createElement("span");
-    second.className="chat-message-check chat-message-check-second";
-    second.textContent="✓";
-    if(event.delivery_status!=="sending")first.classList.add("is-active");
-    if(event.delivery_status==="delivered")second.classList.add("is-active");
-    status.append(first,second);
+    status.setAttribute("aria-label",event.delivery_status==="delivered"?"Доставлено":"Отправлено");
+    status.textContent="✓";
+    if(event.delivery_status==="delivered")status.classList.add("is-delivered");
     meta.append(status);
    }
    bubble.append(body,meta);

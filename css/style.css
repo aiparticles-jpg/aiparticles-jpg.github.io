@@ -368,11 +368,8 @@ body.contact-screen-open{overflow:hidden}
 .chat-message-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}
 .chat-message-meta{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-top:5px}
 .chat-message-time{display:block;margin:0;color:var(--muted);font-size:10px;text-align:right}
-.chat-message-status{display:inline-flex;align-items:center;color:var(--muted);font-size:12px;line-height:1;letter-spacing:-3px}
-.chat-message-check{display:inline-block;opacity:.28}
-.chat-message-check.is-active{color:var(--accent);opacity:1}
-.chat-message-check-second{opacity:.18}
-.chat-message-check-second.is-active{opacity:1}
+.chat-message-status{display:inline-block;color:var(--muted);font-size:12px;line-height:1;opacity:.38}
+.chat-message-status.is-delivered{color:var(--accent);opacity:1}
 .chat-event-system{justify-content:center;color:var(--muted);font-size:11px}
 .chat-event-system time{font-size:10px;opacity:.8}
 .chat-composer{flex:0 0 auto;display:grid;grid-template-columns:minmax(0,1fr) 46px;align-items:end;gap:9px;width:100%;max-width:640px;margin:0 auto;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:rgba(11,18,32,.98)}
