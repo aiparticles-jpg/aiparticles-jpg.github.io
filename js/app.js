@@ -12,7 +12,7 @@ const els={
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),cameraToggle:$("camera-toggle"),cameraSwitch:$("camera-switch"),
  audio:$("remote-audio"),remoteVideo:$("remote-video"),localVideo:$("local-video"),callVideoStage:$("call-video-stage"),remoteVideoPlaceholder:$("remote-video-placeholder"),pilot:$("diagnostic-pilot"),cameraPilot:$("diagnostic-camera-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
- copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),
+ copyDebugLog:$("copy-debug-log"),copySwDebugLog:$("copy-sw-debug-log"),debugUrl:$("debug-url"),debugState:$("debug-state"),oneSignalStatus:$("onesignal-status"),cameraDevicesStatus:$("camera-devices-status"),cameraDevicesList:$("camera-devices-list"),refreshCameraDevices:$("refresh-camera-devices"),
   contactTools:$("contact-tools"),contactInvitationEntry:$("contact-invitation-entry"),contactInvitationDetails:$("contact-invitation-details"),contactPackage:$("contact-package"),pasteContact:$("paste-contact"),contactName:$("contact-name"),responseDisplayName:$("response-display-name"),saveResponseDisplayName:$("save-response-display-name"),saveResponseDisplayNameLabel:$("save-response-display-name-label"),responseDisplayNameSection:$("response-display-name-section"),importContact:$("import-contact"),scanQr:$("scan-qr"),qrVideo:$("qr-video"),qrStatus:$("qr-status"),profileDisplayName:$("profile-display-name"),inviteContactName:$("invite-contact-name"),inviteStatus:$("invite-status"),invitePushHint:$("invite-push-hint"),createInvite:$("create-invite"),inviteUrl:$("invite-url"),copyInviteInline:$("copy-invite-inline"),inviteQr:$("invite-qr"),replyInvite:$("reply-contact-invite"),replyInviteStatus:$("reply-contact-invite-status"),contactRequestText:$("contact-request-detail-text"),contactRequestReceivedAge:$("contact-request-received-age"),contactRequestAge:$("contact-request-age"),contactRequestActions:$("contact-request-actions"),acceptContactRequest:$("accept-contact-request"),declineContactRequest:$("decline-contact-request"),chatEvents:$("chat-events"),chatComposer:$("chat-composer"),chatMessage:$("chat-message"),sendChatMessage:$("send-chat-message")
 };
 const contactOverlayScreens=[
@@ -1906,7 +1906,35 @@ async function closeInvitationScreen(){
  }
 }
 let diagnosticReturnFocus=null;
-function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");resetDiagnosticLogAutoFollow();els.diagnosticScreenBack.focus();}
+async function refreshCameraDevices(){
+ const button=els.refreshCameraDevices;
+ button.disabled=true;
+ els.cameraDevicesStatus.textContent="Проверяем доступные камеры…";
+ els.cameraDevicesList.replaceChildren();
+ try{
+  if(!navigator.mediaDevices?.enumerateDevices)throw new Error("Браузер не поддерживает получение списка устройств.");
+  const devices=await navigator.mediaDevices.enumerateDevices();
+  const cameras=devices.filter(device=>device.kind==="videoinput");
+  if(!cameras.length){
+   els.cameraDevicesStatus.textContent="Камеры не обнаружены. Возможно, браузер пока не предоставил список устройств.";
+   const item=document.createElement("li");item.textContent="Список видеоустройств пуст.";els.cameraDevicesList.append(item);
+   return;
+  }
+  cameras.forEach((camera,index)=>{
+   const item=document.createElement("li");
+   const name=camera.label?.trim()||`Камера ${index+1} — название скрыто браузером`;
+   item.textContent=name;
+   els.cameraDevicesList.append(item);
+  });
+  const hiddenNames=cameras.some(camera=>!camera.label?.trim());
+  els.cameraDevicesStatus.textContent=`Обнаружено камер: ${cameras.length}.`+(hiddenNames?" Firefox или другой браузер может скрывать названия до предоставления разрешения на камеру.":"");
+ }catch(error){
+  els.cameraDevicesStatus.textContent="Не удалось получить список камер: "+(error.message||String(error));
+ }finally{
+  button.disabled=false;
+ }
+}
+function openDiagnosticScreen(){diagnosticReturnFocus=document.activeElement;els.diagnosticScreen.classList.remove("hidden");document.body.classList.add("contact-screen-open");resetDiagnosticLogAutoFollow();els.diagnosticScreenBack.focus();refreshCameraDevices();}
 function closeDiagnosticScreen(){els.diagnosticScreen.classList.add("hidden");syncContactScreenOpenClass();if(diagnosticReturnFocus?.isConnected&&!diagnosticReturnFocus.classList.contains("hidden"))diagnosticReturnFocus.focus();else els.brandAbout.focus();diagnosticReturnFocus=null;}
 window.addEventListener("focus",()=>{if(!els.profileScreen.classList.contains("hidden"))updateInvitePushHint();});
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&!els.profileScreen.classList.contains("hidden"))updateInvitePushHint();});

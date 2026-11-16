@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#101827">
   <meta name="description" content="Приватный голосовой звонок через WebRTC с TCP-резервом.">
   <title>Voice Link — голосовой звонок</title>
-  <link rel="stylesheet" href="./css/style.css?v=120">
+  <link rel="stylesheet" href="./css/style.css?v=121">
   
 <style>
 .join-row .button{width:190px;flex:0 0 190px}
@@ -283,6 +283,11 @@
           <button id="tcp-fallback" class="button button-secondary hidden" type="button" disabled>TCP-аудио недоступно</button>
         </div>
 
+        <section class="event-log-panel camera-devices-panel" aria-labelledby="camera-devices-title">
+          <div class="panel-heading"><h2 id="camera-devices-title" class="contact-edit-screen-title">Камеры</h2><button id="refresh-camera-devices" class="button button-secondary log-copy-button" type="button">Обновить</button></div>
+          <p id="camera-devices-status" class="debug-meta" aria-live="polite">Список ещё не проверялся.</p>
+          <ul id="camera-devices-list" class="camera-devices-list"><li>Нажмите «Обновить».</li></ul>
+        </section>
         <section class="event-log-panel primary-event-log" aria-labelledby="event-log-title">
           <div class="panel-heading"><h2 id="event-log-title" class="contact-edit-screen-title">Журнал событий</h2><button id="copy-debug-log" class="button button-secondary log-copy-button" type="button" title="Скопировать журнал событий">Копировать</button></div>
           <div class="debug-meta" hidden>Канал: <code id="debug-url">ntfy.sh</code></div>
@@ -385,6 +390,6 @@
       }, 15000);
     })();
   </script>
-  <script type="module" src="./js/app.js?v=275"></script>
+  <script type="module" src="./js/app.js?v=276"></script>
 </body>
 </html>

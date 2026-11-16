@@ -1228,3 +1228,11 @@ body{
   top:64px!important;font-size:10px!important;
  }
 }
+
+
+/* Camera inventory in diagnostics. */
+.camera-devices-list{margin:10px 0 0;padding:0 0 0 20px;color:var(--text);font-size:12px;line-height:1.7}
+.camera-devices-list li{padding:2px 0;overflow-wrap:anywhere}
+
+/* A hidden incoming-call dismiss button must remain hidden outside incoming-call state. */
+.call-screen-stage .contact-call-actions #dismiss-incoming.call-dismiss-action.hidden{display:none!important}
