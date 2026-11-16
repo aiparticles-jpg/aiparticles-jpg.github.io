@@ -374,7 +374,7 @@ async function refreshAudioOutputCount(){
  state.audioOutputCheckPending=true;
  try{
   const devices=await navigator.mediaDevices?.enumerateDevices?.()||[];
-  state.audioOutputCount=devices.filter(device=>device.kind==="audiooutput"&&device.deviceId).length;
+  state.audioOutputCount=devices.filter(device=>device.kind==="audiooutput"&&device.deviceId&&device.deviceId!=="default"&&device.deviceId!=="communications").length;
  }catch(error){
   state.audioOutputCount=0;
   debug("Не удалось определить аудиовыходы: "+(error.message||String(error)));
