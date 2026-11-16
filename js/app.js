@@ -374,48 +374,6 @@ async function checkServiceWorkerAvailability(){
   setServiceStatus(els.serviceWorkerStatus,registration?.active?"Активен":registration?"Зарегистрирован, запускается":"Не зарегистрирован");
  }catch(error){setServiceStatus(els.serviceWorkerStatus,"Ошибка проверки")}
 }
-let lastVideoUiDiagnosticSignature="";
-function getVideoElementUiState(element){
- if(!element)return null;
- const rect=element.getBoundingClientRect();
- const style=getComputedStyle(element);
- const width=Math.round(rect.width),height=Math.round(rect.height);
- const inViewport=rect.bottom>0&&rect.right>0&&rect.top<window.innerHeight&&rect.left<window.innerWidth;
- return {
-  connected:element.isConnected,
-  hiddenClass:element.classList.contains("hidden"),
-  display:style.display,
-  visibility:style.visibility,
-  opacity:style.opacity,
-  rect:{x:Math.round(rect.x),y:Math.round(rect.y),width,height},
-  inViewport,
-  rendered:style.display!=="none"&&style.visibility!=="hidden"&&Number(style.opacity)>0&&width>0&&height>0
- };
-}
-function logCallVideoUiDiagnostics(reason="state-change"){
- const video=els.remoteVideo,stage=els.callVideoStage;
- if(!video||!stage)return;
- const track=video.srcObject?.getVideoTracks?.()[0]||null;
- const snapshot={
-  reason,
-  documentVisibility:document.visibilityState,
-  callScreenHidden:els.callScreen.classList.contains("hidden"),
-  stage:getVideoElementUiState(stage),
-  remoteVideo:getVideoElementUiState(video),
-  placeholder:getVideoElementUiState(els.remoteVideoPlaceholder),
-  localVideo:getVideoElementUiState(els.localVideo),
-  remoteTrack:track?{readyState:track.readyState,muted:track.muted,enabled:track.enabled,id:track.id}:null,
-  playback:{
-   readyState:video.readyState,networkState:video.networkState,paused:video.paused,
-   videoWidth:video.videoWidth,videoHeight:video.videoHeight,
-   currentTime:Math.round(video.currentTime*10)/10,errorCode:video.error?.code??null
-  }
- };
- const signature=JSON.stringify({...snapshot,reason:undefined,playback:{...snapshot.playback,currentTime:undefined}});
- if(signature===lastVideoUiDiagnosticSignature)return;
- lastVideoUiDiagnosticSignature=signature;
- debug("WebRTC: VIDEO_UI_DIAGNOSTICS "+JSON.stringify(snapshot));
-}
 function updateCallVideoStage(){
  const localActive=!!state.webrtc?.videoEnabled;
  const remoteTrack=els.remoteVideo.srcObject?.getVideoTracks?.().find(track=>track.readyState==="live");
@@ -430,28 +388,7 @@ function updateCallVideoStage(){
  els.remoteVideoPlaceholder.textContent=remoteTrackPresent
   ?"Подключаем видео собеседника…"
   :localActive?"Ожидаем видео собеседника":"Видео собеседника выключено";
- logCallVideoUiDiagnostics("update-call-video-stage");
 }
-for(const [element,label] of [[els.remoteVideo,"remote-video"],[els.localVideo,"local-video"]]){
- if(!element)continue;
- for(const eventName of ["loadedmetadata","loadeddata","canplay","playing","pause","waiting","stalled","suspend","emptied","error","resize"]){
-  element.addEventListener(eventName,()=>logCallVideoUiDiagnostics(label+"-"+eventName));
- }
-}
-if(typeof MutationObserver!=="undefined"){
- const videoUiMutationObserver=new MutationObserver(()=>logCallVideoUiDiagnostics("dom-visibility-change"));
- for(const element of [els.callScreen,els.callVideoStage,els.remoteVideo,els.remoteVideoPlaceholder,els.localVideo]){
-  if(element)videoUiMutationObserver.observe(element,{attributes:true,attributeFilter:["class","style"]});
- }
-}
-if(typeof ResizeObserver!=="undefined"){
- const videoUiResizeObserver=new ResizeObserver(()=>logCallVideoUiDiagnostics("layout-resize"));
- for(const element of [els.callVideoStage,els.remoteVideo,els.localVideo]){
-  if(element)videoUiResizeObserver.observe(element);
- }
-}
-document.addEventListener("visibilitychange",()=>logCallVideoUiDiagnostics("document-visibility"));
-window.addEventListener("resize",()=>logCallVideoUiDiagnostics("window-resize"));
 async function refreshAudioOutputCount(){
  if(state.audioOutputCheckPending||state.audioOutputCount!==null)return;
  state.audioOutputCheckPending=true;
@@ -887,11 +824,8 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera
     videoTrack.addEventListener("ended",updateCallVideoStage);
    }
    els.remoteVideo.onplaying=()=>debug("WebRTC: REMOTE_VIDEO_PLAYING; readyState="+els.remoteVideo.readyState+"; videoWidth="+els.remoteVideo.videoWidth+"; videoHeight="+els.remoteVideo.videoHeight);
-   lastVideoUiDiagnosticSignature="";
-   logCallVideoUiDiagnostics("remote-stream-attached");
    const videoPlay=els.remoteVideo.play();if(videoPlay?.catch)videoPlay.catch(error=>{
     debug("Не удалось включить удалённое видео: "+error.name+": "+error.message);
-    logCallVideoUiDiagnostics("remote-video-play-rejected");
    });
    updateCallVideoStage();
    const track=stream.getAudioTracks?.()[0];

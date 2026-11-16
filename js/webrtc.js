@@ -66,8 +66,6 @@ export class WebRtcAudio {
     this.remoteDescriptionSet = false;
     this.statsTimer = null;
     this.statsInProgress = false;
-    this.previousRtpStats = new Map();
-    this.previousIcePairStats = new Map();
   }
 
   async ensureMedia() {
@@ -583,10 +581,8 @@ export class WebRtcAudio {
 
   startStatsMonitoring(pc) {
     if (this.statsTimer) return;
-    this.previousRtpStats.clear();
-    this.previousIcePairStats.clear();
-    // Keep detailed RTP/ICE diagnostics useful without flooding the call log.
-    this.statsTimer = setInterval(() => this.logMediaStats(pc), 10000);
+    // One compact media snapshot every 30 seconds; no per-second counters.
+    this.statsTimer = setInterval(() => this.logMediaStats(pc), 30000);
   }
 
   async logMediaStats(pc) {
@@ -596,139 +592,50 @@ export class WebRtcAudio {
       const stats = await pc.getStats();
       if (this.pc !== pc) return;
       const reports = Array.from(stats.values());
-      const audioReports = reports.filter(report =>
-        (report.type === "inbound-rtp" || report.type === "outbound-rtp") &&
-        (report.kind === "audio" || report.mediaType === "audio")
-      );
       const fields = [];
 
-      for (const report of audioReports) {
-        const previous = this.previousRtpStats.get(report.id);
-        const packetField = report.type === "inbound-rtp" ? "packetsReceived" : "packetsSent";
-        const packets = Number.isFinite(report[packetField]) ? report[packetField] : null;
-        const delta = packets !== null && previous && Number.isFinite(previous[packetField])
-          ? packets - previous[packetField] : null;
-        const label = report.type === "inbound-rtp" ? "in" : "out";
-        const elapsedMs = previous && Number.isFinite(previous.timestamp) && Number.isFinite(report.timestamp)
-          ? report.timestamp - previous.timestamp : null;
-        const packetsPerSecond = delta !== null && elapsedMs > 0
-          ? (delta * 1000 / elapsedMs).toFixed(1) : "n/a";
-        fields.push(label + " Δpkts=" + (delta === null ? "n/a" : delta) + "/s=" + packetsPerSecond);
-
-        if (Number.isFinite(report.bytesSent) || Number.isFinite(report.bytesReceived)) {
-          const byteField = report.type === "inbound-rtp" ? "bytesReceived" : "bytesSent";
-          const byteDelta = previous && Number.isFinite(report[byteField]) && Number.isFinite(previous[byteField])
-            ? report[byteField] - previous[byteField] : null;
-          if (byteDelta !== null && elapsedMs > 0) {
-            fields.push(label + " bitrate≈" + Math.round(byteDelta * 8 * 1000 / elapsedMs) + "bps");
+      for (const kind of ["audio", "video"]) {
+        for (const direction of ["outbound-rtp", "inbound-rtp"]) {
+          const report = reports.find(item =>
+            item.type === direction &&
+            (item.kind === kind || item.mediaType === kind) &&
+            !item.isRemote
+          );
+          if (!report) continue;
+          const label = kind + (direction === "outbound-rtp" ? " out" : " in");
+          const parts = [];
+          const packets = direction === "outbound-rtp" ? report.packetsSent : report.packetsReceived;
+          const bytes = direction === "outbound-rtp" ? report.bytesSent : report.bytesReceived;
+          if (Number.isFinite(packets)) parts.push("pkts=" + packets);
+          if (Number.isFinite(bytes)) parts.push("bytes=" + bytes);
+          if (kind === "video") {
+            const frames = direction === "outbound-rtp" ? report.framesEncoded : report.framesDecoded;
+            if (Number.isFinite(frames)) parts.push("frames=" + frames);
+            if (Number.isFinite(report.framesDropped)) parts.push("dropped=" + report.framesDropped);
+          } else {
+            if (direction === "inbound-rtp" && Number.isFinite(report.packetsLost)) parts.push("lost=" + report.packetsLost);
+            if (direction === "inbound-rtp" && Number.isFinite(report.jitter)) parts.push("jitter=" + (report.jitter * 1000).toFixed(1) + "ms");
+            if (Number.isFinite(report.audioLevel)) parts.push("level=" + report.audioLevel.toFixed(3));
           }
-        }
-
-        if (report.codecId) {
-          const codec = stats.get(report.codecId);
-          if (codec) {
-            const codecName = String(codec.mimeType || "unknown").replace(/^audio\//i, "");
-            fields.push(label + " codec=" + codecName +
-              (Number.isFinite(codec.clockRate) ? "/" + codec.clockRate : "") +
-              (Number.isFinite(codec.channels) ? "ch=" + codec.channels : "") +
-              (codec.sdpFmtpLine ? ";fmtp=" + codec.sdpFmtpLine : ""));
+          if (report.codecId) {
+            const codec = stats.get(report.codecId);
+            if (codec?.mimeType) parts.push("codec=" + String(codec.mimeType).replace(/^(audio|video)\//i, ""));
           }
+          fields.push(label + " " + parts.join(" "));
         }
-
-        if (report.type === "inbound-rtp") {
-          if (Number.isFinite(report.packetsLost)) fields.push("lost=" + report.packetsLost);
-          if (Number.isFinite(report.jitter)) fields.push("jitter=" + (report.jitter * 1000).toFixed(1) + "ms");
-        }
-        if (Number.isFinite(report.audioLevel)) fields.push(label + " level=" + report.audioLevel.toFixed(3));
-
-        const counterFields = report.type === "inbound-rtp"
-          ? ["concealedSamples", "concealmentEvents"]
-          : [];
-        for (const field of counterFields) {
-          if (!Number.isFinite(report[field])) continue;
-          const d = previous && Number.isFinite(previous[field]) ? report[field] - previous[field] : null;
-          fields.push(field + " Δ=" + (d === null ? "n/a" : d));
-        }
-
-        if (report.type === "inbound-rtp" &&
-            Number.isFinite(report.jitterBufferDelay) &&
-            Number.isFinite(report.jitterBufferEmittedCount) &&
-            previous &&
-            Number.isFinite(previous.jitterBufferDelay) &&
-            Number.isFinite(previous.jitterBufferEmittedCount)) {
-          const delayDelta = report.jitterBufferDelay - previous.jitterBufferDelay;
-          const emittedDelta = report.jitterBufferEmittedCount - previous.jitterBufferEmittedCount;
-          if (emittedDelta > 0 && delayDelta >= 0) {
-            fields.push("jitterBuffer≈" + (delayDelta / emittedDelta * 1000).toFixed(1) + "ms");
-          }
-        }
-
-        this.previousRtpStats.set(report.id, {
-          packetsReceived: report.packetsReceived,
-          packetsSent: report.packetsSent,
-          bytesReceived: report.bytesReceived,
-          bytesSent: report.bytesSent,
-          timestamp: report.timestamp,
-          concealedSamples: report.concealedSamples,
-          concealmentEvents: report.concealmentEvents,
-          jitterBufferDelay: report.jitterBufferDelay,
-          jitterBufferEmittedCount: report.jitterBufferEmittedCount
-        });
-      }
-
-      const localSdp = pc.localDescription?.sdp || "";
-      const remoteSdp = pc.remoteDescription?.sdp || "";
-      const ptimeValues = [localSdp, remoteSdp].map(sdp => {
-        const match = sdp.match(/^a=ptime:(\d+)\s*$/mi);
-        return match ? match[1] + "ms" : "not-signaled";
-      });
-      fields.push("ptime-SDP local/remote=" + ptimeValues.join("/"));
-
-      const pilotDb = this.measureRemotePilot();
-      if (this.audioDiagnostics) {
-        fields.push("remotePilot(FFT legacy)=" + (pilotDb === null ? "n/a" : pilotDb.toFixed(1) + "dBFS"));
-        const signalPath = this.logSignalPathDiagnostics();
-        if (signalPath) fields.push("audio-path: " + signalPath);
       }
 
       const pair = reports.find(report =>
         report.type === "candidate-pair" &&
-        (report.selected === true ||
-          (report.nominated === true && report.state === "succeeded"))
+        (report.selected === true || (report.nominated === true && report.state === "succeeded"))
       );
-      if (pair) {
-        const previous = this.previousIcePairStats.get(pair.id);
-        for (const [field, label] of [
-          ["requestsSent", "ICE req→"],
-          ["responsesReceived", "ICE resp←"],
-          ["consentRequestsSent", "consent→"]
-        ]) {
-          if (!Number.isFinite(pair[field])) continue;
-          const d = previous && Number.isFinite(previous[field]) ? pair[field] - previous[field] : null;
-          fields.push(label + " Δ=" + (d === null ? "n/a" : d));
-        }
-        this.previousIcePairStats.set(pair.id, {
-          requestsSent: pair.requestsSent,
-          responsesReceived: pair.responsesReceived,
-          consentRequestsSent: pair.consentRequestsSent
-        });
-      }
-
-      const remoteInbound = reports.find(report =>
-        report.type === "remote-inbound-rtp" &&
-        (report.kind === "audio" || report.mediaType === "audio")
-      );
-      if (remoteInbound && Number.isFinite(remoteInbound.roundTripTime)) {
-        fields.push("remoteRTT=" + Math.round(remoteInbound.roundTripTime * 1000) + "ms");
-      }
       if (pair && Number.isFinite(pair.currentRoundTripTime)) {
-        fields.push("ICE-RTT=" + Math.round(pair.currentRoundTripTime * 1000) + "ms");
+        fields.push("RTT=" + Math.round(pair.currentRoundTripTime * 1000) + "ms");
       }
-
-      this.onState("RTP stats [" + pc.iceConnectionState + "/" + pc.connectionState + "]: " +
-        (fields.length ? fields.join("; ") : "аудиостатистика пока недоступна"));
+      this.onState("Media stats [" + pc.iceConnectionState + "/" + pc.connectionState + "]: " +
+        (fields.length ? fields.join("; ") : "данные пока недоступны"));
     } catch (error) {
-      this.onState("RTP stats: getStats error: " + error.message);
+      this.onState("Media stats error: " + error.message);
     } finally {
       this.statsInProgress = false;
     }
@@ -904,8 +811,6 @@ export class WebRtcAudio {
       clearInterval(this.statsTimer);
       this.statsTimer = null;
     }
-    this.previousRtpStats.clear();
-    this.previousIcePairStats.clear();
     if (this.pendingHangup) {
       clearTimeout(this.pendingHangup.timer);
       this.pendingHangup.resolve(false);
