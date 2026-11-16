@@ -125,6 +125,39 @@ export class WebRtcAudio {
     return this.localStream;
   }
 
+  describeCameraTrack(track) {
+    let settings = {};
+    try { settings = track?.getSettings?.() || {}; } catch {}
+    const parts = [
+      "readyState=" + (track?.readyState || "n/a"),
+      "muted=" + (track?.muted ?? "n/a"),
+      "enabled=" + (track?.enabled ?? "n/a"),
+      "visibility=" + (document.visibilityState || "n/a")
+    ];
+    for (const [key, label] of [["width","width"],["height","height"],["frameRate","fps"],["facingMode","facing"]]) {
+      if (settings[key] !== undefined) parts.push(label + "=" + settings[key]);
+    }
+    if (settings.deviceId) parts.push("deviceId=present");
+    if (settings.groupId) parts.push("groupId=present");
+    return parts.join(";");
+  }
+
+  watchCameraTrack(track) {
+    if (!track) return;
+    this.cameraTrack = track;
+    const log = event => this.onState("CAMERA_TRACK_EVENT: event=" + event +
+      "; trackId=" + String(track.id || "n/a").slice(0, 8) +
+      "; " + this.describeCameraTrack(track));
+    log("acquired");
+    for (const event of ["mute", "unmute", "ended"]) {
+      track.addEventListener(event, () => log(event));
+    }
+    try {
+      const constraints = track.getConstraints?.();
+      if (constraints) this.onState("CAMERA_TRACK_CONSTRAINTS: " + JSON.stringify(constraints));
+    } catch {}
+  }
+
   async setVideoEnabled(enabled) {
     enabled = !!enabled;
     if (enabled === this.videoEnabled) return this.videoEnabled;
@@ -132,6 +165,10 @@ export class WebRtcAudio {
     if (!enabled) {
       await this.videoSender.replaceTrack(null);
       this.videoEnabled = false;
+      if (this.videoStream) {
+        const track = this.videoStream.getVideoTracks?.()[0];
+        this.onState("CAMERA_CAPTURE_STOP_REQUEST: " + (track ? this.describeCameraTrack(track) : "no-track"));
+      }
       this.stopVideoStream();
       this.onLocalVideoStream(null);
       this.onState("LOCAL_VIDEO_SENDER_DISABLED; reason=user");
@@ -142,19 +179,27 @@ export class WebRtcAudio {
     }
     let stream;
     try {
-      stream = this.diagnosticCamera
-        ? this.createSimulatedCameraStream()
-        : await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: {
-              facingMode: { ideal: this.cameraFacingMode },
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-              frameRate: { ideal: 24, max: 30 }
-            }
-          });
+      if (this.diagnosticCamera) {
+        this.onState("CAMERA_CAPTURE_SIMULATION_START");
+        stream = this.createSimulatedCameraStream();
+      } else {
+        const constraints = {
+          audio: false,
+          video: {
+            facingMode: { ideal: this.cameraFacingMode },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 24, max: 30 }
+          }
+        };
+        this.onState("CAMERA_CAPTURE_REQUEST_START: " + JSON.stringify(constraints.video) +
+          "; visibility=" + (document.visibilityState || "n/a"));
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        this.onState("CAMERA_CAPTURE_REQUEST_OK: videoTracks=" + stream.getVideoTracks().length);
+      }
       const track = stream.getVideoTracks()[0];
       if (!track) throw new Error("Видеоустройство не вернуло видеотрек.");
+      this.watchCameraTrack(track);
       await this.videoSender.replaceTrack(track);
       this.videoStream = stream;
       this.cameraFacingMode = track.getSettings?.().facingMode || this.cameraFacingMode;
@@ -177,6 +222,10 @@ export class WebRtcAudio {
         : "Камера включена: видеотрек готов к передаче.");
       return true;
     } catch (error) {
+      this.onState("CAMERA_CAPTURE_REQUEST_FAILED: name=" + (error?.name || "Error") +
+        "; message=" + (error?.message || String(error)) +
+        "; constraint=" + (error?.constraint || "n/a") +
+        "; visibility=" + (document.visibilityState || "n/a"));
       if (stream) stream.getTracks().forEach(track => track.stop());
       if (this.simulatedCameraCanvas) {
         if (this.simulatedCameraAnimation) cancelAnimationFrame(this.simulatedCameraAnimation);
@@ -242,6 +291,7 @@ export class WebRtcAudio {
       this.videoStream.getTracks().forEach(track => track.stop());
       this.videoStream = null;
     }
+    this.cameraTrack = null;
     this.simulatedCameraCanvas = null;
   }
 
@@ -708,6 +758,8 @@ export class WebRtcAudio {
       if (this.pc !== pc) return;
       const reports = Array.from(stats.values());
       const fields = [];
+      const cameraTrack = this.videoStream?.getVideoTracks?.()[0];
+      if (cameraTrack) fields.push("local-camera{" + this.describeCameraTrack(cameraTrack) + "}");
 
       for (const kind of ["audio", "video"]) {
         for (const direction of ["outbound-rtp", "inbound-rtp"]) {
@@ -728,7 +780,7 @@ export class WebRtcAudio {
           if (Number.isFinite(bytes)) parts.push("bytes=" + bytes);
           if (kind === "video") {
             const frameFields = direction === "outbound-rtp"
-              ? [["framesSent", "sent"], ["framesEncoded", "encoded"], ["keyFramesEncoded", "keyframes"], ["frameWidth", "width"], ["frameHeight", "height"], ["framesPerSecond", "fps"]]
+              ? [["framesCaptured", "captured"], ["framesSent", "sent"], ["framesEncoded", "encoded"], ["keyFramesEncoded", "keyframes"], ["frameWidth", "width"], ["frameHeight", "height"], ["framesPerSecond", "fps"]]
               : [["framesReceived", "received"], ["framesDecoded", "decoded"], ["framesRendered", "rendered"], ["keyFramesDecoded", "keyframes"], ["frameWidth", "width"], ["frameHeight", "height"], ["framesPerSecond", "fps"]];
             for (const [field, label] of frameFields) {
               if (Number.isFinite(report[field])) parts.push(label + "=" + (label === "fps" ? report[field].toFixed(1) : report[field]));
