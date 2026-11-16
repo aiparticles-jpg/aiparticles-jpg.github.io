@@ -171,7 +171,7 @@ const INSTANCE_ID = crypto.randomUUID().slice(0, 12);
 
 app.get("/health", (req, res) => {
   const started = Date.now();
-  const requestId = String(req.get("X-VoiceLink-Diagnostic") || crypto.randomUUID()).slice(0, 80);
+  const requestId = String(req.query.vl_diag || req.get("X-VoiceLink-Diagnostic") || crypto.randomUUID()).slice(0, 80);
   res.set({
     "Cache-Control": "no-store",
     "X-VL-Request-Id": requestId,

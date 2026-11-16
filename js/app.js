@@ -321,34 +321,49 @@ function updateWebPushStatus(){
  setServiceStatus(els.webPushStatus,label);
 }
 async function checkPushBackendAvailability(){
- const url="https://signal-backend-9tai.onrender.com/health",started=performance.now();
- const onlineBefore=navigator.onLine,visibilityBefore=document.visibilityState,requestId=crypto.randomUUID();
+ const baseUrl="https://signal-backend-9tai.onrender.com/health";
+ const started=performance.now();
+ const onlineBefore=navigator.onLine,visibilityBefore=document.visibilityState;
+ const requestId=crypto.randomUUID();
+ // Query parameter keeps the request a simple GET (no custom-header CORS preflight)
+ // and lets Render logs correlate a request even if the browser hides its response.
+ const url=baseUrl+"?vl_diag="+encodeURIComponent(requestId);
  setServiceStatus(els.renderStatus,"Проверяем доступность…");
+ debug(`[backend-health] START; requestId=${requestId}; method=GET; customHeaders=none; online=${onlineBefore}; visibility=${visibilityBefore}; host=signal-backend-9tai.onrender.com.`);
  const controller=new AbortController(),timeout=window.setTimeout(()=>controller.abort(),25000);
  try{
-  const response=await fetch(url,{method:"GET",mode:"cors",credentials:"omit",cache:"no-store",signal:controller.signal,headers:{"X-VoiceLink-Diagnostic":requestId}});
+  const response=await fetch(url,{method:"GET",mode:"cors",credentials:"omit",cache:"no-store",signal:controller.signal});
   const bodyText=await response.text(),elapsed=Math.round(performance.now()-started);
   let body=null;try{body=JSON.parse(bodyText)}catch{}
-  const meta={instanceId:body?.instanceId||response.headers.get("x-vl-instance-id"),uptimeMs:body?.uptimeMs??response.headers.get("x-vl-uptime-ms"),bootTime:body?.bootTime||response.headers.get("x-vl-boot-time"),serverTime:body?.serverTime||null};
-  debug(`[backend-health] phase=HTTP_RESPONSE; status=${response.status}; elapsed=${elapsed}ms; requestId=${requestId}; serverMeta=${JSON.stringify(meta)}; online(before/after)=${onlineBefore}/${navigator.onLine}; visibility(before/after)=${visibilityBefore}/${document.visibilityState}; contentType=${response.headers.get("content-type")||"n/a"}; body=${bodyText.slice(0,300)||"(empty)"}.`);
-  if(!response.ok){setServiceStatus(els.renderStatus,"HTTP "+response.status);debug(`[backend-health] classification=HTTP_ERROR; status=${response.status}; requestId=${requestId}.`);return;}
+  const meta={instanceId:body?.instanceId||response.headers.get("x-vl-instance-id"),uptimeMs:body?.uptimeMs??response.headers.get("x-vl-uptime-ms"),bootTime:body?.bootTime||response.headers.get("x-vl-boot-time"),serverTime:body?.serverTime||null,serverRequestId:response.headers.get("x-vl-request-id")};
+  debug(`[backend-health] CORS_FETCH_OK; status=${response.status}; ok=${response.ok}; elapsed=${elapsed}ms; requestId=${requestId}; serverMeta=${JSON.stringify(meta)}; contentType=${response.headers.get("content-type")||"n/a"}; body=${bodyText.slice(0,300)||"(empty)"}.`);
+  if(!response.ok){
+   setServiceStatus(els.renderStatus,"HTTP "+response.status);
+   debug(`[backend-health] classification=HTTP_ERROR; status=${response.status}; requestId=${requestId}; cors=working.`);
+   return;
+  }
   const uptime=meta.uptimeMs==null?NaN:Number(meta.uptimeMs);
-  debug(`[backend-health] classification=REACHABLE; coldStartLikely=${Number.isFinite(uptime)?uptime<120000:"unknown"}; uptimeMs=${Number.isFinite(uptime)?uptime:"unknown"}; requestId=${requestId}.`);
+  debug(`[backend-health] classification=REACHABLE_CORS_OK; coldStartLikely=${Number.isFinite(uptime)?uptime<120000:"unknown"}; uptimeMs=${Number.isFinite(uptime)?uptime:"unknown"}; requestId=${requestId}.`);
   setServiceStatus(els.renderStatus,Number.isFinite(uptime)&&uptime<120000?"Доступен (недавно запущен)":"Доступен");
  }catch(error){
   const elapsed=Math.round(performance.now()-started),name=error?.name||"unknown",message=error?.message||String(error);
-  const primary=!navigator.onLine?"DEVICE_OFFLINE":name==="AbortError"?"CLIENT_TIMEOUT":"CORS_OR_TRANSPORT_FAILURE";
-  debug(`[backend-health] phase=CORS_FETCH_FAILED; classification=${primary}; elapsed=${elapsed}ms; errorName=${name}; errorMessage=${message}; online(before/after)=${onlineBefore}/${navigator.onLine}; visibility(before/after)=${visibilityBefore}/${document.visibilityState}; requestId=${requestId}; host=signal-backend-9tai.onrender.com.`);
-  if(!navigator.onLine||name==="AbortError"){setServiceStatus(els.renderStatus,!navigator.onLine?"Нет сети":"Тайм-аут");return;}
+  const primary=!navigator.onLine?"DEVICE_OFFLINE":name==="AbortError"?"CLIENT_TIMEOUT":"CORS_FETCH_REJECTED";
+  debug(`[backend-health] phase=CORS_FETCH_FAILED; provisionalClassification=${primary}; elapsed=${elapsed}ms; errorName=${name}; errorMessage=${message}; online(before/after)=${onlineBefore}/${navigator.onLine}; visibility(before/after)=${visibilityBefore}/${document.visibilityState}; requestId=${requestId}. This failure alone does NOT prove CORS.`);
+  if(!navigator.onLine||name==="AbortError"){
+   setServiceStatus(els.renderStatus,!navigator.onLine?"Нет сети":"Тайм-аут");
+   return;
+  }
   const probeStarted=performance.now(),probeController=new AbortController(),probeTimer=window.setTimeout(()=>probeController.abort(),8000);
   try{
    const probe=await fetch(url,{method:"GET",mode:"no-cors",credentials:"omit",cache:"no-store",signal:probeController.signal});
-   debug(`[backend-health] phase=NO_CORS_PROBE_RESOLVED; type=${probe.type}; elapsed=${Math.round(performance.now()-probeStarted)}ms; classification=NETWORK_REACHED_BUT_CORS_UNCONFIRMED; requestId=${requestId}. Opaque response cannot expose HTTP status or body.`);
-   setServiceStatus(els.renderStatus,"Сервер отвечает (CORS?)");
+   const probeElapsed=Math.round(performance.now()-probeStarted);
+   debug(`[backend-health] NO_CORS_FETCH_OK; type=${probe.type}; elapsed=${probeElapsed}ms; requestId=${requestId}; classification=NETWORK_REQUEST_COMPLETED_CORS_UNCONFIRMED. Opaque response does not expose HTTP status or body.`);
+   debug(`[backend-health] classification=CORS_LIKELY; corsFetch=failed; noCorsFetch=resolved; requestId=${requestId}. Check the matching health_request/health_response entries in Render logs to confirm whether the server received and answered this request.`);
+   setServiceStatus(els.renderStatus,"Сервер отвечает; возможен CORS");
   }catch(probeError){
-   const classification=!navigator.onLine?"DEVICE_OFFLINE":probeError?.name==="AbortError"?"PROBE_TIMEOUT":"DNS_TLS_ROUTE_OR_EDGE_FAILURE_UNRESOLVED";
-   debug(`[backend-health] phase=NO_CORS_PROBE_FAILED; classification=${classification}; elapsed=${Math.round(performance.now()-probeStarted)}ms; errorName=${probeError?.name||"unknown"}; errorMessage=${probeError?.message||String(probeError)}; online=${navigator.onLine}; requestId=${requestId}. Browser cannot reliably distinguish DNS, TLS, routing, reset, or Render edge failures.`);
-   setServiceStatus(els.renderStatus,classification==="DEVICE_OFFLINE"?"Нет сети":classification==="PROBE_TIMEOUT"?"Тайм-аут":"Сеть/Render недоступны");
+   const classification=!navigator.onLine?"DEVICE_OFFLINE":probeError?.name==="AbortError"?"PROBE_TIMEOUT":"BOTH_FETCHES_FAILED_UNRESOLVED";
+   debug(`[backend-health] NO_CORS_FETCH_FAILED; classification=${classification}; elapsed=${Math.round(performance.now()-probeStarted)}ms; errorName=${probeError?.name||"unknown"}; errorMessage=${probeError?.message||String(probeError)}; online=${navigator.onLine}; requestId=${requestId}. DNS/TLS/routing/connection reset/Render edge remain indistinguishable from browser-side failures.`);
+   setServiceStatus(els.renderStatus,classification==="DEVICE_OFFLINE"?"Нет сети":classification==="PROBE_TIMEOUT"?"Тайм-аут":"Нет ответа (причина не определена)");
   }finally{clearTimeout(probeTimer)}
  }finally{clearTimeout(timeout)}
 }
