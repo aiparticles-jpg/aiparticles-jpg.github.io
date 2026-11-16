@@ -136,6 +136,7 @@ export class WebRtcAudio {
       this.videoEnabled = false;
       this.stopVideoStream();
       this.onLocalVideoStream(null);
+      this.onState("LOCAL_VIDEO_SENDER_DISABLED; reason=user");
       this.onState("Камера выключена.");
       return false;
     }
@@ -158,9 +159,11 @@ export class WebRtcAudio {
       this.videoStream = stream;
       this.cameraFacingMode = track.getSettings?.().facingMode || this.cameraFacingMode;
       this.videoEnabled = true;
+      this.onState("LOCAL_VIDEO_SENDER_ENABLED; trackReadyState=" + track.readyState);
       track.addEventListener("ended", () => {
         if (this.videoEnabled && this.videoStream === stream) {
           this.videoEnabled = false;
+          this.onState("LOCAL_VIDEO_SENDER_DISABLED; reason=device-ended");
           this.stopVideoStream();
           this.onLocalVideoStream(null);
           this.onState("Камера остановлена устройством.");
@@ -489,6 +492,12 @@ export class WebRtcAudio {
       }
       if(!remoteStream.getTracks().some(existing=>existing.id===event.track.id))remoteStream.addTrack(event.track);
       if(event.track.kind==="audio")this.attachRemoteMonitor(remoteStream);
+      if(event.track.kind==="video"){
+        this.onState("REMOTE_VIDEO_TRACK_RECEIVED; readyState="+event.track.readyState+"; muted="+event.track.muted);
+        event.track.addEventListener("unmute",()=>this.onState("REMOTE_VIDEO_UNMUTED; readyState="+event.track.readyState));
+        event.track.addEventListener("mute",()=>this.onState("REMOTE_VIDEO_MUTED"));
+        event.track.addEventListener("ended",()=>this.onState("REMOTE_VIDEO_ENDED"));
+      }
       this.onRemoteStream(remoteStream);
     };
     pc.onconnectionstatechange=()=>{
@@ -576,7 +585,8 @@ export class WebRtcAudio {
     if (this.statsTimer) return;
     this.previousRtpStats.clear();
     this.previousIcePairStats.clear();
-    this.statsTimer = setInterval(() => this.logMediaStats(pc), 1000);
+    // Keep detailed RTP/ICE diagnostics useful without flooding the call log.
+    this.statsTimer = setInterval(() => this.logMediaStats(pc), 10000);
   }
 
   async logMediaStats(pc) {

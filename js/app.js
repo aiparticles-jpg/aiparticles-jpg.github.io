@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=36";
+import { WebRtcAudio } from "./webrtc.js?v=37";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=19";
@@ -818,6 +818,7 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera
     videoTrack.addEventListener("unmute",updateCallVideoStage);
     videoTrack.addEventListener("ended",updateCallVideoStage);
    }
+   els.remoteVideo.onplaying=()=>debug("WebRTC: REMOTE_VIDEO_PLAYING; readyState="+els.remoteVideo.readyState+"; videoWidth="+els.remoteVideo.videoWidth+"; videoHeight="+els.remoteVideo.videoHeight);
    const videoPlay=els.remoteVideo.play();if(videoPlay?.catch)videoPlay.catch(error=>debug("Не удалось включить удалённое видео: "+error.message));
    updateCallVideoStage();
    const track=stream.getAudioTracks?.()[0];
@@ -835,12 +836,12 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera
       "; visibility="+document.visibilityState);
      if(audioDiagnostics){
       logRemoteAudioPlayback();
-      remoteAudioDiagnosticTimer=window.setInterval(logRemoteAudioPlayback,2000);
+      remoteAudioDiagnosticTimer=window.setInterval(logRemoteAudioPlayback,10000);
      }
     }).catch(e=>debug("Не удалось включить удалённый звук: "+e.message));
    }else if(audioDiagnostics){
     logRemoteAudioPlayback();
-    remoteAudioDiagnosticTimer=window.setInterval(logRemoteAudioPlayback,2000);
+    remoteAudioDiagnosticTimer=window.setInterval(logRemoteAudioPlayback,10000);
    }
   },
   onError:error=>showError(error.message||String(error)),
