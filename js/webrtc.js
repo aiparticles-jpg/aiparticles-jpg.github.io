@@ -242,20 +242,43 @@ export class WebRtcAudio {
 
   async switchCamera() {
     if (!this.videoEnabled || this.diagnosticCamera || !this.videoSender) return false;
+    const currentTrack = this.videoStream?.getVideoTracks?.()[0];
+    const currentDeviceId = currentTrack?.getSettings?.().deviceId || "";
+    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    const cameras = devices.filter(device => device.kind === "videoinput" && device.deviceId);
+    const currentIndex = cameras.findIndex(device => device.deviceId === currentDeviceId);
+    const nextDevice = cameras.length > 1
+      ? cameras[(currentIndex < 0 ? 0 : currentIndex + 1) % cameras.length]
+      : null;
     const nextFacingMode = this.cameraFacingMode === "user" ? "environment" : "user";
-    const nextStream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: { ideal: nextFacingMode },
-        width: { ideal: 640 },
-        height: { ideal: 480 },
-        frameRate: { ideal: 24, max: 30 }
+    const videoOptions = {
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 24, max: 30 }
+    };
+    let nextStream;
+    if (nextDevice) {
+      try {
+        nextStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { ...videoOptions, deviceId: { exact: nextDevice.deviceId } }
+        });
+      } catch (deviceError) {
+        nextStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { ...videoOptions, facingMode: { ideal: nextFacingMode } }
+        });
       }
-    });
+    } else {
+      nextStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { ...videoOptions, facingMode: { ideal: nextFacingMode } }
+      });
+    }
     const nextTrack = nextStream.getVideoTracks()[0];
     if (!nextTrack) {
       nextStream.getTracks().forEach(track => track.stop());
-      throw new Error("Не удалось получить изображение с выбранной камеры.");
+      throw new Error("Не удалось получить изображение с выбранной камерой.");
     }
     const previousStream = this.videoStream;
     try {
@@ -276,7 +299,7 @@ export class WebRtcAudio {
     }, { once: true });
     previousStream?.getTracks().forEach(track => track.stop());
     this.onLocalVideoStream(nextStream);
-    this.onState("Переключена камера: " + (nextFacingMode === "user" ? "фронтальная." : "основная."));
+    this.onState("Переключена камера: " + (this.cameraFacingMode === "user" ? "фронтальная." : "основная."));
     return true;
   }
 
