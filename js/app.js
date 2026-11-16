@@ -1946,6 +1946,7 @@ els.invitationScreenBack.addEventListener("click",closeInvitationScreen);
 els.profileDisplayName.addEventListener("input",persistProfileDisplayName);
 els.inviteContactName.addEventListener("input",updateInviteUrlLabel);
 els.diagnosticScreenBack.addEventListener("click",closeDiagnosticScreen);
+els.refreshCameraDevices.addEventListener("click",refreshCameraDevices);
 els.copyDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.debugLog,els.copyDebugLog));
 els.copySwDebugLog.addEventListener("click",()=>copyDiagnosticLog(els.swDebugLog,els.copySwDebugLog));
 
