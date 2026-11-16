@@ -1149,3 +1149,38 @@ body{
   opacity: 1 !important;
   box-shadow: 0 5px 18px rgba(0,0,0,.24) !important;
 }
+
+
+/* Call controls: state is communicated by the same label and contrast system. */
+.call-screen-stage .contact-call-actions .call-control-action {
+  transition: background-color .12s ease, box-shadow .12s ease !important;
+  transform: none !important;
+}
+.call-screen-stage .contact-call-actions .call-control-action:active,
+.call-screen-stage .contact-call-actions .call-control-action:hover {
+  transform: none !important;
+}
+.call-screen-stage .contact-call-actions #mic-toggle[data-muted="true"],
+.call-screen-stage .contact-call-actions #speaker-toggle[data-enabled="false"],
+.call-screen-stage .contact-call-actions #camera-toggle[data-enabled="false"] {
+  background: #26364d !important;
+  color: #c4cfdd !important;
+}
+.call-screen-stage .contact-call-actions #mic-toggle[data-muted="false"],
+.call-screen-stage .contact-call-actions #speaker-toggle[data-enabled="true"],
+.call-screen-stage .contact-call-actions #camera-toggle[data-enabled="true"] {
+  background: #526b89 !important;
+  color: #ffffff !important;
+}
+@media (hover:hover) and (pointer:fine) {
+  .call-screen-stage .contact-call-actions #mic-toggle[data-muted="true"]:hover:not(:disabled),
+  .call-screen-stage .contact-call-actions #speaker-toggle[data-enabled="false"]:hover:not(:disabled),
+  .call-screen-stage .contact-call-actions #camera-toggle[data-enabled="false"]:hover:not(:disabled) {
+    background: #344b66 !important;
+  }
+  .call-screen-stage .contact-call-actions #mic-toggle[data-muted="false"]:hover:not(:disabled),
+  .call-screen-stage .contact-call-actions #speaker-toggle[data-enabled="true"]:hover:not(:disabled),
+  .call-screen-stage .contact-call-actions #camera-toggle[data-enabled="true"]:hover:not(:disabled) {
+    background: #607d9f !important;
+  }
+}

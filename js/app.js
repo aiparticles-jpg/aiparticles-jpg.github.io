@@ -386,9 +386,9 @@ function updateCallButtons(){
  const micEnabled=!!state.webrtc?.micEnabled;
  state.micMuted=!micEnabled;
  els.micToggle.setAttribute("aria-pressed",String(!micEnabled));
- els.micToggle.setAttribute("aria-label",micEnabled?"Выключить микрофон":"Включить микрофон");
- els.micToggle.title=micEnabled?"Выключить микрофон":"Включить микрофон";
- els.micToggle.dataset.caption=micEnabled?"Выключить\nмикрофон":"Включить\nмикрофон";
+ els.micToggle.setAttribute("aria-label",micEnabled?"Микрофон включен":"Микрофон выключен");
+ els.micToggle.title=micEnabled?"Микрофон включен":"Микрофон выключен";
+ els.micToggle.dataset.caption=micEnabled?"Микрофон\nвключен":"Микрофон\nвыключен";
  els.micToggle.dataset.muted=String(!micEnabled);
  els.speakerToggle.classList.toggle("hidden",!active);
  const canSelectOutput=typeof els.audio.setSinkId==="function"&&typeof navigator.mediaDevices?.selectAudioOutput==="function";
@@ -397,28 +397,28 @@ function updateCallButtons(){
  if(androidChromeOrFirefox){
   els.speakerToggle.disabled=true;
   els.speakerToggle.setAttribute("aria-pressed","true");
-  els.speakerToggle.setAttribute("aria-label","Громкая связь включена");
-  els.speakerToggle.title="Громкая связь включена";
+  els.speakerToggle.setAttribute("aria-label","Динамик включен");
+  els.speakerToggle.title="Динамик включен";
   els.speakerToggle.dataset.enabled="true";
-  els.speakerToggle.dataset.caption="Динамик\nвкл.";
+  els.speakerToggle.dataset.caption="Динамик\nвключен";
  }else{
   els.speakerToggle.disabled=!active||state.hangingUp||!canSelectOutput;
   const speakerEnabled=!!state.speakerOutputId;
   els.speakerToggle.setAttribute("aria-pressed",String(speakerEnabled));
-  els.speakerToggle.setAttribute("aria-label",speakerEnabled?"Выключить громкую связь":"Включить громкую связь");
-  els.speakerToggle.title=canSelectOutput?(speakerEnabled?"Выключить громкую связь":"Включить громкую связь"):"Переключение аудиовыхода не поддерживается этим браузером";
+  els.speakerToggle.setAttribute("aria-label",speakerEnabled?"Динамик включен":"Динамик выключен");
+  els.speakerToggle.title=canSelectOutput?(speakerEnabled?"Динамик включен":"Динамик выключен"):"Переключение аудиовыхода не поддерживается этим браузером";
   els.speakerToggle.dataset.enabled=String(speakerEnabled);
-  els.speakerToggle.dataset.caption=speakerEnabled?"Динамик\nвкл.":"Динамик\nвыкл.";
+  els.speakerToggle.dataset.caption=speakerEnabled?"Динамик\nвключен":"Динамик\nвыключен";
  }
  const canUseCamera=!!(active&&state.peerPresent&&!state.outgoingCall&&!state.hangingUp&&state.webrtc?.videoSender);
  els.cameraToggle.classList.toggle("hidden",!active);
  els.cameraToggle.disabled=!canUseCamera;
  const cameraEnabled=!!state.webrtc?.videoEnabled;
  els.cameraToggle.setAttribute("aria-pressed",String(cameraEnabled));
- els.cameraToggle.setAttribute("aria-label",cameraEnabled?"Выключить камеру":"Включить камеру");
- els.cameraToggle.title=cameraEnabled?"Выключить камеру":"Включить камеру";
+ els.cameraToggle.setAttribute("aria-label",cameraEnabled?"Камера включена":"Камера выключена");
+ els.cameraToggle.title=cameraEnabled?"Камера включена":"Камера выключена";
  els.cameraToggle.dataset.enabled=String(cameraEnabled);
- els.cameraToggle.dataset.caption=cameraEnabled?"Выключить\nкамеру":"Включить\nкамеру";
+ els.cameraToggle.dataset.caption=cameraEnabled?"Камера\nвключена":"Камера\nвыключена";
  els.cameraSwitch.dataset.caption="Сменить\nкамеру";
  els.cameraSwitch.classList.toggle("hidden",!cameraEnabled||!!state.webrtc?.diagnosticCamera);
  els.cameraSwitch.disabled=!canUseCamera||!cameraEnabled;
