@@ -377,12 +377,17 @@ async function checkServiceWorkerAvailability(){
 function updateCallVideoStage(){
  const localActive=!!state.webrtc?.videoEnabled;
  const remoteTrack=els.remoteVideo.srcObject?.getVideoTracks?.().find(track=>track.readyState==="live");
- const remoteActive=!!remoteTrack&&!remoteTrack.muted;
- els.callVideoStage.classList.toggle("hidden",!localActive&&!remoteActive);
+ const remoteTrackPresent=!!remoteTrack;
+ const remoteActive=remoteTrackPresent&&!remoteTrack.muted;
+ // Keep the stage visible as soon as a live remote video track arrives,
+ // even while the browser is waiting for its first decoded frames.
+ els.callVideoStage.classList.toggle("hidden",!localActive&&!remoteTrackPresent);
  els.remoteVideo.classList.toggle("hidden",!remoteActive);
  els.remoteVideoPlaceholder.classList.toggle("hidden",remoteActive);
  els.localVideo.classList.toggle("hidden",!localActive);
- els.remoteVideoPlaceholder.textContent=localActive?"Ожидаем видео собеседника":"Видео собеседника выключено";
+ els.remoteVideoPlaceholder.textContent=remoteTrackPresent
+  ?"Подключаем видео собеседника…"
+  :localActive?"Ожидаем видео собеседника":"Видео собеседника выключено";
 }
 async function refreshAudioOutputCount(){
  if(state.audioOutputCheckPending||state.audioOutputCount!==null)return;
