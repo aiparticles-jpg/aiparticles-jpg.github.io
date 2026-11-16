@@ -390,10 +390,18 @@ function updateCallButtons(){
  els.micToggle.dataset.muted=String(!micEnabled);
  els.speakerToggle.classList.toggle("hidden",!active);
  const canSelectOutput=typeof els.audio.setSinkId==="function"&&typeof navigator.mediaDevices?.selectAudioOutput==="function";
- els.speakerToggle.disabled=!active||state.hangingUp||!canSelectOutput;
- els.speakerToggle.setAttribute("aria-pressed",String(!!state.speakerOutputId));
- els.speakerToggle.setAttribute("aria-label",state.speakerOutputId?"Вернуть аудиовыход по умолчанию":"Динамик");
- els.speakerToggle.title=canSelectOutput?(state.speakerOutputId?"Вернуть аудиовыход по умолчанию":"Выбрать аудиовыход"):"Переключение аудиовыхода не поддерживается этим браузером";
+ const androidChromeOrFirefox=/Android/i.test(navigator.userAgent)&&(/Chrome\\//i.test(navigator.userAgent)||/Firefox\\//i.test(navigator.userAgent));
+ if(androidChromeOrFirefox){
+  els.speakerToggle.disabled=true;
+  els.speakerToggle.setAttribute("aria-pressed","true");
+  els.speakerToggle.setAttribute("aria-label","Выкл. громкую связь");
+  els.speakerToggle.title="Выкл. громкую связь";
+ }else{
+  els.speakerToggle.disabled=!active||state.hangingUp||!canSelectOutput;
+  els.speakerToggle.setAttribute("aria-pressed",String(!!state.speakerOutputId));
+  els.speakerToggle.setAttribute("aria-label",state.speakerOutputId?"Вкл. громкую связь":"Выкл. громкую связь");
+  els.speakerToggle.title=canSelectOutput?(state.speakerOutputId?"Вкл. громкую связь":"Выкл. громкую связь"):"Переключение аудиовыхода не поддерживается этим браузером";
+ }
  const canUseCamera=!!(active&&state.peerPresent&&!state.outgoingCall&&!state.hangingUp&&state.webrtc?.videoSender);
  els.cameraToggle.classList.toggle("hidden",!active);
  els.cameraToggle.disabled=!canUseCamera;
