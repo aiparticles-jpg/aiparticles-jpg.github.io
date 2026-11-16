@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=35";
+import { WebRtcAudio } from "./webrtc.js?v=36";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=19";
@@ -179,7 +179,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callPeer:"",callPeerLabel:"",callReturnFocus:null,micMuted:false,speakerOutputId:null};
+const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callPeer:"",callPeerLabel:"",callReturnFocus:null,micMuted:false,speakerOutputId:null,audioOutputCount:null,audioOutputCheckPending:false};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -369,6 +369,20 @@ function updateCallVideoStage(){
  els.localVideo.classList.toggle("hidden",!localActive);
  els.remoteVideoPlaceholder.textContent=localActive?"Ожидаем видео собеседника":"Видео собеседника выключено";
 }
+async function refreshAudioOutputCount(){
+ if(state.audioOutputCheckPending||state.audioOutputCount!==null)return;
+ state.audioOutputCheckPending=true;
+ try{
+  const devices=await navigator.mediaDevices?.enumerateDevices?.()||[];
+  state.audioOutputCount=devices.filter(device=>device.kind==="audiooutput"&&device.deviceId).length;
+ }catch(error){
+  state.audioOutputCount=0;
+  debug("Не удалось определить аудиовыходы: "+(error.message||String(error)));
+ }finally{
+  state.audioOutputCheckPending=false;
+  updateCallButtons();
+ }
+}
 function updateCallButtons(){
  const active=!!(state.connecting||state.peerPresent||state.outgoingCall||state.secure?.active||state.callStarted||state.answeringCall);
 
@@ -390,8 +404,9 @@ function updateCallButtons(){
  els.micToggle.title=micEnabled?"Микрофон включен":"Микрофон выключен";
  els.micToggle.dataset.caption=micEnabled?"Микрофон\nвключен":"Микрофон\nвыключен";
  els.micToggle.dataset.muted=String(!micEnabled);
- els.speakerToggle.classList.toggle("hidden",!active);
+ if(active&&state.audioOutputCount===null)refreshAudioOutputCount();
  const canSelectOutput=typeof els.audio.setSinkId==="function"&&typeof navigator.mediaDevices?.selectAudioOutput==="function";
+ els.speakerToggle.classList.toggle("hidden",!active||!canSelectOutput||state.audioOutputCount===null||state.audioOutputCount<=1);
  const androidUa=navigator.userAgent.toLowerCase();
  const androidChromeOrFirefox=androidUa.includes("android")&&(androidUa.includes("chrome/")||androidUa.includes("firefox/"));
  if(androidChromeOrFirefox){
@@ -419,15 +434,11 @@ function updateCallButtons(){
  els.cameraToggle.title=cameraEnabled?"Камера включена":"Камера выключена";
  els.cameraToggle.dataset.enabled=String(cameraEnabled);
  els.cameraToggle.dataset.caption=cameraEnabled?"Камера\nвключена":"Камера\nвыключена";
- const cameraTrack=state.webrtc?.videoStream?.getVideoTracks?.()[0];
- const cameraSettings=cameraTrack?.getSettings?.()||{};
- const cameraFacingMode=cameraSettings.facingMode||state.webrtc?.cameraFacingMode;
- const cameraName=cameraTrack?.label?.trim()|| (cameraFacingMode==="environment"?"Основная камера":"Фронтальная камера");
- els.cameraSwitch.dataset.caption=cameraName;
- els.cameraSwitch.setAttribute("aria-label","Переключить камеру: "+cameraName);
- els.cameraSwitch.title="Переключить камеру: "+cameraName;
- els.cameraSwitch.classList.toggle("hidden",!canUseCamera||!!state.webrtc?.diagnosticCamera);
- els.cameraSwitch.disabled=!canUseCamera||!cameraEnabled;
+ els.cameraSwitch.dataset.caption="";
+ els.cameraSwitch.setAttribute("aria-label","Переключить камеру");
+ els.cameraSwitch.title="Переключить камеру";
+ els.cameraSwitch.classList.toggle("hidden",!cameraEnabled||!!state.webrtc?.diagnosticCamera);
+ els.cameraSwitch.disabled=!canUseCamera;
  updateCallVideoStage();
  els.answerIncoming.disabled=state.connecting;
  els.dismissIncoming.disabled=state.connecting;

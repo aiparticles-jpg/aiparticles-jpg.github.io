@@ -1188,3 +1188,15 @@ body{
 
 /* Camera selector caption displays the currently active camera name. */
 .call-camera-switch::after{content:attr(data-caption)!important;max-width:92px;white-space:normal;text-align:center;line-height:1.15}
+
+
+/* Place the camera flip control inside the floating local preview. */
+.call-video-stage .call-camera-switch{
+ position:absolute!important;right:18px!important;bottom:18px!important;z-index:5!important;
+ display:grid;place-items:center;width:36px!important;height:36px!important;min-height:36px!important;
+ padding:0!important;border:1px solid rgba(255,255,255,.72)!important;border-radius:50%!important;
+ color:#fff!important;background:rgba(12,22,36,.78)!important;box-shadow:0 2px 8px rgba(0,0,0,.4)!important;
+}
+.call-video-stage .call-camera-switch::after{content:none!important}
+.call-video-stage .call-camera-switch.hidden{display:none!important}
+.call-video-stage .call-camera-switch .call-action-icon{width:19px;height:19px}
