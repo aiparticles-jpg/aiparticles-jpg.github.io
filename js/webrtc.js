@@ -156,6 +156,7 @@ export class WebRtcAudio {
       if (!track) throw new Error("Видеоустройство не вернуло видеотрек.");
       await this.videoSender.replaceTrack(track);
       this.videoStream = stream;
+      this.cameraFacingMode = track.getSettings?.().facingMode || this.cameraFacingMode;
       this.videoEnabled = true;
       track.addEventListener("ended", () => {
         if (this.videoEnabled && this.videoStream === stream) {
@@ -264,7 +265,7 @@ export class WebRtcAudio {
       throw error;
     }
     this.videoStream = nextStream;
-    this.cameraFacingMode = nextFacingMode;
+    this.cameraFacingMode = nextTrack.getSettings?.().facingMode || nextFacingMode;
     nextTrack.addEventListener("ended", () => {
       if (this.videoEnabled && this.videoStream === nextStream) {
         this.videoEnabled = false;

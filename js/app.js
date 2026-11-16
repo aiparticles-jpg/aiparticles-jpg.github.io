@@ -1,4 +1,4 @@
-import { WebRtcAudio } from "./webrtc.js?v=34";
+import { WebRtcAudio } from "./webrtc.js?v=35";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=19";
@@ -419,8 +419,14 @@ function updateCallButtons(){
  els.cameraToggle.title=cameraEnabled?"Камера включена":"Камера выключена";
  els.cameraToggle.dataset.enabled=String(cameraEnabled);
  els.cameraToggle.dataset.caption=cameraEnabled?"Камера\nвключена":"Камера\nвыключена";
- els.cameraSwitch.dataset.caption="Сменить\nкамеру";
- els.cameraSwitch.classList.toggle("hidden",!cameraEnabled||!!state.webrtc?.diagnosticCamera);
+ const cameraTrack=state.webrtc?.videoStream?.getVideoTracks?.()[0];
+ const cameraSettings=cameraTrack?.getSettings?.()||{};
+ const cameraFacingMode=cameraSettings.facingMode||state.webrtc?.cameraFacingMode;
+ const cameraName=cameraTrack?.label?.trim()|| (cameraFacingMode==="environment"?"Основная камера":"Фронтальная камера");
+ els.cameraSwitch.dataset.caption=cameraName;
+ els.cameraSwitch.setAttribute("aria-label","Переключить камеру: "+cameraName);
+ els.cameraSwitch.title="Переключить камеру: "+cameraName;
+ els.cameraSwitch.classList.toggle("hidden",!canUseCamera||!!state.webrtc?.diagnosticCamera);
  els.cameraSwitch.disabled=!canUseCamera||!cameraEnabled;
  updateCallVideoStage();
  els.answerIncoming.disabled=state.connecting;
@@ -774,6 +780,7 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera
    els.localVideo.srcObject=stream;
    els.localVideo.classList.toggle("is-front-camera",state.webrtc?.cameraFacingMode==="user");
    if(stream){const playResult=els.localVideo.play();if(playResult?.catch)playResult.catch(error=>debug("Не удалось показать локальное видео: "+error.message));}
+   updateCallButtons();
    updateCallVideoStage();
   },
   onRemoteStream:stream=>{
