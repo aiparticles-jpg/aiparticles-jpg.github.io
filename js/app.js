@@ -419,6 +419,7 @@ function updateCallButtons(){
  els.cameraToggle.title=cameraEnabled?"Выключить камеру":"Включить камеру";
  els.cameraToggle.dataset.enabled=String(cameraEnabled);
  els.cameraToggle.dataset.caption=cameraEnabled?"Выключить\nкамеру":"Включить\nкамеру";
+ els.cameraSwitch.dataset.caption="Сменить\nкамеру";
  els.cameraSwitch.classList.toggle("hidden",!cameraEnabled||!!state.webrtc?.diagnosticCamera);
  els.cameraSwitch.disabled=!canUseCamera||!cameraEnabled;
  updateCallVideoStage();

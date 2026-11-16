@@ -1144,3 +1144,8 @@ body{
     min-height: 56px !important;
   }
 }
+
+.call-screen-stage .contact-call-actions .call-speaker-action:disabled {
+  opacity: 1 !important;
+  box-shadow: 0 5px 18px rgba(0,0,0,.24) !important;
+}
