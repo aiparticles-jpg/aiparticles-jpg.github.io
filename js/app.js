@@ -390,7 +390,7 @@ function updateCallButtons(){
  els.micToggle.dataset.muted=String(!micEnabled);
  els.speakerToggle.classList.toggle("hidden",!active);
  const canSelectOutput=typeof els.audio.setSinkId==="function"&&typeof navigator.mediaDevices?.selectAudioOutput==="function";
- const androidChromeOrFirefox=/Android/i.test(navigator.userAgent)&&(/Chrome\\//i.test(navigator.userAgent)||/Firefox\\//i.test(navigator.userAgent));
+ const androidChromeOrFirefox=/Android/i.test(navigator.userAgent)&&(/Chrome\//i.test(navigator.userAgent)||/Firefox\//i.test(navigator.userAgent));
  if(androidChromeOrFirefox){
   els.speakerToggle.disabled=true;
   els.speakerToggle.setAttribute("aria-pressed","true");
