@@ -667,7 +667,7 @@ export class WebRtcAudio {
             !item.isRemote
           );
           if (!report) {
-            if (kind === "video") fields.push(direction === "outbound-rtp" ? "video out RTP=absent" : "video in RTP=absent");
+            fields.push(kind + (direction === "outbound-rtp" ? " out" : " in") + " RTP=absent");
             continue;
           }
           const label = kind + (direction === "outbound-rtp" ? " out" : " in");
