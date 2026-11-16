@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=54";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=55";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents } from "./local-store.js?v=19";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus } from "./local-store.js?v=20";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
@@ -897,6 +897,8 @@ function createSecureSignaling(me,peer=""){
   onContactRequest:handleIncomingContactRequest,
   onPeerMessage:markContactRequestReceived,
   onConversationEvent:async event=>{await addConversationEvent(event);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить историю контакта: "+(error.message||String(error))))},
+  onConversationDelivery:async event=>{await markConversationMessageDelivered(event.contact_user_id,event.message_id,event.delivered_at);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить статус доставки: "+(error.message||String(error))))},
+  onConversationSent:async event=>{await updateConversationMessageDeliveryStatus(event.contact_user_id,event.message_id,"sent");if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить статус отправки: "+(error.message||String(error))))},
   onCancelIncoming:info=>{
    if(state.incomingCall){
     clearIncomingUi();
@@ -2121,11 +2123,29 @@ async function renderConversation(contactUserId){
    const body=document.createElement("div");
    body.className="chat-message-text";
    body.textContent=event.text;
+   const meta=document.createElement("div");
+   meta.className="chat-message-meta";
    const time=document.createElement("time");
    time.className="chat-message-time";
    time.dateTime=event.created_at;
    time.textContent=new Date(event.created_at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
-   bubble.append(body,time);
+   meta.append(time);
+   if(event.direction==="outgoing"){
+    const status=document.createElement("span");
+    status.className="chat-message-status";
+    status.setAttribute("aria-label",event.delivery_status==="delivered"?"Доставлено": "Отправлено");
+    const first=document.createElement("span");
+    first.className="chat-message-check chat-message-check-first";
+    first.textContent="✓";
+    const second=document.createElement("span");
+    second.className="chat-message-check chat-message-check-second";
+    second.textContent="✓";
+    if(event.delivery_status!=="sending")first.classList.add("is-active");
+    if(event.delivery_status==="delivered")second.classList.add("is-active");
+    status.append(first,second);
+    meta.append(status);
+   }
+   bubble.append(body,meta);
    item.append(bubble);
   }else{
    const label=document.createElement("span");

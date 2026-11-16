@@ -1,6 +1,6 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js?v=3";
 import { decryptContactRequestEnvelope } from "./contact-exchange.js?v=11";
-import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact, getNtfyCursor, saveNtfyCursor } from "./local-store.js?v=13";
+import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact, getNtfyCursor, saveNtfyCursor } from "./local-store.js?v=20";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -11,10 +11,10 @@ const hex=b=>Array.from(bytes(b),x=>x.toString(16).padStart(2,"0")).join("");
 const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
 
 export class NtfySecureSignaling {
- constructor({me,peer,onSignal,onStatus,onReady,onError,onDebug,onIncoming,onContactRequest,onPeerMessage,onCancelIncoming,onDialing,onRejectOutgoing,onConversationEvent}) {
+ constructor({me,peer,onSignal,onStatus,onReady,onError,onDebug,onIncoming,onContactRequest,onPeerMessage,onCancelIncoming,onDialing,onRejectOutgoing,onConversationEvent,onConversationDelivery,onConversationSent}) {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
-  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});
+  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});this.onConversationDelivery=onConversationDelivery||(()=>{});this.onConversationSent=onConversationSent||(()=>{});
   this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.cursorBlocked=false;this.lastProcessedMessageId=null;this.preAnswerMessageCount=0;this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishStartAt=0;this.publishStartTimes=[];this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();this.dataAssemblies=new Map();
  }
  static validUserId(s){return isUserId(s)}
@@ -29,6 +29,7 @@ export class NtfySecureSignaling {
   if(!p||p.from===undefined||p.to===undefined)return false;
   if(p.rotation_request&&(!uuid(p.rotation_request.rotation_id)||typeof p.rotation_request.public_key!=="string"||p.rotation_request.public_key.length>1000))return false;
   if(type==="text")return uuid(p.message_id)&&Number.isSafeInteger(Number(p.created_at))&&Number(p.created_at)>=0&&Number(p.created_at)<=Date.now()+300000&&typeof p.text==="string"&&p.text.trim().length>0&&p.text.length<=2000;
+  if(type==="delivered")return uuid(p.message_id)&&Number.isSafeInteger(Number(p.created_at))&&Number(p.created_at)>=0&&Number(p.created_at)<=Date.now()+300000;
   if(type==="hello")return uuid(p.sid)&&Number.isFinite(Number(p.expiresAt));
   if(type==="answer")return uuid(p.sid);
   if(type==="cancel"||type==="reject")return uuid(p.sid)&&Number.isFinite(Number(p.expiresAt));
@@ -326,7 +327,7 @@ async publish(to,msg){
    }catch(error){this.onDebug("[e2ee] не удалось обработать ответ ротации: "+(error.message||String(error)));}
   }
  }
- async recordConversationEvent(type,payload,direction,createdAt=Date.now()){
+ async recordConversationEvent(type,payload,direction,createdAt=Date.now(),deliveryStatus="sent"){
   const contactUserId=direction==="incoming"?payload.from:payload.to;
   if(!isUserId(contactUserId))return;
   const id=type==="text"?payload.message_id:String(payload.sid||"")+":"+type+":"+direction;
@@ -334,17 +335,36 @@ async publish(to,msg){
    await this.onConversationEvent({
     id,contact_user_id:contactUserId,type,direction,
     text:type==="text"?payload.text:"",
-    created_at:new Date(Number(createdAt)||Date.now()).toISOString()
+    created_at:new Date(Number(createdAt)||Date.now()).toISOString(),
+    ...(type==="text"&&direction==="outgoing"?{delivery_status:deliveryStatus}:{})
    });
-  }catch(error){this.onError(error)}
+   return true;
+  }catch(error){this.onError(error);return false}
  }
  async inspectTextMessage(n,m){
   const p=m?.payload;if(m?.v!==3||m?.type!=="text"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
   let valid=false;try{valid=await this.verifyPeerEnvelope("text",p,m.auth)}catch{return;}
   if(!valid)return;
-  await this.recordConversationEvent("text",p,"incoming",Number(p.created_at));
+  const saved=await this.recordConversationEvent("text",p,"incoming",Number(p.created_at));
+  if(!saved){this.onDebug("[message] сообщение проверено, но не удалось сохранить локально; подтверждение доставки не отправлено.");return;}
+  try{
+   const receipt={message_id:p.message_id,from:this.me,to:p.from,created_at:Date.now()};
+   await this.publish(p.from,await this.authenticated("delivered",receipt));
+   this.onDebug("[message] отправлено зашифрованное подтверждение доставки.");
+  }catch(error){this.onDebug("[message] не удалось отправить подтверждение доставки: "+(error.message||String(error)));}
   if(n?.id)this.rememberSeen(n.id);
-  this.onDebug("[signaling] получено и сохранено аутентифицированное сообщение AES-GCM");
+  this.onDebug("[signaling] получено, сохранено и подтверждено аутентифицированное сообщение AES-GCM");
+ }
+ async inspectDeliveryReceipt(n,m){
+  const p=m?.payload;
+  if(m?.v!==3||m?.type!=="delivered"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
+  let valid=false;try{valid=await this.verifyPeerEnvelope("delivered",p,m.auth)}catch(error){this.onDebug("[message] ошибка проверки подтверждения доставки: "+(error.message||String(error)));return;}
+  if(!valid)return;
+  try{
+   await this.onConversationDelivery({contact_user_id:p.from,message_id:p.message_id,delivered_at:new Date(Number(p.created_at)||Date.now()).toISOString()});
+   this.onDebug("[message] получено подтверждение доставки текстового сообщения.");
+  }catch(error){this.onDebug("[message] не удалось обновить статус доставки: "+(error.message||String(error)));}
+  if(n?.id)this.rememberSeen(n.id);
  }
  async sendText(to,text){
   if(this.closed||!this.identity)throw Error("Защищённая подписка ещё не готова.");
@@ -352,8 +372,12 @@ async publish(to,msg){
   const body=String(text||"").trim();if(!body||body.length>2000)throw Error("Сообщение должно содержать от 1 до 2000 символов.");
   if(!await getContact(to))throw Error("Выберите сохранённый контакт.");
   const createdAt=Date.now(),payload={message_id:crypto.randomUUID(),from:this.me,to,created_at:createdAt,text:body};
+  const saved=await this.recordConversationEvent("text",payload,"outgoing",createdAt,"sending");
+  if(!saved)throw Error("Не удалось сохранить сообщение на устройстве.");
   await this.publish(to,await this.authenticated("text",payload));
-  await this.recordConversationEvent("text",payload,"outgoing",createdAt);return payload;
+  try{await this.onConversationSent({contact_user_id:to,message_id:payload.message_id});}
+  catch(error){this.onError(error);this.onDebug("[message] сообщение отправлено, но локальный статус не удалось обновить: "+(error.message||String(error)));}
+  return payload;
  }
  async inspectIncoming(n){
   const eventId=String(n?.id||"нет").slice(0,14);
@@ -361,6 +385,7 @@ async publish(to,msg){
   let m;try{m=JSON.parse(n.message)}catch(error){this.onDebug(`[incoming] событие пропущено: message не JSON; ntfyId=${eventId}; error=${error.message||String(error)}.`);return;}
   if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){await this.inspectTextMessage(n,m);return;}
+  if(m.type==="delivered"){await this.inspectDeliveryReceipt(n,m);return;}
   if(m.v!==3||!m.payload){this.onDebug(`[incoming] ${m.type||"unknown"} пропущен: version=${m.v??"нет"}; payload=${!!m.payload}; ntfyId=${eventId}.`);return;}
   const p=m.payload;
   if(!isUserId(p.from)||p.from===this.me||p.to!==this.me){this.onDebug(`[incoming] ${m.type} пропущен: адресация не для этого устройства; from=${String(p.from||"нет").slice(0,10)}; to=${String(p.to||"нет").slice(0,10)}; me=${this.me.slice(0,10)}; ntfyId=${eventId}.`);return;}
@@ -558,6 +583,7 @@ async publish(to,msg){
    }
    if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
   if(m.type==="text"){if(m.v===3&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
+  if(m.type==="delivered"){if(m.v===3&&m.payload?.to===this.me)await this.inspectDeliveryReceipt(n,m);return;}
   if(m.v!==3||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me){
    if(m.type==="data")this.onDebug("[signaling] data отклонено до AES-GCM: неверная версия, payload, from или to.");
    return;

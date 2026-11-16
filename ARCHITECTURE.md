@@ -482,3 +482,13 @@ The single “Поделиться приглашением” action also repre
 - The call-screen back arrow is disabled and visually muted while the call screen is open; it does not show a warning or navigate away from the call.
 - Before an incoming call overlays the current UI, the frontend records which top-level screens were visible. On call end, rejection, timeout, or dismissal, it restores that visibility state. Outgoing calls restore the contact conversation they were started from.
 - When the call screen closes, the normal contact-screen back arrow is enabled again for ordinary navigation.
+
+
+## Text-message delivery receipts — 2026-11-17
+
+- Text messages continue to use the existing encrypted ntfy transport and the existing contact AES-256-GCM envelope. No separate server, database, push event, or transport channel is introduced.
+- After the recipient validates an incoming text envelope and successfully stores the message in the local IndexedDB conversation history, the recipient sends an encrypted `delivered` envelope to the sender. The receipt contains the original `message_id`, sender/recipient IDs, and receipt timestamp; it never contains the message body.
+- The sender validates the receipt with the same contact authentication and invitation-grant checks, then updates the matching outgoing conversation record in IndexedDB. Receipts do not create visible chat messages.
+- Outgoing message status is local: `sending` while publication is pending, `sent` after ntfy accepts the text POST, and `delivered` after a valid recipient receipt. The UI shows two muted checks while sending, the first emphasized after send acceptance, and both emphasized after delivery confirmation.
+- Status updates are monotonic: a late send-accepted update must not downgrade a message already marked delivered. The outgoing record is saved before network publication so a fast receipt cannot arrive before the local message exists.
+- Delivery receipts are best-effort ntfy messages. If a receipt POST fails, the sender may continue to show sent rather than delivered; processing a replayed/duplicate text message can send the receipt again. This is not a read receipt: it confirms local receipt/storage, not that the recipient opened or read the conversation.

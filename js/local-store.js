@@ -522,7 +522,10 @@ export async function addConversationEvent(event) {
   }
   const record = {
     id: event.id, contact_user_id: event.contact_user_id, type: event.type,
-    direction: event.direction, text, created_at: new Date(event.created_at).toISOString()
+    direction: event.direction, text, created_at: new Date(event.created_at).toISOString(),
+    ...(event.type === "text" && event.direction === "outgoing"
+      ? { delivery_status: ["sending", "sent", "delivered"].includes(event.delivery_status) ? event.delivery_status : "sent" }
+      : {})
   };
   const tx = await openTransaction("conversation", "readwrite");
   const done = transactionDone(tx);
@@ -539,6 +542,32 @@ export async function addConversationEvent(event) {
   };
   await done;
   return record;
+}
+
+export async function updateConversationMessageDeliveryStatus(contactUserId, messageId, status, updatedAt = new Date().toISOString()) {
+  if (typeof contactUserId !== "string" || !/^[a-f0-9]{64}$/.test(contactUserId) ||
+      typeof messageId !== "string" || !messageId || !["sent", "delivered"].includes(status) ||
+      !Number.isFinite(Date.parse(updatedAt))) {
+    throw new TypeError("A valid contact, message ID, delivery status, and timestamp are required.");
+  }
+  const tx = await openTransaction("conversation", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("conversation");
+  const record = await requestValue(store.get(messageId));
+  if (record && record.contact_user_id === contactUserId && record.type === "text" && record.direction === "outgoing") {
+    if (status === "delivered" || record.delivery_status !== "delivered") {
+      record.delivery_status = status;
+      if (status === "delivered") record.delivered_at = new Date(updatedAt).toISOString();
+      else record.sent_at = new Date(updatedAt).toISOString();
+      store.put(record);
+    }
+  }
+  await done;
+  return !!record;
+}
+
+export async function markConversationMessageDelivered(contactUserId, messageId, deliveredAt = new Date().toISOString()) {
+  return updateConversationMessageDeliveryStatus(contactUserId, messageId, "delivered", deliveredAt);
 }
 
 export async function listConversationEvents(contactUserId) {
