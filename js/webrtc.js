@@ -341,6 +341,56 @@ export class WebRtcAudio {
     return true;
   }
 
+  async bindNegotiatedTransceivers(pc) {
+    // On the answering side, browsers may keep locally pre-created transceivers
+    // pending and create separate transceivers for the incoming offer's m-lines.
+    // Always bind senders to the negotiated (mid-assigned) transceivers.
+    const transceivers = pc.getTransceivers();
+    const findNegotiated = kind => transceivers.find(item =>
+      item.mid !== null && item.receiver?.track?.kind === kind
+    );
+    const remoteDirection = (sdp, kind) => {
+      let inSection = false;
+      for (const line of String(sdp || "").split(/\r?\n/)) {
+        if (line.startsWith("m=")) inSection = line.startsWith("m=" + kind + " ");
+        else if (inSection) {
+          const match = line.match(/^a=(sendrecv|sendonly|recvonly|inactive)$/);
+          if (match) return match[1];
+        }
+      }
+      return "sendrecv";
+    };
+    const localDirection = direction => ({
+      sendrecv: "sendrecv",
+      sendonly: "recvonly",
+      recvonly: "sendonly",
+      inactive: "inactive"
+    })[direction] || "sendrecv";
+
+    const audio = findNegotiated("audio");
+    const video = findNegotiated("video");
+    if (audio) {
+      this.audioTransceiver = audio;
+      this.audioSender = audio.sender;
+      audio.direction = localDirection(remoteDirection(pc.remoteDescription?.sdp, "audio"));
+      const track = this.localStream?.getAudioTracks?.()[0];
+      if (track) {
+        track.enabled = this.diagnosticPilot ? true : this.micEnabled;
+        await audio.sender.replaceTrack(track);
+      }
+    }
+    if (video) {
+      this.videoTransceiver = video;
+      this.videoSender = video.sender;
+      video.direction = localDirection(remoteDirection(pc.remoteDescription?.sdp, "video"));
+      const track = this.videoStream?.getVideoTracks?.()[0];
+      if (track) await video.sender.replaceTrack(track);
+    }
+    this.onState("NEGOTIATED_TRANSCEIVERS_BOUND: audio=" +
+      (audio ? "mid=" + audio.mid + "/" + audio.direction : "not-found") +
+      "; video=" + (video ? "mid=" + video.mid + "/" + video.direction : "not-found"));
+  }
+
   async prepareOutgoingStream() {
     // In simulation mode ensureMedia already returns a generated audio stream.
     // No physical microphone is opened and no additional track is mixed in.
@@ -865,6 +915,7 @@ export class WebRtcAudio {
       this.onState("PC["+this.pcDiagnosticId+"] setRemoteDescription("+description.type+") started; SDP chars="+(description.sdp?.length||0)+".");
       await pc.setRemoteDescription(description);this.onState("PC["+this.pcDiagnosticId+"] setRemoteDescription("+description.type+") completed.");
       this.remoteDescriptionSet=true;
+      if (description.type === "offer") await this.bindNegotiatedTransceivers(pc);
       this.logVideoNegotiation("remote-"+description.type, pc);
       while(this.pendingCandidates.length)await pc.addIceCandidate(this.pendingCandidates.shift());
       for(const candidate of candidates)await pc.addIceCandidate(candidate);
