@@ -1133,3 +1133,14 @@ body{
     font-size: 10px !important;
   }
 }
+
+@media(max-width:420px) {
+  .call-screen-stage .contact-call-actions #hangup.call-hangup-action {
+    flex: 0 0 56px !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    max-width: 56px !important;
+    height: 56px !important;
+    min-height: 56px !important;
+  }
+}

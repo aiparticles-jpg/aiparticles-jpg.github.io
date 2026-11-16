@@ -400,7 +400,7 @@ function updateCallButtons(){
   els.speakerToggle.setAttribute("aria-label","Громкая связь включена");
   els.speakerToggle.title="Громкая связь включена";
   els.speakerToggle.dataset.enabled="true";
-  els.speakerToggle.dataset.caption="Громкая\nсвязь";
+  els.speakerToggle.dataset.caption="Динамик\nвкл.";
  }else{
   els.speakerToggle.disabled=!active||state.hangingUp||!canSelectOutput;
   const speakerEnabled=!!state.speakerOutputId;
@@ -408,7 +408,7 @@ function updateCallButtons(){
   els.speakerToggle.setAttribute("aria-label",speakerEnabled?"Выключить громкую связь":"Включить громкую связь");
   els.speakerToggle.title=canSelectOutput?(speakerEnabled?"Выключить громкую связь":"Включить громкую связь"):"Переключение аудиовыхода не поддерживается этим браузером";
   els.speakerToggle.dataset.enabled=String(speakerEnabled);
-  els.speakerToggle.dataset.caption=speakerEnabled?"Выключить\nгромкую связь":"Включить\nгромкую связь";
+  els.speakerToggle.dataset.caption=speakerEnabled?"Динамик\nвкл.":"Динамик\nвыкл.";
  }
  const canUseCamera=!!(active&&state.peerPresent&&!state.outgoingCall&&!state.hangingUp&&state.webrtc?.videoSender);
  els.cameraToggle.classList.toggle("hidden",!active);
