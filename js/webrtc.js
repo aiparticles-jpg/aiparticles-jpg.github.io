@@ -135,6 +135,8 @@ export class WebRtcAudio {
       this.stopVideoStream();
       this.onLocalVideoStream(null);
       this.onState("LOCAL_VIDEO_SENDER_DISABLED; reason=user");
+      this.logVideoNegotiation("local-camera-disabled", this.pc);
+      if (this.pc) this.logMediaStats(this.pc);
       this.onState("Камера выключена.");
       return false;
     }
@@ -158,6 +160,8 @@ export class WebRtcAudio {
       this.cameraFacingMode = track.getSettings?.().facingMode || this.cameraFacingMode;
       this.videoEnabled = true;
       this.onState("LOCAL_VIDEO_SENDER_ENABLED; trackReadyState=" + track.readyState);
+      this.logVideoNegotiation("local-camera-enabled", this.pc);
+      if (this.pc) this.logMediaStats(this.pc);
       track.addEventListener("ended", () => {
         if (this.videoEnabled && this.videoStream === stream) {
           this.videoEnabled = false;
@@ -501,7 +505,10 @@ export class WebRtcAudio {
     pc.onconnectionstatechange=()=>{
       const connectionState=pc.connectionState;
       this.onState("PC["+this.pcDiagnosticId+"] connection-"+connectionState+".");
-      if(connectionState==="connected")this.startStatsMonitoring(pc);
+      if(connectionState==="connected"){
+        this.logVideoNegotiation("connection-connected", pc);
+        this.startStatsMonitoring(pc);
+      }
     };
     this.pc=pc;return pc;
   }
@@ -579,10 +586,68 @@ export class WebRtcAudio {
     }
   }
 
+  summarizeVideoSdp(sdp) {
+    const lines = String(sdp || "").split(/\r?\n/);
+    const firstMediaIndex = lines.findIndex(line => line.startsWith("m="));
+    const sessionLines = firstMediaIndex < 0 ? lines : lines.slice(0, firstMediaIndex);
+    const sessionDirection = sessionLines.find(line => /^a=(sendrecv|sendonly|recvonly|inactive)$/.test(line));
+    const defaultDirection = sessionDirection ? sessionDirection.slice(2) : "sendrecv";
+    const sections = [];
+    let current = null;
+    for (const line of lines) {
+      if (line.startsWith("m=")) {
+        if (current) sections.push(current);
+        if (line.startsWith("m=video ")) {
+          current = { mline: line.slice(2), direction: defaultDirection, mid: null, codecs: [], msid: false };
+        } else {
+          current = null;
+        }
+        continue;
+      }
+      if (!current) continue;
+      const direction = line.match(/^a=(sendrecv|sendonly|recvonly|inactive)$/);
+      if (direction) current.direction = direction[1];
+      const mid = line.match(/^a=mid:(.+)$/);
+      if (mid) current.mid = mid[1];
+      const codec = line.match(/^a=rtpmap:\d+\s+([^/]+)/i);
+      if (codec && !current.codecs.includes(codec[1])) current.codecs.push(codec[1]);
+      if (line.startsWith("a=msid:") || (line.startsWith("a=ssrc:") && line.includes("msid:"))) current.msid = true;
+    }
+    if (current) sections.push(current);
+    if (!sections.length) return "no m=video";
+    return sections.map(section =>
+      "m=video(port/proto/formats)=" + section.mline +
+      ";dir=" + section.direction +
+      ";mid=" + (section.mid || "n/a") +
+      ";codecs=" + (section.codecs.slice(0, 5).join(",") || "n/a") +
+      ";msid=" + (section.msid ? "yes" : "no")
+    ).join(" | ");
+  }
+
+  logVideoNegotiation(reason, pc = this.pc) {
+    if (!pc) return;
+    const local = this.summarizeVideoSdp(pc.localDescription?.sdp);
+    const remote = this.summarizeVideoSdp(pc.remoteDescription?.sdp);
+    const transceivers = pc.getTransceivers()
+      .filter(item => item.receiver?.track?.kind === "video" || item.sender?.track?.kind === "video")
+      .map(item => {
+        const senderTrack = item.sender?.track;
+        const receiverTrack = item.receiver?.track;
+        return "mid=" + (item.mid ?? "pending") +
+          ",dir=" + item.direction +
+          ",current=" + (item.currentDirection || "pending") +
+          ",sender=" + (senderTrack ? senderTrack.readyState + "/enabled:" + senderTrack.enabled : "none") +
+          ",receiver=" + (receiverTrack ? receiverTrack.readyState + "/muted:" + receiverTrack.muted : "none");
+      });
+    this.onState("VIDEO_NEGOTIATION [" + reason + "]: local{" + local + "}; remote{" + remote +
+      "}; transceiver{" + (transceivers.join(" | ") || "none") + "}.");
+  }
+
   startStatsMonitoring(pc) {
     if (this.statsTimer) return;
-    // One compact media snapshot every 30 seconds; no per-second counters.
-    this.statsTimer = setInterval(() => this.logMediaStats(pc), 30000);
+    // Compact 5s snapshots are temporary targeted diagnostics for short video calls.
+    this.logMediaStats(pc);
+    this.statsTimer = setInterval(() => this.logMediaStats(pc), 5000);
   }
 
   async logMediaStats(pc) {
@@ -601,7 +666,10 @@ export class WebRtcAudio {
             (item.kind === kind || item.mediaType === kind) &&
             !item.isRemote
           );
-          if (!report) continue;
+          if (!report) {
+            if (kind === "video") fields.push(direction === "outbound-rtp" ? "video out RTP=absent" : "video in RTP=absent");
+            continue;
+          }
           const label = kind + (direction === "outbound-rtp" ? " out" : " in");
           const parts = [];
           const packets = direction === "outbound-rtp" ? report.packetsSent : report.packetsReceived;
@@ -609,9 +677,19 @@ export class WebRtcAudio {
           if (Number.isFinite(packets)) parts.push("pkts=" + packets);
           if (Number.isFinite(bytes)) parts.push("bytes=" + bytes);
           if (kind === "video") {
-            const frames = direction === "outbound-rtp" ? report.framesEncoded : report.framesDecoded;
-            if (Number.isFinite(frames)) parts.push("frames=" + frames);
+            const frameFields = direction === "outbound-rtp"
+              ? [["framesSent", "sent"], ["framesEncoded", "encoded"], ["keyFramesEncoded", "keyframes"], ["frameWidth", "width"], ["frameHeight", "height"], ["framesPerSecond", "fps"]]
+              : [["framesReceived", "received"], ["framesDecoded", "decoded"], ["framesRendered", "rendered"], ["keyFramesDecoded", "keyframes"], ["frameWidth", "width"], ["frameHeight", "height"], ["framesPerSecond", "fps"]];
+            for (const [field, label] of frameFields) {
+              if (Number.isFinite(report[field])) parts.push(label + "=" + (label === "fps" ? report[field].toFixed(1) : report[field]));
+            }
             if (Number.isFinite(report.framesDropped)) parts.push("dropped=" + report.framesDropped);
+            if (Number.isFinite(report.framesReceived) && Number.isFinite(report.framesDecoded)) {
+              parts.push("decodeGap=" + Math.max(0, report.framesReceived - report.framesDecoded));
+            }
+            if (report.decoderImplementation) parts.push("decoder=" + report.decoderImplementation);
+            if (report.encoderImplementation) parts.push("encoder=" + report.encoderImplementation);
+            if (report.qualityLimitationReason) parts.push("qualityLimit=" + report.qualityLimitationReason);
           } else {
             if (direction === "inbound-rtp" && Number.isFinite(report.packetsLost)) parts.push("lost=" + report.packetsLost);
             if (direction === "inbound-rtp" && Number.isFinite(report.jitter)) parts.push("jitter=" + (report.jitter * 1000).toFixed(1) + "ms");
@@ -775,7 +853,9 @@ export class WebRtcAudio {
   }
   async createOffer(){
     const pc=await this.createPeerConnection();this.onState("PC["+this.pcDiagnosticId+"] createOffer started.");
-    const offer=await pc.createOffer();this.beginIceBatching(pc,offer);await pc.setLocalDescription(offer);this.scheduleIceBatches(pc);
+    const offer=await pc.createOffer();this.beginIceBatching(pc,offer);await pc.setLocalDescription(offer);
+    this.logVideoNegotiation("local-offer", pc);
+    this.scheduleIceBatches(pc);
   }
   async handleSignal(payload){
     const pc=await this.createPeerConnection(),candidates=Array.isArray(payload.candidates)?payload.candidates:[];
@@ -785,13 +865,16 @@ export class WebRtcAudio {
       this.onState("PC["+this.pcDiagnosticId+"] setRemoteDescription("+description.type+") started; SDP chars="+(description.sdp?.length||0)+".");
       await pc.setRemoteDescription(description);this.onState("PC["+this.pcDiagnosticId+"] setRemoteDescription("+description.type+") completed.");
       this.remoteDescriptionSet=true;
+      this.logVideoNegotiation("remote-"+description.type, pc);
       while(this.pendingCandidates.length)await pc.addIceCandidate(this.pendingCandidates.shift());
       for(const candidate of candidates)await pc.addIceCandidate(candidate);
       if(payload.candidate)await pc.addIceCandidate(payload.candidate);
       if(payload.endOfCandidates)await pc.addIceCandidate(null);
       if(description.type==="offer"){
         this.onState("PC["+this.pcDiagnosticId+"] createAnswer started.");
-        const answer=await pc.createAnswer();this.beginIceBatching(pc,answer);await pc.setLocalDescription(answer);this.scheduleIceBatches(pc);
+        const answer=await pc.createAnswer();this.beginIceBatching(pc,answer);await pc.setLocalDescription(answer);
+        this.logVideoNegotiation("local-answer", pc);
+        this.scheduleIceBatches(pc);
       }
     }else if(candidates.length||payload.candidate||payload.endOfCandidates){
       if(this.remoteDescriptionSet){
