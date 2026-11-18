@@ -242,6 +242,82 @@ app.post("/v1/push", async (req, res) => {
   }
 });
 
+
+// Isolated Supabase Realtime transport test. This endpoint is not used by VoiceLink calls.
+const SUPABASE_TEST_TOPIC = "voicelink-realtime-test-9224dd59711e2e0aab5aed1572e4d6c0";
+
+app.post("/v1/test/realtime", async (req, res) => {
+  const now = Date.now();
+  cleanupCache(rateCache, now);
+
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  if (!rateLimitSliding("supabase-test:" + ip, 10, 60_000, now)) {
+    return res.status(429).json({ ok: false, error: "rate_limited" });
+  }
+
+  const message = req.body && typeof req.body.message === "string"
+    ? req.body.message.trim()
+    : "";
+  if (!message || message.length > 160 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(message)) {
+    return res.status(400).json({ ok: false, error: "invalid_message" });
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!supabaseUrl || !supabaseSecretKey) {
+    return res.status(503).json({ ok: false, error: "supabase_test_not_configured" });
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(supabaseUrl);
+  } catch {
+    return res.status(503).json({ ok: false, error: "supabase_test_configuration_error" });
+  }
+  if (parsedUrl.protocol !== "https:" || !parsedUrl.hostname.endsWith(".supabase.co")) {
+    return res.status(503).json({ ok: false, error: "supabase_test_configuration_error" });
+  }
+
+  try {
+    const response = await fetch(parsedUrl.origin + "/realtime/v1/api/broadcast", {
+      method: "POST",
+      headers: {
+        "apikey": supabaseSecretKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messages: [{
+          topic: SUPABASE_TEST_TOPIC,
+          event: "vl-test-message",
+          payload: {
+            message,
+            sent_at: new Date().toISOString(),
+            test_id: crypto.randomUUID()
+          }
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      console.error(JSON.stringify({
+        event: "supabase_test_publish_failed",
+        status: response.status,
+        at: new Date().toISOString()
+      }));
+      return res.status(502).json({ ok: false, error: "supabase_publish_failed", provider_status: response.status });
+    }
+
+    return res.status(200).json({ ok: true, accepted: true });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "supabase_test_publish_error",
+      error: String(error && error.message || error).slice(0, 200),
+      at: new Date().toISOString()
+    }));
+    return res.status(502).json({ ok: false, error: "supabase_unavailable" });
+  }
+});
+
 app.listen(port, "0.0.0.0", () => {
   console.log(`VoiceLink backend listening on port ${port}`);
 });

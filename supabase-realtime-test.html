@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>VoiceLink — тест Supabase Realtime</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#101827;color:#f8fafc}
+    *{box-sizing:border-box}
+    body{margin:0;padding:24px 16px}
+    main{max-width:680px;margin:0 auto}
+    h1{font-size:24px;margin:0 0 8px}
+    p{color:#cbd5e1;line-height:1.5}
+    .card{background:#1e293b;border:1px solid #475569;border-radius:14px;padding:18px;margin:16px 0}
+    label{display:block;font-weight:600;margin:12px 0 6px}
+    input,textarea,button{font:inherit}
+    input,textarea{width:100%;padding:11px;border-radius:9px;border:1px solid #64748b;background:#0f172a;color:#f8fafc}
+    textarea{min-height:76px;resize:vertical}
+    button{padding:11px 16px;border:0;border-radius:9px;background:#60a5fa;color:#0f172a;font-weight:700;cursor:pointer;margin-top:12px}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    #status{font-weight:700}
+    #messages{padding-left:20px;overflow-wrap:anywhere}
+    #messages li{margin:10px 0;color:#e2e8f0}
+    .muted{font-size:13px;color:#94a3b8}
+    code{overflow-wrap:anywhere;color:#bfdbfe}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Тест Supabase Realtime</h1>
+  <p>Изолированная проверка доставки тестовых сообщений через Render и Supabase. Не использует контакты, звонки или данные VoiceLink.</p>
+
+  <section class="card">
+    <div>Состояние WebSocket: <span id="status">Инициализация…</span></div>
+    <p class="muted">Канал: <code>voicelink-realtime-test-9224dd59711e2e0aab5aed1572e4d6c0</code></p>
+  </section>
+
+  <section class="card">
+    <h2>Отправить тестовое сообщение</h2>
+    <label for="backend">Адрес Render backend</label>
+    <input id="backend" type="url" placeholder="https://ваш-сервис.onrender.com" autocomplete="url">
+    <label for="message">Текст сообщения</label>
+    <textarea id="message" maxlength="160">Привет из VoiceLink — тест Supabase Realtime</textarea>
+    <button id="send" type="button">Отправить через Render</button>
+    <p id="send-status" class="muted" aria-live="polite"></p>
+  </section>
+
+  <section class="card">
+    <h2>Полученные сообщения</h2>
+    <ol id="messages"><li class="muted">Ожидаем сообщения…</li></ol>
+    <button id="clear" type="button">Очистить список</button>
+  </section>
+</main>
+<script>
+(() => {
+  const SUPABASE_URL = "https://lcmccpecmtnqknthtijl.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
+  const TOPIC = "voicelink-realtime-test-9224dd59711e2e0aab5aed1572e4d6c0";
+  const EVENT = "vl-test-message";
+
+  const status = document.getElementById("status");
+  const messages = document.getElementById("messages");
+  const sendButton = document.getElementById("send");
+  const sendStatus = document.getElementById("send-status");
+  const backendInput = document.getElementById("backend");
+
+  function addMessage(payload) {
+    if (messages.children.length === 1 && messages.firstElementChild.classList.contains("muted")) {
+      messages.replaceChildren();
+    }
+    const item = document.createElement("li");
+    const time = payload && payload.sent_at ? new Date(payload.sent_at).toLocaleTimeString() : new Date().toLocaleTimeString();
+    const text = payload && typeof payload.message === "string" ? payload.message : JSON.stringify(payload);
+    item.textContent = time + " — " + text;
+    messages.prepend(item);
+  }
+
+  if (!window.supabase || typeof window.supabase.createClient !== "function") {
+    status.textContent = "Не загрузилась библиотека Supabase";
+    status.style.color = "#fca5a5";
+    return;
+  }
+
+  const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+  const channel = client.channel(TOPIC);
+
+  channel
+    .on("broadcast", { event: EVENT }, ({ payload }) => addMessage(payload))
+    .subscribe((state, error) => {
+      status.textContent = state + (error ? ": " + (error.message || String(error)) : "");
+      status.style.color = state === "SUBSCRIBED" ? "#86efac" : "#fbbf24";
+    });
+
+  sendButton.addEventListener("click", async () => {
+    const base = backendInput.value.trim().replace(/\/+$/, "");
+    const message = document.getElementById("message").value.trim();
+    if (!base) {
+      sendStatus.textContent = "Укажи адрес Render backend.";
+      return;
+    }
+    if (!message) {
+      sendStatus.textContent = "Введи текст сообщения.";
+      return;
+    }
+
+    sendButton.disabled = true;
+    sendStatus.textContent = "Отправляем через Render…";
+    try {
+      const response = await fetch(base + "/v1/test/realtime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "HTTP " + response.status);
+      }
+      sendStatus.textContent = "Render принял сообщение и передал его в Supabase.";
+    } catch (error) {
+      sendStatus.textContent = "Ошибка отправки: " + error.message;
+    } finally {
+      sendButton.disabled = false;
+    }
+  });
+
+  document.getElementById("clear").addEventListener("click", () => {
+    messages.replaceChildren();
+    const item = document.createElement("li");
+    item.className = "muted";
+    item.textContent = "Список очищен. Ожидаем сообщения…";
+    messages.append(item);
+  });
+})();
+</script>
+</body>
+</html>
