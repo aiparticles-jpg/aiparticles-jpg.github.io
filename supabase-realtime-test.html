@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101827">
-  <title>VoiceLink — тест Supabase Realtime</title>
+  <title>VoiceLink — тест Supabase Realtime (private)</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#101827;color:#f8fafc}
@@ -29,12 +29,13 @@
 </head>
 <body>
 <main>
-  <h1>Тест Supabase Realtime</h1>
-  <p>Изолированная проверка доставки тестовых сообщений через Render и Supabase. Не использует контакты, звонки или данные VoiceLink.</p>
+  <h1>Тест Supabase Realtime — приватный канал</h1>
+  <p>Изолированная проверка private Broadcast через Render и Supabase. Используются только временные анонимные тестовые сессии и фиктивные сообщения. Рабочие звонки, контакты, ntfy и OneSignal не затрагиваются.</p>
 
   <section class="card">
-    <div>Состояние WebSocket: <span id="status">Инициализация…</span></div>
-    <p class="muted">Канал: <code>voicelink-realtime-test-9224dd59711e2e0aab5aed1572e4d6c0</code></p>
+    <div>Состояние: <span id="status">Инициализация…</span></div>
+    <div class="muted">Тестовый Auth user ID: <code id="auth-user">—</code></div>
+    <p class="muted">Private topic: <code>voicelink-realtime-test-9224dd59711e2e0aab5aed1572e4d6c0</code></p>
   </section>
 
   <section class="card">
@@ -42,9 +43,16 @@
     <label for="backend">Адрес Render backend</label>
     <input id="backend" type="url" placeholder="https://ваш-сервис.onrender.com" autocomplete="url">
     <label for="message">Текст сообщения</label>
-    <textarea id="message" maxlength="160">Привет из VoiceLink — тест Supabase Realtime</textarea>
-    <button id="send" type="button">Отправить через Render</button>
+    <textarea id="message" maxlength="160">Привет из VoiceLink — тест приватного Supabase Realtime</textarea>
+    <button id="send" type="button" disabled>Отправить через Render</button>
     <p id="send-status" class="muted" aria-live="polite"></p>
+  </section>
+
+  <section class="card">
+    <h2>Проверка ограничения доступа</h2>
+    <p class="muted">Попробуем подписаться на другой private topic, для которого нет RLS-разрешения. Supabase должен отклонить подключение.</p>
+    <button id="probe" type="button" disabled>Проверить запрет доступа</button>
+    <p id="probe-status" class="muted" aria-live="polite"></p>
   </section>
 
   <section class="card">
@@ -63,8 +71,15 @@
   const status = document.getElementById("status");
   const messages = document.getElementById("messages");
   const sendButton = document.getElementById("send");
+  const probeButton = document.getElementById("probe");
   const sendStatus = document.getElementById("send-status");
   const backendInput = document.getElementById("backend");
+  const probeStatus = document.getElementById("probe-status");
+
+  function setStatus(message, color) {
+    status.textContent = message;
+    status.style.color = color || "#fbbf24";
+  }
 
   function addMessage(payload) {
     if (messages.children.length === 1 && messages.firstElementChild.classList.contains("muted")) {
@@ -78,20 +93,47 @@
   }
 
   if (!window.supabase || typeof window.supabase.createClient !== "function") {
-    status.textContent = "Не загрузилась библиотека Supabase";
-    status.style.color = "#fca5a5";
+    setStatus("Не загрузилась библиотека Supabase", "#fca5a5");
     return;
   }
 
   const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-  const channel = client.channel(TOPIC);
 
-  channel
-    .on("broadcast", { event: EVENT }, ({ payload }) => addMessage(payload))
-    .subscribe((state, error) => {
-      status.textContent = state + (error ? ": " + (error.message || String(error)) : "");
-      status.style.color = state === "SUBSCRIBED" ? "#86efac" : "#fbbf24";
-    });
+  async function start() {
+    setStatus("Проверяем тестовую сессию…");
+    let { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError) throw sessionError;
+
+    let session = sessionData.session;
+    if (!session) {
+      setStatus("Создаём анонимную тестовую сессию…");
+      const result = await client.auth.signInAnonymously();
+      if (result.error) throw result.error;
+      session = result.data.session;
+    }
+
+    if (!session || !session.user || !session.user.is_anonymous) {
+      throw new Error("В браузере уже есть неанонимная сессия этого Supabase-проекта. Для теста нужна анонимная сессия.");
+    }
+
+    document.getElementById("auth-user").textContent = session.user.id;
+    setStatus("Анонимная авторизация выполнена. Подключаем private channel…");
+
+    const channel = client.channel(TOPIC, { config: { private: true } });
+    channel
+      .on("broadcast", { event: EVENT }, ({ payload }) => addMessage(payload))
+      .subscribe((state, error) => {
+        if (state === "SUBSCRIBED") {
+          setStatus("SUBSCRIBED — private channel разрешён RLS", "#86efac");
+          sendButton.disabled = false;
+          probeButton.disabled = false;
+        } else {
+          setStatus(state + (error ? ": " + (error.message || String(error)) : ""));
+        }
+      });
+  }
+
+  start().catch(error => setStatus("Ошибка авторизации/подписки: " + (error.message || String(error)), "#fca5a5"));
 
   sendButton.addEventListener("click", async () => {
     const base = backendInput.value.trim().replace(/\/+$/, "");
@@ -106,7 +148,7 @@
     }
 
     sendButton.disabled = true;
-    sendStatus.textContent = "Отправляем через Render…";
+    sendStatus.textContent = "Отправляем private Broadcast через Render…";
     try {
       const response = await fetch(base + "/v1/test/realtime", {
         method: "POST",
@@ -117,12 +159,36 @@
       if (!response.ok || !result.ok) {
         throw new Error(result.error || "HTTP " + response.status);
       }
-      sendStatus.textContent = "Render принял сообщение и передал его в Supabase.";
+      sendStatus.textContent = "Render принял сообщение и передал private Broadcast в Supabase.";
     } catch (error) {
       sendStatus.textContent = "Ошибка отправки: " + error.message;
     } finally {
       sendButton.disabled = false;
     }
+  });
+
+  probeButton.addEventListener("click", async () => {
+    probeButton.disabled = true;
+    probeStatus.textContent = "Проверяем, что другой topic закрыт…";
+    const probe = client.channel(TOPIC + ":unauthorized-probe", { config: { private: true } });
+    let settled = false;
+    const finish = async (message) => {
+      if (settled) return;
+      settled = true;
+      probeStatus.textContent = message;
+      await client.removeChannel(probe);
+      probeButton.disabled = false;
+    };
+    probe.subscribe((state, error) => {
+      if (state === "SUBSCRIBED") {
+        finish("ОШИБКА: посторонний topic оказался доступен. Проверь RLS-политики.");
+      } else if (state === "CHANNEL_ERROR") {
+        finish("Доступ отклонён — RLS не разрешил подписку на посторонний topic.");
+      } else if (state === "TIMED_OUT") {
+        finish("Тайм-аут. Результат проверки не определён; повтори позже.");
+      }
+    });
+    window.setTimeout(() => finish("Тайм-аут проверки. Результат не определён."), 12000);
   });
 
   document.getElementById("clear").addEventListener("click", () => {

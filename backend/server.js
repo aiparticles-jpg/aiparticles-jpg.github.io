@@ -212,7 +212,6 @@ app.post("/v1/push", async (req, res) => {
     return res.status(429).json({ ok: false, error: "rate_limited" });
   }
 
-
   const idempotencyKey = event.call_id + ":" + event.event;
   if (idempotencyCache.has(idempotencyKey)) {
     return res.status(200).json({ ok: true, duplicate: true });
@@ -243,8 +242,9 @@ app.post("/v1/push", async (req, res) => {
 });
 
 
-// Isolated Supabase Realtime transport test. This endpoint is not used by VoiceLink calls.
+// Isolated Supabase Realtime private-channel test. Not used by VoiceLink calls.
 const SUPABASE_TEST_TOPIC = "voicelink-realtime-test-9224dd59711e2e0aab5aed1572e4d6c0";
+const SUPABASE_TEST_EVENT = "vl-test-message";
 
 app.post("/v1/test/realtime", async (req, res) => {
   const now = Date.now();
@@ -279,22 +279,20 @@ app.post("/v1/test/realtime", async (req, res) => {
   }
 
   try {
-    const response = await fetch(parsedUrl.origin + "/realtime/v1/api/broadcast", {
+    // Supabase documents this endpoint form for a single private Broadcast.
+    const endpoint = parsedUrl.origin +
+      "/realtime/v1/api/broadcast/" + encodeURIComponent(SUPABASE_TEST_TOPIC) +
+      "/events/" + encodeURIComponent(SUPABASE_TEST_EVENT) + "?private=true";
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "apikey": supabaseSecretKey,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        messages: [{
-          topic: SUPABASE_TEST_TOPIC,
-          event: "vl-test-message",
-          payload: {
-            message,
-            sent_at: new Date().toISOString(),
-            test_id: crypto.randomUUID()
-          }
-        }]
+        message,
+        sent_at: new Date().toISOString(),
+        test_id: crypto.randomUUID()
       })
     });
 
