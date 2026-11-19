@@ -222,3 +222,18 @@ No existing production ntfy code, OneSignal behavior, WebRTC media path, or work
 ---
 
 This document records the selected design and its unresolved risks. It is not evidence that the schema or migration has already been deployed.
+
+
+## 12. Implementation decisions confirmed on 2026-11-20
+
+This section supersedes conflicting details in the earlier logical draft above.
+
+- **No `public.users` table.** The initial implementation uses Supabase Auth UUIDs directly via `auth.uid()`. No second VoiceLink user identifier is stored in the new signaling database. Revisit a separate durable/cryptographic identity only closer to production, if it becomes necessary.
+- **Invitation format:** one random 256-bit `invitation_id`, represented as 43-character unpadded base64url. It is the secret itself. There is no separate `invitation_secret`.
+- **Invitation storage:** the database stores only SHA-256 of the exact base64url invitation ID. A successful redemption deletes that row in the same transaction that creates the link and inserts the initial inbox message.
+- **No submission/staging table in the first SQL implementation.** Browser writes go through narrowly scoped `create_invitation()` and `submit_message()` RPC functions. Clients cannot insert directly into `messages` or read invitation/link tables.
+- **Initial tables:** `invitations`, `links`, and `messages`. No read/processed status, ACK, auto-increment sequence, or redeemed-invitation history.
+- **Initial invitation expiry:** not implemented yet; expiry duration and cleanup remain a later decision.
+- **Message retention and abuse/rate limits:** not solved by this initial schema and remain mandatory pre-production review items.
+
+The SQL migration is a test-stage artifact only. It must be applied and verified in the Supabase project before any frontend integration. It does not alter the production ntfy path, OneSignal backend, WebRTC media path, or current invitation format.
