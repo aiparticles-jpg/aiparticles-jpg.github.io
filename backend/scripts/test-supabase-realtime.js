@@ -222,7 +222,13 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label, recipientF
 
     if (message.event === "phx_reply" && message.ref === joinRef) {
       if (!message.payload || message.payload.status !== "ok") {
-        rejectReady(new Error(`Realtime channel join failed for ${label}.`));
+        const response = message.payload && message.payload.response;
+        const reason = response && (response.reason || response.message || response.code)
+          ? (response.reason || response.message || response.code)
+          : (message.payload && (message.payload.reason || message.payload.message || message.payload.status))
+            || "no reason supplied";
+        const safeReason = String(reason).replace(/[\\r\\n]/g, " ").slice(0, 300);
+        rejectReady(new Error(`Realtime channel join failed for ${label}: ${safeReason}`));
         return;
       }
       const subscriptions = message.payload.response && message.payload.response.postgres_changes;
