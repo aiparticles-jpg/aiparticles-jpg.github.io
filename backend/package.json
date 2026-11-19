@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "migrate:supabase": "node scripts/apply-supabase-migration.js"
+    "migrate:supabase": "node scripts/apply-supabase-migration.js",
+    "test:supabase": "node scripts/test-supabase-flow.js"
   },
   "engines": {
     "node": ">=20"
