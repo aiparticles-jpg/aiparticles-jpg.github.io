@@ -44,4 +44,5 @@ jobs:
           test -n "$SUPABASE_URL" || (echo "Missing GitHub Actions secret: SUPABASE_URL" && exit 1)
           test -n "$SUPABASE_PUBLISHABLE_KEY" || (echo "Missing GitHub Actions secret: SUPABASE_PUBLISHABLE_KEY" && exit 1)
           test -n "$SUPABASE_DB_URL" || (echo "Missing GitHub Actions secret: SUPABASE_DB_URL" && exit 1)
+          node scripts/apply-supabase-realtime-migration.js
           node scripts/test-supabase-realtime.js
