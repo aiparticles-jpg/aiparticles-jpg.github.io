@@ -135,7 +135,7 @@ async function readMessage(baseUrl, key, user, messageId) {
   return data;
 }
 
-function openRealtimeSubscriber(baseUrl, publishableKey, user, label, recipientFilter) {
+function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
   if (typeof WebSocket !== "function") {
     fail("This Node.js runtime does not provide the built-in WebSocket API.");
   }
@@ -145,7 +145,8 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label, recipientF
   wsUrl.searchParams.set("apikey", publishableKey);
   wsUrl.searchParams.set("vsn", "1.0.0");
 
-  const topic = "realtime:voicelink-pgchanges-" + crypto.randomUUID();
+  // Each authenticated user listens only on their own private inbox topic.
+  const topic = "realtime:inbox:" + user.id;
   const joinRef = "1";
   const ws = new WebSocket(wsUrl);
   const received = [];
@@ -180,7 +181,7 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label, recipientF
       table: "messages",
       select: ["message_id", "sender_id", "recipient_id", "payload"]
     };
-    if (recipientFilter) change.filter = "recipient_id=eq." + user.id;
+    change.filter = "recipient_id=eq." + user.id;
 
     ws.send(JSON.stringify({
       topic,
@@ -342,9 +343,9 @@ async function main() {
       p_invitation_id: invitationId
     });
 
-    const recipientSub = openRealtimeSubscriber(config.url, config.publishableKey, recipient, "recipient", true);
-    const senderSub = openRealtimeSubscriber(config.url, config.publishableKey, sender, "sender", false);
-    const unrelatedSub = openRealtimeSubscriber(config.url, config.publishableKey, unrelated, "unrelated user", false);
+    const recipientSub = openRealtimeSubscriber(config.url, config.publishableKey, recipient, "recipient");
+    const senderSub = openRealtimeSubscriber(config.url, config.publishableKey, sender, "sender");
+    const unrelatedSub = openRealtimeSubscriber(config.url, config.publishableKey, unrelated, "unrelated user");
     subscribers.push(recipientSub, senderSub, unrelatedSub);
 
     await Promise.all(subscribers.map(subscriber => subscriber.ready));
