@@ -173,12 +173,12 @@ async function main() {
     );
     console.log("Connected to VoiceLink Supabase:", identity.rows[0].db, "| PostgreSQL", identity.rows[0].version);
 
-    const [owner, redeemerA, redeemerB] = await Promise.all([
-      createAnonymousUser(config.url, config.publishableKey),
-      createAnonymousUser(config.url, config.publishableKey),
-      createAnonymousUser(config.url, config.publishableKey)
-    ]);
-    createdUserIds.push(owner.id, redeemerA.id, redeemerB.id);
+    const owner = await createAnonymousUser(config.url, config.publishableKey);
+    createdUserIds.push(owner.id);
+    const redeemerA = await createAnonymousUser(config.url, config.publishableKey);
+    createdUserIds.push(redeemerA.id);
+    const redeemerB = await createAnonymousUser(config.url, config.publishableKey);
+    createdUserIds.push(redeemerB.id);
     console.log("Created three temporary anonymous Auth users.");
 
     const invitationId = crypto.randomBytes(32).toString("base64url");
@@ -207,6 +207,9 @@ async function main() {
 
     assert(successful.length === 1 && rejected.length === 1,
       "One-time invitation race test failed: expected exactly one successful redemption.");
+    const rejectionText = String(rejected[0].reason && rejected[0].reason.message || "");
+    assert(/invalid or already used|P0001/i.test(rejectionText),
+      "The losing redemption did not fail because the one-time invitation had already been consumed.");
     const winner = successful[0].user;
     const messageId = successful[0].attempt.value;
     assert(typeof messageId === "string" && /^[0-9a-f-]{36}$/i.test(messageId),
