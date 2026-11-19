@@ -190,7 +190,7 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label, recipientF
           broadcast: { ack: false, self: false },
           presence: { enabled: false },
           postgres_changes: [change],
-          private: false
+          private: true
         },
         access_token: user.accessToken
       },
