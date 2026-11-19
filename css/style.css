@@ -1051,6 +1051,38 @@ body{
 }
 
 
+/* Make the import-contact action visible even while its required fields are incomplete. */
+#add-contact-screen #import-contact.button-primary{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  min-height:52px;
+  color:#092019;
+  background:var(--accent);
+  border:1px solid rgba(139,224,194,.55);
+  box-shadow:0 6px 18px rgba(80,203,162,.16);
+  opacity:1;
+}
+#add-contact-screen #import-contact .import-contact-icon{
+  display:block;
+  flex:0 0 20px;
+  width:20px;
+  height:20px;
+}
+#add-contact-screen #import-contact.button-primary:hover:not(:disabled){
+  background:#a2efd4;
+}
+#add-contact-screen #import-contact.button-primary:disabled{
+  color:#c4d0df;
+  background:#2b3b51;
+  border-color:rgba(185,207,235,.22);
+  box-shadow:none;
+  opacity:1;
+  cursor:not-allowed;
+  transform:none;
+}
+
 /* Keep the profile invitation action clearly visible above the safe-area inset. */
 #profile-screen #create-invite.button-primary{
   color:#092019;
