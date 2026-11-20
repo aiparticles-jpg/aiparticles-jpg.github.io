@@ -113,21 +113,15 @@ Logical fields:
 
 The inbox row is created only after the database validates the sender and routing permission.
 
-## 4. Message identity, retrieval, and local deduplication
+## 4. Message ordering, retrieval, and deduplication
 
-The current agreed direction is deliberately simple:
-
-- Do not add an auto-incrementing sequence solely to track message receipt.
-- Do not add server-side per-message read/processed status or ACK fields at this stage.
-- Give each message a unique UUID.
-- The browser persists received message IDs and message data in its local IndexedDB.
-- On a Realtime event, the browser fetches the corresponding row (or fetches pending inbox rows), compares message UUIDs against its local records, and processes only messages it has not already stored.
-- After reconnect/reload, the browser queries the recipient's retained inbox and deduplicates against its local IndexedDB records.
-- Realtime is not treated as a delivery guarantee. Missed notifications are recovered by querying the inbox.
-
-The exact catch-up query and retention window must be designed so that a reconnect does not accidentally skip rows. If the client has no reliable server-side monotonic cursor, it must not assume that the greatest UUID or latest timestamp proves that every earlier transaction has committed. A safe initial implementation may fetch the recipient's retained inbox (or a deliberately overlapping time range) and deduplicate locally by `message_id`.
-
-Messages are addressed to one recipient. RLS must ensure a user can select only rows where `recipient_id = auth.uid()`. A Postgres Changes subscription filter is an efficiency mechanism, not an authorization boundary; RLS is the security boundary.
+- The messages table deliberately has no synthetic `message_id`, UUID, or database-generated sequence column.
+- `created_at` is retained as the database timestamp and a retrieval hint. It is not unique: PostgreSQL can assign the same transaction timestamp to multiple rows, and timestamp order is not a substitute for protocol order.
+- The authoritative order and duplicate check are the encrypted `seq` value, maintained independently for each sender-to-recipient direction.
+- Realtime delivers the full inserted row. The browser decrypts it and uses `sender_id` plus the decrypted sequence to identify the directional message.
+- Recovery queries use `created_at` to retrieve candidate rows, with overlap where a timestamp cursor is used. The browser must decrypt and deduplicate by sequence; it must never discard a row merely because its timestamp matches another row.
+- A timestamp-only cursor cannot safely prove that all earlier transactions have committed. Recovery must therefore use overlapping reads or fetch the retained inbox, then reconcile by sequence. Pagination and retention limits remain implementation work and must not silently skip rows.
+- Do not add a database sequence, per-message read/processed flag, ACK table, or server-side ordering state.
 
 ## 5. Realtime notification
 
@@ -272,7 +266,7 @@ The existing RPC parameter name p_invitation_id remains appropriate. Its documen
 ### 13.3 Realtime event carries the message; no SELECT per notification
 
 - A Postgres Changes INSERT event for public.messages is expected to contain the inserted row, including its payload.
-- The recipient processes the row carried by the Realtime event directly. Do not issue a second SELECT by message_id for every normal notification.
+- The recipient processes the row carried by the Realtime event directly. Do not issue a second SELECT for every normal notification.
 - The private Realtime channel and RLS remain in force. The recipient subscription is filtered by its own recipient_id; the RLS policy remains the actual authorization boundary.
 - The durable inbox row remains the source of truth. Realtime is a notification/delivery path, not a guarantee that every event reaches an offline or disconnected browser.
 - On ordinary successful delivery, one database write and one Realtime event are sufficient; there is no follow-up read.
@@ -288,7 +282,7 @@ The existing RPC parameter name p_invitation_id remains appropriate. Its documen
 - Increment and persist the outgoing counter atomically before publication, so reloads or multiple tabs do not reuse a number. The implementation must serialize concurrent sends for the same peer.
 - The recipient decrypts the message before inspecting its sequence number. It ignores already-processed duplicates, processes the next expected number, and detects a gap when a higher number arrives before the expected one.
 - On a gap, buffer later messages and perform the recovery read described in Section 13.3. Do not advance the last-processed counter past a gap until missing messages have been recovered or an explicit, separately designed recovery policy is applied.
-- Realtime may redeliver events or the application may process them again after reconnect. Keep the database-generated message_id UUID as an internal row identity and local deduplication key; it is not a sequence number, read receipt, or ordering mechanism.
+- Realtime may redeliver events or the application may process them again after reconnect. Do not introduce a database message ID. Deduplicate using the decrypted per-direction sequence; timestamps are not unique.
 - Do not assume UUID ordering or timestamps alone prove that no message is missing.
 
 ### 13.5 Minimal encrypted message envelope
@@ -433,7 +427,7 @@ Implemented in the production browser app while preserving the existing ntfy exc
 - Before the RPC call, the invitee persists `supabase_invitation_attempted_at`. A failed or interrupted attempt is not retried automatically; this deliberately avoids reusing a one-time bearer token, but it means a transient failure requires a fresh invitation exchange. A successful call also stores `supabase_invitation_redeemed_at`. Raw invitation tokens are not logged.
 - If the invitation has no Supabase fields, the app continues with ntfy only. If Supabase submission fails, the legacy ntfy exchange remains operational and the failure is recorded in the diagnostic log.
 - The production app now subscribes to the authenticated user's private `inbox:<uuid>` Realtime channel, filtered to `recipient_id`. It processes the full `event.new` row without a per-event SELECT.
-- On each successful Realtime subscription (including reconnect), the app reads up to 500 rows from the durable inbox to recover missed notifications. Processed message UUIDs are persisted locally (bounded to the latest 2,000 IDs) to suppress duplicates.
+- On each successful Realtime subscription (including reconnect), the app reads up to 500 rows from the durable inbox to recover missed notifications. Rows are currently deduplicated in the active page session by sender UUID plus decrypted seq; persistent sequence state and gap recovery are still outstanding.
 - The first `contact_accept` message is decrypted using the contact's shared invitation secret and the sender/recipient UUIDs from the database row. Successful processing marks the contact as accepted in local metadata. Other message types are currently not connected to call/chat handlers.
 - Normal Supabase call signaling, persistent per-peer sequence allocation/gap recovery, and real two-device call testing remain outstanding.
 - GitHub Actions syntax check passed for commit `031e74cd779ac66a50b94e1df80cd5145cccc310` (run `44714979485`); GitHub Pages deployment also succeeded (run `44714979359`).
