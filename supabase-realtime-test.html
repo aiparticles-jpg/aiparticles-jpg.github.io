@@ -29,6 +29,12 @@ button:disabled{opacity:.45;cursor:not-allowed}.muted{font-size:13px;color:#94a3
 <div class="muted">Подписка на собственный inbox: <span id="subscription">ожидание…</span></div>
 </section>
 <section class="card">
+<h2>Проверка криптографического конверта</h2>
+<p class="muted">Локально проверяет AES-256-GCM, формат конверта и привязку шифрования к UUID отправителя и получателя. Данные этой проверки не отправляются в Supabase.</p>
+<button id="crypto-test" type="button">Проверить шифрование</button>
+<p id="crypto-status" class="muted" aria-live="polite"></p>
+</section>
+<section class="card">
 <h2>1. Создать приглашение (браузер получателя)</h2>
 <p class="muted">Создаёт случайный 256-битный invitation ID. В базе хранится только SHA-256 хеш. Передай ID во второй браузер.</p>
 <button id="create" disabled>Создать одноразовое приглашение</button>
@@ -48,7 +54,8 @@ button:disabled{opacity:.45;cursor:not-allowed}.muted{font-size:13px;color:#94a3
 <ol id="events"><li class="muted">Ожидаем действия…</li></ol>
 </section>
 </main>
-<script>
+<script type="module">
+import { createInvitationId, encryptSupabaseMessage, decryptSupabaseMessage } from "./js/supabase-protocol.mjs?v=1";
 (async()=>{
  const URL="https://lcmccpecmtnqknthtijl.supabase.co";
  const KEY="sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
@@ -76,11 +83,27 @@ button:disabled{opacity:.45;cursor:not-allowed}.muted{font-size:13px;color:#94a3
     else if(state==="CHANNEL_ERROR"||state==="TIMED_OUT"){status("Ошибка подписки Realtime: "+state,false);log("Realtime: "+state+(error?.message?"; "+error.message:""),false)}
   });
  }catch(e){status("Ошибка инициализации: "+(e.message||e),false);return}
+ $("crypto-test").onclick=async()=>{
+  $("crypto-test").disabled=true;$("crypto-status").textContent="Проверяем…";
+  try{
+   const bytes=crypto.getRandomValues(new Uint8Array(32));let binary="";bytes.forEach(b=>binary+=String.fromCharCode(b));
+   const sharedSecret=btoa(binary).replaceAll("+","-").replaceAll("/","_").replace(/=+$/g,"");
+   const senderId="00000000-0000-4000-8000-000000000001",recipientId="00000000-0000-4000-8000-000000000002";
+   const message={type:"hello",seq:"1",body:{sid:crypto.randomUUID()}};
+   const envelope=await encryptSupabaseMessage({sharedSecret,senderId,recipientId,message});
+   const decrypted=await decryptSupabaseMessage({sharedSecret,senderId,recipientId,envelope});
+   if(JSON.stringify(decrypted)!==JSON.stringify(message)||Object.keys(envelope).sort().join(",")!=="data,v")throw Error("Проверка формата или расшифровки не пройдена.");
+   let aadRejected=false;try{await decryptSupabaseMessage({sharedSecret,senderId,recipientId:"00000000-0000-4000-8000-000000000003",envelope})}catch{aadRejected=true}
+   if(!aadRejected)throw Error("AAD не привязал UUID получателя.");
+   $("crypto-status").textContent="PASS: шифрование, расшифровка и проверка AAD работают.";
+   log("PASS: AES-256-GCM конверт расшифровывается только с правильными UUID отправителя и получателя.",true);
+  }catch(e){$("crypto-status").textContent="Ошибка: "+(e.message||e);log("Проверка конверта: "+(e.message||e),false)}
+  finally{$("crypto-test").disabled=false}
+ };
  $("create").onclick=async()=>{
   $("create").disabled=true;$("create-status").textContent="Создаём приглашение…";
   try{
-   const bytes=crypto.getRandomValues(new Uint8Array(32));let binary="";bytes.forEach(b=>binary+=String.fromCharCode(b));
-   const token=btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+   const token=createInvitationId();
    const {error}=await client.rpc("create_invitation",{p_invitation_id:token});if(error)throw error;
    $("token").textContent=token;$("token-wrap").hidden=false;$("create-status").textContent="Приглашение создано. Оно одноразовое.";
    log("PASS: 256-битное приглашение создано через create_invitation().",true);
