@@ -38,7 +38,7 @@ begin
       and schemaname = 'public'
       and tablename = 'messages'
   ) then
-    alter publication supabase_realtime drop table public.messages;
+    execute 'alter publication supabase_realtime drop table public.messages';
   end if;
 end;
 $drop_messages_publication$;
