@@ -463,7 +463,78 @@ async function probeTracker(url) {
     slidingResults.push(await runSlidingWindow(12, 8000));
     const slidingWindowResult = slidingResults;
 
-    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, sameRunnerIp: true }));
+    // Deterministic slot-timeline model: room number is derived from elapsed time,
+    // not from the count of packets actually sent. No per-packet timestamp is required.
+    function runSlotTimelineModel() {
+      const slotMs = 40;
+      const windowSize = 12;
+      const slotAt = (elapsedMs) => Math.floor(elapsedMs / slotMs);
+      const windowAt = (elapsedMs) => {
+        const first = slotAt(elapsedMs);
+        return Array.from({ length: windowSize }, (_, offset) => first + offset);
+      };
+      const assert = (condition, message) => {
+        if (!condition) throw new Error("SLOT_TIMELINE_ASSERT: " + message);
+      };
+
+      // Normal cadence: each 40 ms interval maps to exactly one room/slot.
+      const normal = Array.from({ length: 10 }, (_, i) => slotAt(i * slotMs));
+      assert(normal.every((slot, i) => slot === i), "normal cadence must map 1:1 to slots");
+
+      // Sender pauses for 320 ms after slot 20. The next packet's room is selected
+      // from elapsed time, so stale slots are skipped instead of being replayed.
+      const beforePauseMs = 20 * slotMs;
+      const afterPauseMs = beforePauseMs + 320 + slotMs;
+      const beforePauseSlot = slotAt(beforePauseMs);
+      const afterPauseSlot = slotAt(afterPauseMs);
+      assert(afterPauseSlot - beforePauseSlot === 9, "sender pause must advance timeline by elapsed time");
+      const afterPauseWindow = windowAt(afterPauseMs);
+      assert(afterPauseWindow[0] === afterPauseSlot, "window must start at current slot after sender pause");
+      assert(!afterPauseWindow.includes(beforePauseSlot + 1), "obsolete slots must not remain in active window");
+
+      // Receiver falls 500 ms behind processing/current time. It recalculates from
+      // its own monotonic clock and jumps its target window forward immediately.
+      const lastReceivedSlot = 30;
+      const receiverNowMs = (lastReceivedSlot * slotMs) + 500;
+      const receiverCurrentSlot = slotAt(receiverNowMs);
+      const receiverWindow = windowAt(receiverNowMs);
+      assert(receiverCurrentSlot === 42, "receiver must jump to slot 42 after 500 ms lag");
+      assert(receiverWindow[0] === 42 && receiverWindow[11] === 53, "receiver window must follow current time");
+
+      // A skipped packet does not shift the timebase: its missing slot is simply
+      // absent, while the following packet retains the slot dictated by time.
+      const sentSlots = [0, 1, 2, 4, 5];
+      assert(sentSlots[3] === slotAt(4 * slotMs), "missing slot must not renumber later packets");
+
+      const result = {
+        slotDurationMs: slotMs,
+        ratePerSecond: 1000 / slotMs,
+        windowSize,
+        normalCadence: { sentSlots: normal, passed: true },
+        senderPause: {
+          pauseMs: 320,
+          previousSlot: beforePauseSlot,
+          nextSlot: afterPauseSlot,
+          skippedSlots: afterPauseSlot - beforePauseSlot - 1,
+          activeWindowStart: afterPauseWindow[0],
+          passed: true
+        },
+        receiverLag: {
+          lastReceivedSlot,
+          receiverElapsedMs: receiverNowMs,
+          receiverCurrentSlot,
+          activeWindow: [receiverWindow[0], receiverWindow[receiverWindow.length - 1]],
+          passed: true
+        },
+        packetLoss: { sentSlots, missingSlot: 3, subsequentSlotUnchanged: true, passed: true },
+        perPacketTimestampRequired: false
+      };
+      console.log("SLOT_TIMELINE_MODEL " + JSON.stringify(result));
+      return result;
+    }
+    const slotTimelineModel = runSlotTimelineModel();
+
+    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, sameRunnerIp: true }));    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, slotTimelineModel, sameRunnerIp: true }));
     return true;
   } finally {
     for (const ws of [sender, receiver]) {
