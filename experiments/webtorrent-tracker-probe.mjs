@@ -220,7 +220,80 @@ async function probeTracker(url) {
     };
     console.log("STREAM " + JSON.stringify(streamResult));
 
-    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sameRunnerIp: true }));
+    // Original proposal: one sequentially-derived info_hash (room) per 1 KiB packet.
+    // Pre-join the receiver to all test rooms, then send at 25 packets/second.
+    const roomPacketCount = 75;
+    const roomPacketIntervalMs = 40;
+    const roomPackets = [];
+    for (let i = 0; i < roomPacketCount; i++) {
+      const hash = roomHash(1000 + i);
+      const ack = waitForMessage(
+        receiver,
+        (m) => m.action === "announce" && m.info_hash === hash,
+        "receiver prejoin for packet-room " + i
+      );
+      send(receiver, {
+        action: "announce", info_hash: hash, peer_id: receiverId,
+        uploaded: 0, downloaded: 0, left: 1, event: "started", numwant: 0
+      });
+      await ack;
+      roomPackets.push({ hash, hashHex: Buffer.from(hash, "latin1").toString("hex") });
+    }
+
+    const roomSentAt = new Map();
+    const roomReceivedAt = new Map();
+    const roomPayload = Buffer.alloc(PAYLOAD_BYTES, 0x3c);
+    const roomListener = (raw) => {
+      let message;
+      try { message = JSON.parse(raw.toString()); } catch { return; }
+      if (message.action !== "announce" || !message.offer?.sdp) return;
+      const room = roomPackets.find((entry) => entry.hash === message.info_hash);
+      if (!room) return;
+      const markerLine = message.offer.sdp.split("\\r\\n").find((line) => line.startsWith("a=x-voicelink-room-packet:"));
+      if (!markerLine) return;
+      const markerParts = markerLine.slice("a=x-voicelink-room-packet:".length).split(":");
+      if (markerParts.length !== 2) return;
+      const packetNumber = Number(markerParts[0]);
+      if (!roomSentAt.has(packetNumber) || roomReceivedAt.has(packetNumber)) return;
+      const decoded = Buffer.from(markerParts[1], "base64");
+      if (decoded.length !== PAYLOAD_BYTES || !decoded.equals(roomPayload)) return;
+      roomReceivedAt.set(packetNumber, performance.now());
+    };
+    receiver.on("message", roomListener);
+
+    const roomStreamStarted = performance.now();
+    for (let i = 0; i < roomPacketCount; i++) {
+      const room = roomPackets[i];
+      const offerId = binaryString(createHash("sha256").update("room-packet-offer:" + i).digest().subarray(0, 20));
+      const marker = "a=x-voicelink-room-packet:" + i + ":" + roomPayload.toString("base64");
+      const sdp = ["v=0", "o=- 3 3 IN IP4 127.0.0.1", "s=VoiceLink sequential room probe", "t=0 0", marker, ""].join("\\r\\n");
+      roomSentAt.set(i, performance.now());
+      send(sender, {
+        action: "announce", info_hash: room.hash, peer_id: senderId,
+        uploaded: 0, downloaded: 0, left: 1, event: "started", numwant: 1,
+        offers: [{ offer: { type: "offer", sdp }, offer_id: offerId }]
+      });
+      if (i + 1 < roomPacketCount) await new Promise((resolve) => setTimeout(resolve, roomPacketIntervalMs));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    receiver.off("message", roomListener);
+    const roomLatencies = Array.from(roomReceivedAt, ([packet, received]) => received - roomSentAt.get(packet)).sort((a, b) => a - b);
+    const roomPercentile = (p) => roomLatencies.length ? Math.round(roomLatencies[Math.min(roomLatencies.length - 1, Math.floor((roomLatencies.length - 1) * p))]) : null;
+    const roomStreamResult = {
+      payloadBytes: PAYLOAD_BYTES,
+      targetRatePerSecond: 1000 / roomPacketIntervalMs,
+      rooms: roomPacketCount,
+      sentPackets: roomPacketCount,
+      receivedPackets: roomReceivedAt.size,
+      lostPackets: roomPacketCount - roomReceivedAt.size,
+      lossPercent: Number(((roomPacketCount - roomReceivedAt.size) / roomPacketCount * 100).toFixed(2)),
+      elapsedMs: Math.round(performance.now() - roomStreamStarted),
+      latencyMs: { min: roomLatencies.length ? Math.round(roomLatencies[0]) : null, median: roomPercentile(0.5), p95: roomPercentile(0.95), max: roomLatencies.length ? Math.round(roomLatencies[roomLatencies.length - 1]) : null }
+    };
+    console.log("ROOM_STREAM " + JSON.stringify(roomStreamResult));
+
+    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, sameRunnerIp: true }));
     return true;
   } finally {
     for (const ws of [sender, receiver]) {
