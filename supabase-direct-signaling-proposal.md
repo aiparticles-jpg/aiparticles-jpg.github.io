@@ -426,13 +426,16 @@ Keep ntfy active until the next steps implement initial invitation redemption, i
 Implemented in the production browser app while preserving the existing ntfy exchange.
 
 - Added `submitSupabaseInvitationAcceptance()` to `js/supabase-client.js`.
-- When a newly imported contact is sent the existing encrypted ntfy contact-response message, the app also attempts to redeem the verified contact's `supabase_invitation_id`.
+- Immediately after a newly imported contact is saved, the app makes one attempt to redeem the verified contact's `supabase_invitation_id`. At startup it also checks already-saved contacts and makes the same one-time attempt for any contact not previously attempted. The ntfy contact-response path does not redeem the Supabase invitation.
 - The first Supabase message uses the existing 32-byte `invitation_secret` as shared E2EE key material and the version-1 Supabase envelope. Its encrypted plaintext is `{type:"contact_accept",seq:"1",body:{}}`.
 - The sender UUID is obtained from the current Supabase Auth session. The recipient UUID and one-time invitation token come from the verified contact package. The client calls `submit_message(p_payload, null, p_invitation_id)`; it does not send a client-selected sender UUID.
 - A successful RPC atomically consumes the one-time token, creates the bidirectional `links` row, and inserts the encrypted first message into the inviter's durable inbox.
-- On success, the invitee stores a local `supabase_invitation_redeemed_at` marker to avoid deliberately retrying the same one-time token. Raw invitation tokens are not logged.
+- Before the RPC call, the invitee persists `supabase_invitation_attempted_at`. A failed or interrupted attempt is not retried automatically; this deliberately avoids reusing a one-time bearer token, but it means a transient failure requires a fresh invitation exchange. A successful call also stores `supabase_invitation_redeemed_at`. Raw invitation tokens are not logged.
 - If the invitation has no Supabase fields, the app continues with ntfy only. If Supabase submission fails, the legacy ntfy exchange remains operational and the failure is recorded in the diagnostic log.
-- The production app does not yet subscribe to the Supabase inbox or process incoming Supabase messages. The initial row is durable, but the inviter will not yet display/process it through the new transport. Realtime subscription, inbox recovery, and normal call signaling remain the next implementation stage.
+- The production app now subscribes to the authenticated user's private `inbox:<uuid>` Realtime channel, filtered to `recipient_id`. It processes the full `event.new` row without a per-event SELECT.
+- On each successful Realtime subscription (including reconnect), the app reads up to 500 rows from the durable inbox to recover missed notifications. Processed message UUIDs are persisted locally (bounded to the latest 2,000 IDs) to suppress duplicates.
+- The first `contact_accept` message is decrypted using the contact's shared invitation secret and the sender/recipient UUIDs from the database row. Successful processing marks the contact as accepted in local metadata. Other message types are currently not connected to call/chat handlers.
+- Normal Supabase call signaling, persistent per-peer sequence allocation/gap recovery, and real two-device call testing remain outstanding.
 - GitHub Actions syntax check passed for commit `031e74cd779ac66a50b94e1df80cd5145cccc310` (run `44714979485`); GitHub Pages deployment also succeeded (run `44714979359`).
 
 This is a staged dual-write/first-contact bridge, not a completed ntfy replacement. Keep ntfy active until inbox processing and a real two-device call work over Supabase.
