@@ -169,7 +169,7 @@ revoke all on function public.submit_message(jsonb, uuid, text) from public, ano
 grant execute on function public.create_invitation(text) to authenticated;
 grant execute on function public.submit_message(jsonb, uuid, text) to authenticated;
 
--- Enable Postgres Changes notifications for the durable inbox.
+-- The durable inbox is notified by a private Broadcast trigger installed in the timestamp-only migration.
 do $publication$
 begin
   if not exists (
