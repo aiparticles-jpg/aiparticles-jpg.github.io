@@ -195,7 +195,7 @@ async function probeTracker(url) {
       sentAt.set(i, performance.now());
       send(sender, {
         action: "announce", info_hash: streamHash, peer_id: senderId,
-        uploaded: 0, downloaded: 0, left: 1, numwant: 1,
+        uploaded: 0, downloaded: 0, left: 1, ...(i === 0 ? { event: "started" } : {}), numwant: 1,
         offers: [{ offer: { type: "offer", sdp }, offer_id: offerId }]
       });
       if (i + 1 < streamPackets) await new Promise((resolve) => setTimeout(resolve, streamIntervalMs));
