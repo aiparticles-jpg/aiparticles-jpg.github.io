@@ -868,21 +868,28 @@ async function probeTracker(url) {
           map: (receiverNow) => receiverNow - (intercept + drift * receiverNow)
         };
       }
-      async function collect(count, outboundFn, returnFn, pauseMs = 300) {
+      async function collect(count, outboundFn, returnFn, pauseMs = 300, attemptsPerRound = 4, dropRound = () => false) {
         const samples = [];
+        const droppedRounds = [];
         for (let i = 0; i < count; i++) {
+          if (dropRound(i)) {
+            droppedRounds.push(i);
+            if (i + 1 < count) await sleep(pauseMs);
+            continue;
+          }
           const attempts = [];
-          for (let j = 0; j < 4; j++) {
+          for (let j = 0; j < attemptsPerRound; j++) {
             attempts.push(await exchange(outboundFn(i, j), returnFn(i, j)));
           }
           attempts.sort((a, b) => a.rtt - b.rtt);
           samples.push(attempts[0]);
           if (i + 1 < count) await sleep(pauseMs);
         }
+        samples.droppedRounds = droppedRounds;
         return samples;
       }
       try {
-        const baselineSamples = await collect(7, (i,j) => 10 + ((i+j)%3)*4, (i,j) => 10 + ((i+j)%3)*4, 250);
+        const baselineSamples = await collect(9, (i,j) => 12 + ((i+j)%4)*4, (i,j) => 12 + ((i+j)%4)*4, 500, 5);
         const baseline = fit(baselineSamples);
 
         const forwardHeavy = await collect(4, () => 8, () => 28, 250);
@@ -903,13 +910,20 @@ async function probeTracker(url) {
 
         // Change the receiver oscillator while the control exchange is paused.
         await rpc(receiver, "set-drift", { driftPpm: 1000 });
-        await sleep(2500);
+        await sleep(3500);
         const [senderAfterPause, receiverAfterPause] = await Promise.all([now(sender), now(receiver)]);
         const staleEstimate = baseline.map(receiverAfterPause);
         const staleMappingErrorMs = staleEstimate - senderAfterPause;
 
         // Restore frequent symmetric control exchanges and estimate the new drift.
-        const recoverySamples = await collect(9, (i,j) => 12 + ((i+j)%4)*5, (i,j) => 12 + ((i+j)%4)*5, 250);
+        const recoverySamples = await collect(
+          12,
+          (i,j) => 12 + ((i * 2 + j) % 5) * 4,
+          (i,j) => 12 + ((i * 2 + j) % 5) * 4,
+          400,
+          5,
+          (round) => round % 3 === 1
+        );
         const recovered = fit(recoverySamples);
         const recoveryValidation = [];
         for (let i = 0; i < 5; i++) {
@@ -931,7 +945,11 @@ async function probeTracker(url) {
           simulatedClocksAreSeparateProcesses: true,
           initialRelativeDriftPpm: 300,
           receiverDriftChangedToPpm: 1000,
-          controlOutageMs: 2500,
+          controlOutageMs: 3500,
+          recoveryControlRoundsPlanned: 12,
+          recoveryControlRoundsDropped: recoverySamples.droppedRounds,
+          recoveryControlRoundsUsed: recoverySamples.length,
+          recoveryControlRoundLossPercent: Number((recoverySamples.droppedRounds.length / 12 * 100).toFixed(1)),
           baselineEstimatedRelativeDriftPpm: Number((baseline.drift * 1_000_000).toFixed(1)),
           forwardHeavyPath: {
             outboundMs: 8, returnMs: 28,
@@ -949,11 +967,14 @@ async function probeTracker(url) {
           recoveryValidationErrorsMs: recoveryValidation.map((x) => x.errorMs),
           maxAbsoluteRecoveryErrorMs: Number(maxRecoveryError.toFixed(2)),
           maxRecoverySlotErrorAt40ms: Math.max(...recoveryValidation.map((x) => Math.abs(x.slotErrorAt40ms))),
-          recoveryPassed: maxRecoveryError < 5
+          recoveryPassed: maxRecoveryError < 5 && Math.abs(recovered.drift * 1_000_000 - 1080) < 40
         };
         console.log("ADVERSE_CLOCK_SYNC " + JSON.stringify(result));
         if (!Number.isFinite(staleMappingErrorMs) || !Number.isFinite(recovered.drift)) {
           throw new Error("adverse clock sync produced a non-finite result");
+        }
+        if (!result.recoveryPassed) {
+          throw new Error("clock mapping did not recover within 5 ms / 40 ppm after control-message loss");
         }
         return result;
       } finally {
