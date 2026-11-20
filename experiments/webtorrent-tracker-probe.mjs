@@ -297,7 +297,7 @@ async function probeTracker(url) {
     // On receipt of packet i, it joins i+5, then leaves room i.
     const slidingPacketCount = 75;
     const slidingWindowSize = 5;
-    const slidingIntervalMs = 40;
+    const slidingIntervalMs = 200;
     const slidingBase = 5000;
     const slidingRooms = Array.from({ length: slidingPacketCount }, (_, i) => {
       const hash = roomHash(slidingBase + i);
