@@ -61,7 +61,7 @@ async function main() {
         throw new Error("Timestamp-only messages schema verification failed.");
       }
       await db.query("commit");
-      console.log("Supabase messages migrated: message_id removed; created_at retained; submit_message returns created_at.");
+      console.log("Supabase messages migrated: message_id removed; created_at retained; submit_message returns created_at; private Broadcast trigger installed.");
     } catch (error) {
       await db.query("rollback");
       throw error;
