@@ -149,4 +149,4 @@ grant execute on function public.submit_message(jsonb, uuid, text) to authentica
 comment on table public.messages is
   'Durable recipient inbox without a synthetic message ID. created_at is a retrieval timestamp; encrypted per-direction seq defines order and deduplication. Inserts notify private inbox topics through Broadcast.';
 comment on function public.submit_message(jsonb, uuid, text) is
-  'Atomically redeems an invitation or validates an existing link, then inserts into the recipient inbox and returns created_at. An AFTER INSERT trigger sends a private Broadcast to the recipient's inbox topic.';
+  'Atomically redeems an invitation or validates an existing link, then inserts into the recipient inbox and returns created_at. An AFTER INSERT trigger sends a private Broadcast to the recipient inbox topic.';
