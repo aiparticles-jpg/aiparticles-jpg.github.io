@@ -163,8 +163,7 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
     const change = {
       event: "INSERT",
       schema: "public",
-      table: "messages",
-      select: ["sender_id", "recipient_id", "payload", "created_at"]
+      table: "messages"
     };
     change.filter = "recipient_id=eq." + user.id;
 
