@@ -644,3 +644,107 @@ export async function clearCallHistory() {
   tx.objectStore("history").clear();
   await done;
 }
+
+const SUPABASE_UUID_SEQUENCE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SUPABASE_MAX_SEQUENCE = 18446744073709551615n;
+
+function validateSupabasePeerId(peerId) {
+  if (typeof peerId !== "string" || !SUPABASE_UUID_SEQUENCE_RE.test(peerId)) {
+    throw new TypeError("A valid Supabase peer UUID is required.");
+  }
+  return peerId.toLowerCase();
+}
+
+function validateSupabaseSequence(value) {
+  const text = String(value);
+  if (!/^(0|[1-9][0-9]{0,19})$/.test(text) || BigInt(text) > SUPABASE_MAX_SEQUENCE) {
+    throw new TypeError("Supabase sequence is outside uint64 range.");
+  }
+  return text;
+}
+
+/** Read durable per-peer counters. Counters are strings to preserve uint64 precision. */
+export async function getSupabaseSequenceState(peerId) {
+  const peer = validateSupabasePeerId(peerId);
+  const tx = await openTransaction("meta", "readonly");
+  const done = transactionDone(tx);
+  const record = await requestValue(tx.objectStore("meta").get("supabase_sequence:" + peer));
+  await done;
+  return {
+    outgoing: validateSupabaseSequence(record?.outgoing ?? "0"),
+    incoming: validateSupabaseSequence(record?.incoming ?? "0")
+  };
+}
+
+/** Reserve the next outgoing number atomically across tabs sharing this IndexedDB. */
+export async function allocateSupabaseOutgoingSequence(peerId) {
+  const peer = validateSupabasePeerId(peerId);
+  const tx = await openTransaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("meta");
+  let allocated = null;
+  const request = store.get("supabase_sequence:" + peer);
+  request.onsuccess = () => {
+    const record = request.result || { key: "supabase_sequence:" + peer, outgoing: "0", incoming: "0" };
+    const current = BigInt(validateSupabaseSequence(record.outgoing ?? "0"));
+    if (current >= SUPABASE_MAX_SEQUENCE) {
+      tx.abort();
+      return;
+    }
+    allocated = (current + 1n).toString();
+    record.outgoing = allocated;
+    record.incoming = validateSupabaseSequence(record.incoming ?? "0");
+    record.updated_at = Date.now();
+    store.put(record);
+  };
+  await done;
+  if (allocated === null) throw new Error("Could not reserve a Supabase outgoing sequence.");
+  return allocated;
+}
+
+/** Persist a known first outgoing sequence after the one-time contact acceptance. */
+export async function ensureSupabaseOutgoingSequence(peerId, minimumValue) {
+  const peer = validateSupabasePeerId(peerId);
+  const minimum = validateSupabaseSequence(minimumValue);
+  const tx = await openTransaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("meta");
+  const request = store.get("supabase_sequence:" + peer);
+  request.onsuccess = () => {
+    const record = request.result || { key: "supabase_sequence:" + peer, outgoing: "0", incoming: "0" };
+    if (BigInt(validateSupabaseSequence(record.outgoing ?? "0")) < BigInt(minimum)) record.outgoing = minimum;
+    record.incoming = validateSupabaseSequence(record.incoming ?? "0");
+    record.updated_at = Date.now();
+    store.put(record);
+  };
+  await done;
+  return minimum;
+}
+
+/** Advance incoming state only when the next expected sequence was processed. */
+export async function advanceSupabaseIncomingSequence(peerId, sequenceValue) {
+  const peer = validateSupabasePeerId(peerId);
+  const sequence = validateSupabaseSequence(sequenceValue);
+  if (sequence === "0") throw new TypeError("Incoming sequence must start at one.");
+  const target = BigInt(sequence);
+  const tx = await openTransaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("meta");
+  let result = "gap";
+  const request = store.get("supabase_sequence:" + peer);
+  request.onsuccess = () => {
+    const record = request.result || { key: "supabase_sequence:" + peer, outgoing: "0", incoming: "0" };
+    const current = BigInt(validateSupabaseSequence(record.incoming ?? "0"));
+    if (target <= current) result = "duplicate";
+    else if (target === current + 1n) {
+      record.incoming = sequence;
+      record.outgoing = validateSupabaseSequence(record.outgoing ?? "0");
+      record.updated_at = Date.now();
+      store.put(record);
+      result = "advanced";
+    }
+  };
+  await done;
+  return result;
+}
+
