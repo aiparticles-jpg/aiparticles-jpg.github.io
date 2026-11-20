@@ -369,6 +369,6 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error("Supabase Postgres Changes test failed:", error.message);
+  console.error("Supabase private Broadcast test failed:", error.message);
   process.exitCode = 1;
 });
