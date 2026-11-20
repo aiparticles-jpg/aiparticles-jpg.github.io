@@ -253,20 +253,21 @@ This section records decisions made after the two-browser Supabase Auth, invitat
 - OneSignal Subscription ID remains a separate push-notification identifier. It is not a signaling identity and is not used as a replacement for the Supabase UUID.
 - Database functions derive the sender from the verified JWT using auth.uid(). Never trust a client-supplied sender_id.
 
-### 13.2 Client-side invitation hashing
+### 13.2 Invitation ID: hash once in the database
 
-The original random invitation secret must never be sent to Supabase.
+The browser generates and transmits the original random invitation ID. It does not hash the value before sending it to Supabase.
 
-1. The inviter's browser generates exactly 32 cryptographically random bytes, T.
-2. The browser calculates H = SHA-256(T).
-3. The browser encodes the 32-byte digest as unpadded Base64URL. The resulting H is exactly 43 characters.
-4. The browser sends this 43-character H as p_invitation_id to create_invitation(), and shares H with the intended invitee as the one-time bearer invitation value. The original T never leaves the inviter's browser.
-5. Supabase validates the 43-character Base64URL format and stores SHA-256(UTF8(H)), a 32-byte digest, together with the inviter's auth.uid().
-6. During redemption, the invitee submits the same 43-character H as p_invitation_id. submit_message() calculates SHA-256(UTF8(H)) and atomically deletes the matching row with DELETE ... RETURNING owner_id.
+1. The inviter's browser generates exactly 32 cryptographically random bytes using a cryptographically secure random generator.
+2. The browser encodes those 32 bytes as unpadded Base64URL. The resulting invitation ID is exactly 43 characters.
+3. The browser sends this original 43-character value as p_invitation_id to create_invitation(), and shares the same value with the intended invitee as the one-time bearer invitation credential.
+4. Supabase validates the expected 43-character Base64URL format and stores SHA-256(UTF8(invitation_id)), a 32-byte digest, together with the inviter's auth.uid(). The raw invitation ID is not stored in the invitations table.
+5. During redemption, the invitee submits the original 43-character invitation ID as p_invitation_id. submit_message() calculates the same SHA-256(UTF8(invitation_id)) and atomically deletes the matching row with DELETE ... RETURNING owner_id.
 
-Thus the database stores a hash of the browser-generated digest (a second hash), not the original random value and not the bearer value used for redemption. The first digest H remains a secret bearer credential: anyone who obtains it can attempt to redeem the invitation. HTTPS remains mandatory. The second hash provides defense in depth against replay directly from a read-only database/table leak; it does not protect against compromise of an active Supabase service that can observe redemption requests.
+There is exactly one hash operation, performed inside the database for both creation and redemption. Do not hash the invitation ID in the browser, and do not introduce a second hash.
 
-The existing RPC parameter name p_invitation_id may be retained for compatibility, but its documented meaning changes to “43-character Base64URL client-side SHA-256 digest of the random invitation bytes.” Update SQL comments, tests, and frontend code together. Do not accidentally hash the raw token on one path and the client digest on the other.
+The invitation ID is a bearer secret: anyone who obtains it can attempt to redeem the invitation. HTTPS is mandatory, and raw invitation values must not be written to application logs, analytics, or error reports. Storing only its SHA-256 digest protects against disclosure of the live invitations table alone; it does not protect against compromise of an active Supabase service or a client/session that can observe redemption requests.
+
+The existing RPC parameter name p_invitation_id remains appropriate. Its documented meaning is the original 43-character Base64URL encoding of 32 random bytes. The create and redemption RPCs must hash the exact same UTF-8 representation.
 
 ### 13.3 Realtime event carries the message; no SELECT per notification
 
@@ -341,5 +342,5 @@ For an established contact:
 ### 13.7 Scope and migration status
 
 - These decisions update the target protocol specification only. They do not yet change the current SQL migrations, test page, or production ntfy signaling implementation.
-- The existing two-browser test proved the current test implementation's invitation redemption, RLS, durable inbox, and private Realtime notification. It did not yet prove full-row direct processing without SELECT, client-side invitation pre-hashing, the new envelope, sequence-gap recovery, or an actual VoiceLink call.
+- The existing two-browser test proved the current test implementation's invitation redemption, RLS, durable inbox, and private Realtime notification. It did not yet prove full-row direct processing without SELECT, the revised single-hash invitation flow, the new envelope, sequence-gap recovery, or an actual VoiceLink call.
 - Implement the SQL and browser changes together in a new test stage. Keep the existing production ntfy path intact until the revised protocol passes browser tests and a real two-device call.
