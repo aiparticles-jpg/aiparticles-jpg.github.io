@@ -4,6 +4,28 @@
 
 drop function if exists public.submit_message(jsonb, uuid, text);
 
+do $drop_message_pk$
+declare
+  v_constraint text;
+begin
+  select c.conname into v_constraint
+  from pg_constraint c
+  where c.conrelid = 'public.messages'::regclass
+    and c.contype = 'p'
+    and exists (
+      select 1
+      from unnest(c.conkey) as key(attnum)
+      join pg_attribute a
+        on a.attrelid = c.conrelid and a.attnum = key.attnum
+      where a.attname = 'message_id'
+    );
+
+  if v_constraint is not null then
+    execute format('alter table public.messages drop constraint %I', v_constraint);
+  end if;
+end;
+$drop_message_pk$;
+
 alter table public.messages drop column if exists message_id;
 
 create or replace function public.submit_message(
