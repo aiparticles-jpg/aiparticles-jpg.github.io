@@ -389,7 +389,7 @@ async function probeTracker(url) {
         const room = slidingRooms[i];
         const offerId = binaryString(createHash("sha256").update("sliding-offer:" + windowSize + ":" + i).digest().subarray(0, 20));
         const sentAt = performance.now();
-        const elapsedUs = Math.round((sentAt - senderClockOrigin) * 1000);
+        const elapsedUs = i === 0 ? 0 : Math.round((sentAt - senderClockOrigin) * 1000);
         const marker = "a=x-voicelink-sliding:" + i + ":" + elapsedUs + ":" + slidingPayload.toString("base64");
         const sdp = ["v=0", "o=- 4 4 IN IP4 127.0.0.1", "s=VoiceLink sliding-window probe", "t=0 0", marker, ""].join("\\r\\n");
         slidingSentAt.set(i, sentAt);
@@ -438,7 +438,7 @@ async function probeTracker(url) {
         elapsedMs: Math.round(performance.now() - slidingStarted),
         latencyMs: { min: latencies.length ? Math.round(latencies[0]) : null, median: percentile(latencies, 0.5), p95: percentile(latencies, 0.95), max: latencies.length ? Math.round(latencies[latencies.length - 1]) : null },
         senderTimeline: "monotonic elapsed microseconds since packet 0",
-        timingMetadataBytesPerPacket: 8,
+        timingMetadataFormat: "decimal elapsed microseconds since packet 0, carried in custom SDP attribute",
         interPacketTiming: {
           comparedIntervals: timelineDeltas.length,
           medianAbsoluteDeltaErrorMs: percentile(timelineDeltas, 0.5),
