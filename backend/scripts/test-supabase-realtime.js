@@ -179,7 +179,7 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
       event: "INSERT",
       schema: "public",
       table: "messages",
-      select: ["message_id", "sender_id", "recipient_id", "payload"]
+      select: ["message_id", "sender_id", "recipient_id", "payload", "created_at"]
     };
     change.filter = "recipient_id=eq." + user.id;
 
@@ -373,14 +373,15 @@ async function main() {
       "Realtime event was routed to the wrong sender or recipient.");
     assert(record.payload && record.payload.nonce === nonce,
       "Realtime event payload does not match the inserted message.");
+    assert(record.created_at && !Number.isNaN(Date.parse(record.created_at)),
+      "Realtime INSERT event did not include the full row's created_at field.");
     assert(Array.isArray(event.ids) && event.ids.includes(recipientSub.subscriptionId),
       "Realtime event subscription ID does not match the recipient subscription.");
     console.log("PASS: Postgres Changes delivered the new messages INSERT to the recipient's filtered subscription.");
 
-    const inbox = await readMessage(config.url, config.publishableKey, recipient, messageId);
-    assert(inbox.length === 1 && inbox[0].payload && inbox[0].payload.nonce === nonce,
-      "Recipient could not fetch the delivered message from their durable inbox.");
-    console.log("PASS: recipient can fetch the same message from the durable inbox after the Realtime notification.");
+    // The notification itself carries the complete row. The normal delivery path
+    // deliberately performs no follow-up SELECT; durable recovery is tested separately.
+    console.log("PASS: Realtime INSERT contains the complete inbox row and payload; no per-message SELECT is needed.");
 
     await sleep(UNAUTHORIZED_GRACE_MS);
     const leakedToSender = senderSub.received.some(item =>
