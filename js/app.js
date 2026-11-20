@@ -5,7 +5,7 @@ import { listContacts, getContact, saveContact, updateContact, deleteContact, sa
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
-import { getSupabaseIdentity } from "./supabase-client.js?v=1";
+import { getSupabaseIdentity, createSupabaseInvitation } from "./supabase-client.js?v=1";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -1382,9 +1382,17 @@ async function createContactInvitationNow({expectedRevision=null}={}){
    try{const supabaseIdentity=await getSupabaseIdentity();supabaseUserId=supabaseIdentity.user_id;state.supabaseUserId=supabaseUserId;}
    catch(error){debug("Supabase Auth недоступен; приглашение будет совместимо со старым транспортом: "+(error.message||String(error)));}
   }
+  let supabaseInvitation=null;
+  try{
+   supabaseInvitation=await createSupabaseInvitation();
+   supabaseUserId=supabaseInvitation.supabase_user_id;
+   state.supabaseUserId=supabaseUserId;
+  }catch(error){
+   debug("Не удалось создать одноразовый маршрут Supabase; приглашение останется совместимым со старым транспортом: "+(error.message||String(error)));
+  }
   const unsigned={
    version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,
-   ...(supabaseUserId?{supabase_user_id:supabaseUserId}:{}),
+   ...(supabaseInvitation||{}),
    push_subscription_id:subscriptionId,
    invitation_id:crypto.randomUUID(),
    invitation_secret:toBase64UrlBytes(crypto.getRandomValues(new Uint8Array(32))),

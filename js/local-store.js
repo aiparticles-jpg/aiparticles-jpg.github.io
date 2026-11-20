@@ -436,6 +436,7 @@ export async function saveContact(contact) {
       typeof contact.invitation_id !== "string" || !/^[0-9a-f-]{36}$/i.test(contact.invitation_id) ||
       typeof contact.invitation_secret !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(contact.invitation_secret) ||
       (contact.supabase_user_id != null && (typeof contact.supabase_user_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(contact.supabase_user_id)) ) ||
+      (contact.supabase_invitation_id != null && (typeof contact.supabase_invitation_id !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(contact.supabase_invitation_id)) ) ||
       (contact.push_subscription_id != null && (typeof contact.push_subscription_id !== "string" || !contact.push_subscription_id.trim())) || !contact.name)
     throw new TypeError("A contact requires a local name, shared 256-bit secret, and invitation ID; push subscription ID is optional.");
   const record={...contact,name:String(contact.name).trim(),updated_at:new Date().toISOString()};
