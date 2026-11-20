@@ -808,7 +808,164 @@ async function probeTracker(url) {
     }
     const independentClockSync = await runIndependentClockSync();
 
-    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, slotTimelineModel, liveSlotWindow, independentClockSync, sameRunnerIp: true }));
+
+    // Adverse clock-sync test: changing path asymmetry, changing receiver drift,
+    // a control-channel outage, then resynchronization. This is a controlled
+    // simulation of independent process clocks and network transit delays.
+    async function runAdverseClockSync() {
+      const sender = fork(new URL("./clock-peer.mjs", import.meta.url), ["sender-adverse", "125000", "-80"], {
+        stdio: ["ignore", "inherit", "inherit", "ipc"]
+      });
+      const receiver = fork(new URL("./clock-peer.mjs", import.meta.url), ["receiver-adverse", "-43000", "220"], {
+        stdio: ["ignore", "inherit", "inherit", "ipc"]
+      });
+      let requestId = 0;
+      function rpc(child, type, extra = {}) {
+        const id = ++requestId;
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            child.off("message", onMessage);
+            reject(new Error("adverse clock peer request timeout: " + type));
+          }, 3000);
+          function onMessage(message) {
+            if (message?.id !== id) return;
+            if (message.type !== type + "-result") return;
+            clearTimeout(timeout);
+            child.off("message", onMessage);
+            resolve(message);
+          }
+          child.on("message", onMessage);
+          child.send({ type, id, ...extra });
+        });
+      }
+      const now = async (child) => (await rpc(child, "clock-now")).now;
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      async function exchange(outboundMs, returnMs) {
+        const t1 = await now(sender);
+        await sleep(outboundMs);
+        const t2 = await now(receiver);
+        const t3 = await now(receiver);
+        await sleep(returnMs);
+        const t4 = await now(sender);
+        return {
+          offset: ((t2 - t1) + (t3 - t4)) / 2,
+          rtt: Math.max(0, (t4 - t1) - (t3 - t2)),
+          receiverMid: (t2 + t3) / 2,
+          outboundMs,
+          returnMs
+        };
+      }
+      function fit(samples) {
+        const meanX = samples.reduce((s, x) => s + x.receiverMid, 0) / samples.length;
+        const meanY = samples.reduce((s, x) => s + x.offset, 0) / samples.length;
+        const numerator = samples.reduce((s, x) => s + (x.receiverMid - meanX) * (x.offset - meanY), 0);
+        const denominator = samples.reduce((s, x) => s + (x.receiverMid - meanX) ** 2, 0);
+        const drift = denominator ? numerator / denominator : 0;
+        const intercept = meanY - drift * meanX;
+        return {
+          drift,
+          intercept,
+          map: (receiverNow) => receiverNow - (intercept + drift * receiverNow)
+        };
+      }
+      async function collect(count, outboundFn, returnFn, pauseMs = 300) {
+        const samples = [];
+        for (let i = 0; i < count; i++) {
+          const attempts = [];
+          for (let j = 0; j < 4; j++) {
+            attempts.push(await exchange(outboundFn(i, j), returnFn(i, j)));
+          }
+          attempts.sort((a, b) => a.rtt - b.rtt);
+          samples.push(attempts[0]);
+          if (i + 1 < count) await sleep(pauseMs);
+        }
+        return samples;
+      }
+      try {
+        const baselineSamples = await collect(7, (i,j) => 10 + ((i+j)%3)*4, (i,j) => 10 + ((i+j)%3)*4, 250);
+        const baseline = fit(baselineSamples);
+
+        const forwardHeavy = await collect(4, () => 8, () => 28, 250);
+        const forwardHeavyBias = forwardHeavy.map((x) => ({
+          measuredOffsetMs: Number(x.offset.toFixed(2)),
+          baselinePredictedOffsetMs: Number((x.receiverMid - baseline.map(x.receiverMid)).toFixed(2)),
+          estimatedAsymmetryBiasMs: Number((x.offset - (x.receiverMid - baseline.map(x.receiverMid))).toFixed(2)),
+          outboundMs: x.outboundMs, returnMs: x.returnMs
+        }));
+
+        const reverseHeavy = await collect(4, () => 30, () => 8, 250);
+        const reverseHeavyBias = reverseHeavy.map((x) => ({
+          measuredOffsetMs: Number(x.offset.toFixed(2)),
+          baselinePredictedOffsetMs: Number((x.receiverMid - baseline.map(x.receiverMid)).toFixed(2)),
+          estimatedAsymmetryBiasMs: Number((x.offset - (x.receiverMid - baseline.map(x.receiverMid))).toFixed(2)),
+          outboundMs: x.outboundMs, returnMs: x.returnMs
+        }));
+
+        // Change the receiver oscillator while the control exchange is paused.
+        await rpc(receiver, "set-drift", { driftPpm: 1000 });
+        await sleep(2500);
+        const [senderAfterPause, receiverAfterPause] = await Promise.all([now(sender), now(receiver)]);
+        const staleEstimate = baseline.map(receiverAfterPause);
+        const staleMappingErrorMs = staleEstimate - senderAfterPause;
+
+        // Restore frequent symmetric control exchanges and estimate the new drift.
+        const recoverySamples = await collect(9, (i,j) => 12 + ((i+j)%4)*5, (i,j) => 12 + ((i+j)%4)*5, 250);
+        const recovered = fit(recoverySamples);
+        const recoveryValidation = [];
+        for (let i = 0; i < 5; i++) {
+          await sleep(300);
+          const [actualSender, receiverLocal] = await Promise.all([now(sender), now(receiver)]);
+          const estimatedSender = recovered.map(receiverLocal);
+          recoveryValidation.push({
+            errorMs: Number((estimatedSender - actualSender).toFixed(2)),
+            slotErrorAt40ms: Math.round((estimatedSender - actualSender) / 40)
+          });
+        }
+        const maxRecoveryError = Math.max(...recoveryValidation.map((x) => Math.abs(x.errorMs)));
+        const medianBias = (items) => {
+          const values = items.map((x) => x.estimatedAsymmetryBiasMs).sort((a,b)=>a-b);
+          return values[Math.floor(values.length/2)];
+        };
+        const result = {
+          test: "asymmetric-delay-change-drift-change-control-outage-recovery",
+          simulatedClocksAreSeparateProcesses: true,
+          initialRelativeDriftPpm: 300,
+          receiverDriftChangedToPpm: 1000,
+          controlOutageMs: 2500,
+          baselineEstimatedRelativeDriftPpm: Number((baseline.drift * 1_000_000).toFixed(1)),
+          forwardHeavyPath: {
+            outboundMs: 8, returnMs: 28,
+            medianEstimatedOffsetBiasMs: medianBias(forwardHeavyBias),
+            samples: forwardHeavyBias
+          },
+          reverseHeavyPath: {
+            outboundMs: 30, returnMs: 8,
+            medianEstimatedOffsetBiasMs: medianBias(reverseHeavyBias),
+            samples: reverseHeavyBias
+          },
+          staleMappingErrorAfterOutageMs: Number(staleMappingErrorMs.toFixed(2)),
+          recoveredEstimatedRelativeDriftPpm: Number((recovered.drift * 1_000_000).toFixed(1)),
+          expectedPostChangeRelativeDriftPpm: 1080,
+          recoveryValidationErrorsMs: recoveryValidation.map((x) => x.errorMs),
+          maxAbsoluteRecoveryErrorMs: Number(maxRecoveryError.toFixed(2)),
+          maxRecoverySlotErrorAt40ms: Math.max(...recoveryValidation.map((x) => Math.abs(x.slotErrorAt40ms))),
+          recoveryPassed: maxRecoveryError < 5
+        };
+        console.log("ADVERSE_CLOCK_SYNC " + JSON.stringify(result));
+        if (!Number.isFinite(staleMappingErrorMs) || !Number.isFinite(recovered.drift)) {
+          throw new Error("adverse clock sync produced a non-finite result");
+        }
+        return result;
+      } finally {
+        for (const child of [sender, receiver]) {
+          if (child.connected) child.disconnect();
+          child.kill();
+        }
+      }
+    }
+    const adverseClockSync = await runAdverseClockSync();
+
+    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, slotTimelineModel, liveSlotWindow, independentClockSync, adverseClockSync, sameRunnerIp: true }));
     return true;
   } finally {
     for (const ws of [sender, receiver]) {
