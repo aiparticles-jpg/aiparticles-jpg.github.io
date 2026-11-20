@@ -54,14 +54,28 @@ async function main() {
             select 1 from information_schema.columns
             where table_schema='public' and table_name='messages' and column_name='created_at'
           ) as has_created_at,
-          pg_get_function_result('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_result
+          pg_get_function_result('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_result,
+          to_regprocedure('public.broadcast_message_to_inbox()') is not null as has_broadcast_function,
+          exists (
+            select 1 from pg_trigger
+            where tgrelid='public.messages'::regclass
+              and tgname='messages_broadcast_insert'
+              and not tgisinternal
+          ) as has_broadcast_trigger,
+          not exists (
+            select 1 from pg_publication_tables
+            where pubname='supabase_realtime'
+              and schemaname='public'
+              and tablename='messages'
+          ) as removed_from_wal_publication
       `);
       const state = result.rows[0];
-      if (state.has_message_id || !state.has_created_at || state.submit_result !== "timestamp with time zone") {
-        throw new Error("Timestamp-only messages schema verification failed.");
+      if (state.has_message_id || !state.has_created_at || state.submit_result !== "timestamp with time zone" ||
+          !state.has_broadcast_function || !state.has_broadcast_trigger || !state.removed_from_wal_publication) {
+        throw new Error("Timestamp-only inbox / private Broadcast schema verification failed.");
       }
       await db.query("commit");
-      console.log("Supabase messages migrated: message_id removed; created_at retained; submit_message returns created_at; private Broadcast trigger installed.");
+      console.log("Supabase inbox migrated: no message_id; created_at retained; submit_message returns created_at; private Broadcast trigger installed; messages removed from WAL publication.");
     } catch (error) {
       await db.query("rollback");
       throw error;
