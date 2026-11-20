@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=55";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, hasProcessedSupabaseMessage, markSupabaseMessageProcessed } from "./local-store.js?v=21";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId } from "./local-store.js?v=21";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
@@ -1545,7 +1545,7 @@ async function redeemSupabaseInvitationOnce(contact,source="импорт"){
  try{
   const result=await submitSupabaseInvitationAcceptance({contact});
   await updateContact(contact.user_id,{supabase_invitation_redeemed_at:new Date().toISOString()});
-  debug("Supabase-приглашение погашено ("+source+"); связь создана, первое зашифрованное сообщение записано (message_id="+result.message_id+").");
+  debug("Supabase-приглашение погашено ("+source+"); связь создана, первое зашифрованное сообщение записано (created_at="+result.created_at+").");
   return true;
  }catch(error){
   debug("Единственная попытка погасить Supabase-приглашение ("+source+") не удалась; повторной отправки не будет. Старый ntfy остаётся активен: "+(error.message||String(error)));
@@ -1558,27 +1558,30 @@ const supabaseInboxSeenThisSession=new Set();
 
 function enqueueSupabaseInboxRecord(record,source="Realtime"){
  supabaseInboxQueue=supabaseInboxQueue.then(async()=>{
-  if(!record||record.recipient_id!==state.supabaseUserId||typeof record.message_id!=="string"||typeof record.sender_id!=="string")return;
-  if(supabaseInboxSeenThisSession.has(record.message_id))return;
-  if(await hasProcessedSupabaseMessage(record.message_id)){supabaseInboxSeenThisSession.add(record.message_id);return}
+  if(!record||record.recipient_id!==state.supabaseUserId||typeof record.sender_id!=="string"||
+     typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return;
   const contact=await findContactBySupabaseUserId(record.sender_id);
   if(!contact){debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");return}
   if(!contact.invitation_secret)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
   const message=await decryptSupabaseInboxRecord(record,contact.invitation_secret);
+  const sequenceKey=record.sender_id+":"+message.seq;
+  if(supabaseInboxSeenThisSession.has(sequenceKey))return;
+
   if(message.type==="contact_accept"){
    if(message.seq!=="1")throw new Error("Первое подтверждение контакта имеет неожиданный номер последовательности.");
-   await updateContact(contact.user_id,{
-    supabase_contact_accepted_at:contact.supabase_contact_accepted_at||new Date().toISOString(),
-    supabase_last_incoming_message_at:record.created_at||new Date().toISOString()
-   });
-   await markSupabaseMessageProcessed(record.message_id);
-   supabaseInboxSeenThisSession.add(record.message_id);
-   debug("Supabase inbox: получено и расшифровано подтверждение контакта «"+contact.name+"» ("+source+"); message_id="+record.message_id+".");
+   if(!contact.supabase_contact_accepted_at){
+    await updateContact(contact.user_id,{
+     supabase_contact_accepted_at:new Date().toISOString(),
+     supabase_last_incoming_message_at:record.created_at
+    });
+    debug("Supabase inbox: получено и расшифровано подтверждение контакта «"+contact.name+"» ("+source+"); created_at="+record.created_at+".");
+   }
+   supabaseInboxSeenThisSession.add(sequenceKey);
    return;
   }
-  debug("Supabase inbox: расшифровано сообщение типа «"+message.type+"» от «"+contact.name+"», обработчик этого типа пока не реализован.");
-  await markSupabaseMessageProcessed(record.message_id);
-  supabaseInboxSeenThisSession.add(record.message_id);
+
+  // Unknown/unimplemented message types remain unprocessed for later recovery.
+  debug("Supabase inbox: расшифровано сообщение типа «"+message.type+"» от «"+contact.name+"», обработчик этого типа пока не реализован (seq="+message.seq+").");
  }).catch(error=>debug("Ошибка обработки Supabase inbox ("+source+"): "+(error.message||String(error))));
  return supabaseInboxQueue;
 }
@@ -1586,14 +1589,9 @@ function enqueueSupabaseInboxRecord(record,source="Realtime"){
 async function recoverSupabaseInbox(){
  if(!state.supabaseUserId)return;
  const rows=await fetchSupabaseInbox(state.supabaseUserId,500);
- let queued=0;
- for(const row of rows){
-  if(!supabaseInboxSeenThisSession.has(row.message_id)&&!(await hasProcessedSupabaseMessage(row.message_id))){
-   enqueueSupabaseInboxRecord(row,"восстановление durable inbox");queued++;
-  }
- }
+ for(const row of rows)enqueueSupabaseInboxRecord(row,"восстановление durable inbox");
  await supabaseInboxQueue;
- debug("Supabase inbox: проверено сохранённых входящих сообщений: "+rows.length+"; поставлено в обработку: "+queued+".");
+ debug("Supabase inbox: проверено сохранённых входящих сообщений по created_at: "+rows.length+".");
 }
 
 function startSupabaseInbox(){
