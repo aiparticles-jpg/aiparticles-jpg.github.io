@@ -631,14 +631,19 @@ async function probeTracker(url) {
 
         const payload = Buffer.alloc(PAYLOAD_BYTES, 0x7b);
         const sendSlots = [];
+        let lastSentSlot = -1;
         for (let i = 0; i < packetCount; i++) {
           if (i === pauseAfterPacket) {
             await new Promise((resolve) => setTimeout(resolve, senderPauseMs));
           }
-          const plannedAt = epoch + (i * slotMs) + (i >= pauseAfterPacket ? senderPauseMs : 0);
-          const waitMs = plannedAt - performance.now();
-          if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
-          const slot = Math.floor((performance.now() - epoch) / slotMs);
+          let slot = Math.floor((performance.now() - epoch) / slotMs);
+          if (slot <= lastSentSlot) {
+            const nextSlotBoundary = epoch + (lastSentSlot + 1) * slotMs + 3;
+            const waitMs = nextSlotBoundary - performance.now();
+            if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+            slot = Math.floor((performance.now() - epoch) / slotMs);
+          }
+          if (slot <= lastSentSlot) throw new Error("sender failed to advance to a new time slot");
           const room = rooms[slot];
           if (!room) throw new Error("live slot exceeded test room range: " + slot);
           const offerId = binaryString(createHash("sha256").update("live-slot-offer:" + i + ":" + slot).digest().subarray(0, 20));
@@ -646,6 +651,7 @@ async function probeTracker(url) {
           const sdp = ["v=0", "o=- 5 5 IN IP4 127.0.0.1", "s=VoiceLink live slot probe", "t=0 0", marker, ""].join("\\r\\n");
           sent.set(slot, performance.now());
           sendSlots.push(slot);
+          lastSentSlot = slot;
           send(sender, {
             action: "announce", info_hash: room.hash, peer_id: senderId,
             uploaded: 0, downloaded: 0, left: 1, event: "started", numwant: 1,
