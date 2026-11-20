@@ -173,6 +173,25 @@ async function main() {
       "select current_database() as db, current_setting('server_version') as version"
     );
     console.log("Connected to VoiceLink Supabase:", identity.rows[0].db, "| PostgreSQL", identity.rows[0].version);
+    const schemaCheck = await db.query(`
+      select
+        exists (
+          select 1 from information_schema.columns
+          where table_schema='public' and table_name='messages' and column_name='message_id'
+        ) as has_message_id,
+        exists (
+          select 1 from pg_constraint
+          where conrelid='public.messages'::regclass and contype='p'
+        ) as has_primary_key,
+        pg_get_function_result('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_result
+    `);
+    assert(schemaCheck.rows[0].has_message_id === false,
+      "messages must not contain the redundant message_id column.");
+    assert(schemaCheck.rows[0].has_primary_key === false,
+      "messages must not have a synthetic primary key.");
+    assert(schemaCheck.rows[0].submit_result === "timestamp with time zone",
+      "submit_message must return created_at, not a generated message ID.");
+    console.log("PASS: inbox schema has no message ID or synthetic primary key; created_at is returned.");
 
     const owner = await createAnonymousUser(config.url, config.publishableKey);
     createdUserIds.push(owner.id);
