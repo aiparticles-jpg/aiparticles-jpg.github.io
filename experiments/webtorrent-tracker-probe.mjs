@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
+import { fork } from "node:child_process";
 
 const TRACKERS = (process.env.TRACKERS ||
   "wss://tracker.openwebtorrent.com,wss://tracker.webtorrent.dev")
@@ -700,7 +701,114 @@ async function probeTracker(url) {
     }
     const liveSlotWindow = await runLiveSlotWindow();
 
-    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, sameRunnerIp: true }));    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, slotTimelineModel, liveSlotWindow, sameRunnerIp: true }));
+    // Independent-process clock synchronization experiment. Each peer owns its
+    // own monotonic origin and configurable clock-rate error. The parent only
+    // simulates network transit delay and performs NTP-style four-timestamp sync.
+    async function runIndependentClockSync() {
+      const sender = fork(new URL("./clock-peer.mjs", import.meta.url), ["sender", "125000", "-80"], {
+        stdio: ["ignore", "inherit", "inherit", "ipc"]
+      });
+      const receiver = fork(new URL("./clock-peer.mjs", import.meta.url), ["receiver", "-43000", "220"], {
+        stdio: ["ignore", "inherit", "inherit", "ipc"]
+      });
+      let requestId = 0;
+      function clockNow(child) {
+        const id = ++requestId;
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            child.off("message", onMessage);
+            reject(new Error("clock peer request timeout"));
+          }, 3000);
+          function onMessage(message) {
+            if (message?.type !== "clock-now-result" || message.id !== id) return;
+            clearTimeout(timeout);
+            child.off("message", onMessage);
+            resolve(message.now);
+          }
+          child.on("message", onMessage);
+          child.send({ type: "clock-now", id });
+        });
+      }
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const samples = [];
+      const started = performance.now();
+      try {
+        for (let round = 0; round < 5; round++) {
+          const roundSamples = [];
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const t1 = await clockNow(sender);
+            const outboundMs = 14 + ((round * 3 + attempt) % 4) * 7;
+            const returnMs = 19 + ((round + attempt * 2) % 5) * 6;
+            await sleep(outboundMs);
+            const t2 = await clockNow(receiver);
+            const t3 = await clockNow(receiver);
+            await sleep(returnMs);
+            const t4 = await clockNow(sender);
+            const offset = ((t2 - t1) + (t3 - t4)) / 2;
+            const rtt = Math.max(0, (t4 - t1) - (t3 - t2));
+            const receiverMid = (t2 + t3) / 2;
+            roundSamples.push({ offset, rtt, receiverMid, outboundMs, returnMs });
+          }
+          roundSamples.sort((a, b) => a.rtt - b.rtt);
+          samples.push(roundSamples[0]);
+          if (round < 4) await sleep(900);
+        }
+
+        // Linear fit: offset(receiverClock - senderClock) as a function of
+        // receiver monotonic time. The inverse mapping estimates sender time.
+        const meanX = samples.reduce((s, x) => s + x.receiverMid, 0) / samples.length;
+        const meanY = samples.reduce((s, x) => s + x.offset, 0) / samples.length;
+        const numerator = samples.reduce((s, x) => s + (x.receiverMid - meanX) * (x.offset - meanY), 0);
+        const denominator = samples.reduce((s, x) => s + (x.receiverMid - meanX) ** 2, 0);
+        const drift = denominator ? numerator / denominator : 0;
+        const intercept = meanY - drift * meanX;
+        const estimatedSenderTime = (receiverNow) => receiverNow - (intercept + drift * receiverNow);
+
+        const validation = [];
+        for (let i = 0; i < 5; i++) {
+          await sleep(350);
+          const [actualSender, receiverLocal] = await Promise.all([clockNow(sender), clockNow(receiver)]);
+          const estimated = estimatedSenderTime(receiverLocal);
+          validation.push({
+            actualSenderMs: Number(actualSender.toFixed(2)),
+            estimatedSenderMs: Number(estimated.toFixed(2)),
+            errorMs: Number((estimated - actualSender).toFixed(2)),
+            slotErrorAt40ms: Math.round((estimated - actualSender) / 40)
+          });
+        }
+        const errors = validation.map((x) => Math.abs(x.errorMs)).sort((a, b) => a - b);
+        const maxError = errors[errors.length - 1];
+        const result = {
+          independentProcesses: true,
+          senderClock: { offsetMs: 125000, driftPpm: -80 },
+          receiverClock: { offsetMs: -43000, driftPpm: 220 },
+          syncRounds: samples.length,
+          samples: samples.map((x) => ({
+            estimatedReceiverMinusSenderOffsetMs: Number(x.offset.toFixed(2)),
+            roundTripMs: Number(x.rtt.toFixed(2)),
+            outboundDelayMs: x.outboundMs,
+            returnDelayMs: x.returnMs
+          })),
+          estimatedRelativeDriftPpm: Number((drift * 1_000_000).toFixed(1)),
+          expectedRelativeDriftPpm: 300,
+          validationErrorsMs: validation.map((x) => x.errorMs),
+          maxAbsoluteClockMappingErrorMs: Number(maxError.toFixed(2)),
+          maxSlotErrorAt40ms: Math.max(...validation.map((x) => Math.abs(x.slotErrorAt40ms))),
+          validation,
+          elapsedMs: Math.round(performance.now() - started)
+        };
+        console.log("INDEPENDENT_CLOCK_SYNC " + JSON.stringify(result));
+        return result;
+      } finally {
+        for (const child of [sender, receiver]) {
+          if (child.connected) child.disconnect();
+          child.kill();
+        }
+      }
+    }
+    const independentClockSync = await runIndependentClockSync();
+
+    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, slotTimelineModel, liveSlotWindow, independentClockSync, sameRunnerIp: true }));
     return true;
   } finally {
     for (const ws of [sender, receiver]) {
