@@ -1,7 +1,7 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=55";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId } from "./local-store.js?v=21";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence } from "./local-store.js?v=22";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
@@ -1544,6 +1544,7 @@ async function redeemSupabaseInvitationOnce(contact,source="импорт"){
  await updateContact(contact.user_id,{supabase_invitation_attempted_at:new Date().toISOString()});
  try{
   const result=await submitSupabaseInvitationAcceptance({contact});
+  await ensureSupabaseOutgoingSequence(contact.supabase_user_id,"1");
   await updateContact(contact.user_id,{supabase_invitation_redeemed_at:new Date().toISOString()});
   debug("Supabase-приглашение погашено ("+source+"); связь создана, первое зашифрованное сообщение записано (created_at="+result.created_at+").");
   return true;
@@ -1554,44 +1555,92 @@ async function redeemSupabaseInvitationOnce(contact,source="импорт"){
 }
 let supabaseInboxChannel=null;
 let supabaseInboxQueue=Promise.resolve();
-const supabaseInboxSeenThisSession=new Set();
+const supabaseInboxBuffers=new Map();
+let supabaseRecoveryScheduled=false;
+let supabaseRecoveryRunning=false;
+
+function scheduleSupabaseInboxRecovery(){
+ if(supabaseRecoveryScheduled||supabaseRecoveryRunning)return;
+ supabaseRecoveryScheduled=true;
+ Promise.resolve().then(async()=>{
+  supabaseRecoveryScheduled=false;
+  try{await recoverSupabaseInbox()}
+  catch(error){debug("Не удалось восстановить Supabase inbox: "+(error.message||String(error)))}
+ });
+}
+
+async function processSupabaseInboxRecord(record,source){
+ if(!record||record.recipient_id!==state.supabaseUserId||typeof record.sender_id!=="string"||
+    typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return;
+ const contact=await findContactBySupabaseUserId(record.sender_id);
+ if(!contact){debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");return}
+ if(!contact.invitation_secret)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
+ const message=await decryptSupabaseInboxRecord(record,contact.invitation_secret);
+ const sequence=BigInt(message.seq);
+ const current=await getSupabaseSequenceState(record.sender_id);
+ const last=BigInt(current.incoming);
+ if(sequence<=last)return;
+
+ if(sequence>last+1n){
+  let buffer=supabaseInboxBuffers.get(record.sender_id);
+  if(!buffer){buffer=new Map();supabaseInboxBuffers.set(record.sender_id,buffer)}
+  if(buffer.size<1000)buffer.set(message.seq,record);
+  scheduleSupabaseInboxRecovery();
+  debug("Supabase inbox: обнаружен пропуск последовательности от «"+contact.name+
+   "» (ожидается "+(last+1n)+", получено "+message.seq+"); запрошено восстановление.");
+  return;
+ }
+
+ if(message.type==="contact_accept"){
+  if(message.seq!=="1")throw new Error("Первое подтверждение контакта имеет неожиданный номер последовательности.");
+  if(!contact.supabase_contact_accepted_at){
+   await updateContact(contact.user_id,{
+    supabase_contact_accepted_at:new Date().toISOString(),
+    supabase_last_incoming_message_at:record.created_at
+   });
+   debug("Supabase inbox: получено и расшифровано подтверждение контакта «"+contact.name+
+    "» ("+source+"); created_at="+record.created_at+".");
+  }
+ }else{
+  debug("Supabase inbox: тип «"+message.type+"» от «"+contact.name+
+   "» пока не поддерживается; seq="+message.seq+" оставлен необработанным.");
+  return;
+ }
+
+ const advanced=await advanceSupabaseIncomingSequence(record.sender_id,message.seq);
+ if(advanced==="gap"){
+  scheduleSupabaseInboxRecovery();
+  return;
+ }
+ if(advanced==="advanced"){
+  const buffer=supabaseInboxBuffers.get(record.sender_id);
+  if(buffer){
+   const next=(BigInt(message.seq)+1n).toString();
+   const nextRecord=buffer.get(next);
+   if(nextRecord){
+    buffer.delete(next);
+    await processSupabaseInboxRecord(nextRecord,"буфер после восстановления");
+   }
+   if(!buffer.size)supabaseInboxBuffers.delete(record.sender_id);
+  }
+ }
+}
 
 function enqueueSupabaseInboxRecord(record,source="Realtime"){
- supabaseInboxQueue=supabaseInboxQueue.then(async()=>{
-  if(!record||record.recipient_id!==state.supabaseUserId||typeof record.sender_id!=="string"||
-     typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return;
-  const contact=await findContactBySupabaseUserId(record.sender_id);
-  if(!contact){debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");return}
-  if(!contact.invitation_secret)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
-  const message=await decryptSupabaseInboxRecord(record,contact.invitation_secret);
-  const sequenceKey=record.sender_id+":"+message.seq;
-  if(supabaseInboxSeenThisSession.has(sequenceKey))return;
-
-  if(message.type==="contact_accept"){
-   if(message.seq!=="1")throw new Error("Первое подтверждение контакта имеет неожиданный номер последовательности.");
-   if(!contact.supabase_contact_accepted_at){
-    await updateContact(contact.user_id,{
-     supabase_contact_accepted_at:new Date().toISOString(),
-     supabase_last_incoming_message_at:record.created_at
-    });
-    debug("Supabase inbox: получено и расшифровано подтверждение контакта «"+contact.name+"» ("+source+"); created_at="+record.created_at+".");
-   }
-   supabaseInboxSeenThisSession.add(sequenceKey);
-   return;
-  }
-
-  // Unknown/unimplemented message types remain unprocessed for later recovery.
-  debug("Supabase inbox: расшифровано сообщение типа «"+message.type+"» от «"+contact.name+"», обработчик этого типа пока не реализован (seq="+message.seq+").");
- }).catch(error=>debug("Ошибка обработки Supabase inbox ("+source+"): "+(error.message||String(error))));
+ supabaseInboxQueue=supabaseInboxQueue.then(()=>processSupabaseInboxRecord(record,source))
+  .catch(error=>debug("Ошибка обработки Supabase inbox ("+source+"): "+(error.message||String(error))));
  return supabaseInboxQueue;
 }
 
 async function recoverSupabaseInbox(){
- if(!state.supabaseUserId)return;
- const rows=await fetchSupabaseInbox(state.supabaseUserId,500);
- for(const row of rows)enqueueSupabaseInboxRecord(row,"восстановление durable inbox");
- await supabaseInboxQueue;
- debug("Supabase inbox: проверено сохранённых входящих сообщений по created_at: "+rows.length+".");
+ if(!state.supabaseUserId||supabaseRecoveryRunning)return;
+ supabaseRecoveryRunning=true;
+ try{
+  const rows=await fetchSupabaseInbox(state.supabaseUserId,1000);
+  for(const row of rows)enqueueSupabaseInboxRecord(row,"восстановление durable inbox");
+  await supabaseInboxQueue;
+  debug("Supabase inbox: проверено сохранённых входящих сообщений: "+rows.length+".");
+ }finally{supabaseRecoveryRunning=false}
 }
 
 function startSupabaseInbox(){
@@ -1601,7 +1650,7 @@ function startSupabaseInbox(){
   record=>enqueueSupabaseInboxRecord(record,"Realtime"),
   status=>{
    debug("Supabase Realtime status="+status+".");
-   if(status==="SUBSCRIBED")void recoverSupabaseInbox().catch(error=>debug("Не удалось восстановить Supabase inbox: "+(error.message||String(error))));
+   if(status==="SUBSCRIBED")scheduleSupabaseInboxRecovery();
   });
 }
 
