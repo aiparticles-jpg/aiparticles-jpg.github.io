@@ -304,6 +304,7 @@ async function probeTracker(url) {
       });
       const slidingPayload = Buffer.alloc(PAYLOAD_BYTES, 0x6d);
       const slidingSentAt = new Map();
+      const slidingElapsedUs = new Map();
       const slidingReceivedAt = new Map();
       const joinedRooms = new Set();
       const joiningRooms = new Map();
@@ -357,10 +358,11 @@ async function probeTracker(url) {
         const markerLine = message.offer.sdp.split("\\r\\n").find((line) => line.startsWith("a=x-voicelink-sliding:"));
         if (!markerLine) return;
         const markerParts = markerLine.slice("a=x-voicelink-sliding:".length).split(":");
-        if (markerParts.length !== 2) return;
+        if (markerParts.length !== 3) return;
         const packetNumber = Number(markerParts[0]);
-        if (packetNumber !== room.index || !slidingSentAt.has(packetNumber) || slidingReceivedAt.has(packetNumber)) return;
-        const decoded = Buffer.from(markerParts[1], "base64");
+        const elapsedUs = Number(markerParts[1]);
+        if (packetNumber !== room.index || !Number.isFinite(elapsedUs) || !slidingSentAt.has(packetNumber) || slidingReceivedAt.has(packetNumber)) return;
+        const decoded = Buffer.from(markerParts[2], "base64");
         if (decoded.length !== PAYLOAD_BYTES || !decoded.equals(slidingPayload)) return;
         slidingReceivedAt.set(packetNumber, performance.now());
 
@@ -382,12 +384,16 @@ async function probeTracker(url) {
       for (let i = 0; i < windowSize; i++) await joinSlidingRoom(i);
       receiver.on("message", slidingListener);
       const slidingStarted = performance.now();
+      const senderClockOrigin = slidingStarted;
       for (let i = 0; i < slidingPacketCount; i++) {
         const room = slidingRooms[i];
         const offerId = binaryString(createHash("sha256").update("sliding-offer:" + windowSize + ":" + i).digest().subarray(0, 20));
-        const marker = "a=x-voicelink-sliding:" + i + ":" + slidingPayload.toString("base64");
+        const sentAt = performance.now();
+        const elapsedUs = Math.round((sentAt - senderClockOrigin) * 1000);
+        const marker = "a=x-voicelink-sliding:" + i + ":" + elapsedUs + ":" + slidingPayload.toString("base64");
         const sdp = ["v=0", "o=- 4 4 IN IP4 127.0.0.1", "s=VoiceLink sliding-window probe", "t=0 0", marker, ""].join("\\r\\n");
-        slidingSentAt.set(i, performance.now());
+        slidingSentAt.set(i, sentAt);
+        slidingElapsedUs.set(i, elapsedUs);
         send(sender, {
           action: "announce", info_hash: room.hash, peer_id: senderId,
           uploaded: 0, downloaded: 0, left: 1, event: "started", numwant: 1,
@@ -400,7 +406,26 @@ async function probeTracker(url) {
       receiver.off("message", slidingListener);
       for (const index of Array.from(joinedRooms)) leaveSlidingRoom(index);
       const latencies = Array.from(slidingReceivedAt, ([packet, received]) => received - slidingSentAt.get(packet)).sort((a, b) => a - b);
-      const percentile = (p) => latencies.length ? Math.round(latencies[Math.min(latencies.length - 1, Math.floor((latencies.length - 1) * p))]) : null;
+      const percentile = (values, p) => values.length ? Math.round(values[Math.min(values.length - 1, Math.floor((values.length - 1) * p))]) : null;
+      const timelineDeltas = [];
+      const receiveGaps = [];
+      const senderGaps = [];
+      const sortedReceivedPackets = Array.from(slidingReceivedAt.keys()).sort((a, b) => a - b);
+      const receiveIntervals = [];
+      let sequenceHolesBetweenReceived = 0;
+      for (let i = 1; i < sortedReceivedPackets.length; i++) {
+        const prev = sortedReceivedPackets[i - 1], curr = sortedReceivedPackets[i];
+        const sequenceDistance = curr - prev;
+        const sourceDeltaMs = (slidingElapsedUs.get(curr) - slidingElapsedUs.get(prev)) / 1000;
+        const receiveDeltaMs = slidingReceivedAt.get(curr) - slidingReceivedAt.get(prev);
+        const expectedSourceWindowMs = slidingIntervalMs * sequenceDistance;
+        timelineDeltas.push(Math.abs(receiveDeltaMs - sourceDeltaMs));
+        sequenceHolesBetweenReceived += Math.max(0, sequenceDistance - 1);
+        receiveIntervals.push(receiveDeltaMs);
+        if (sourceDeltaMs > expectedSourceWindowMs * 1.5) senderGaps.push(sourceDeltaMs);
+        if (receiveDeltaMs > expectedSourceWindowMs * 1.5 && sourceDeltaMs <= expectedSourceWindowMs * 1.5) receiveGaps.push(receiveDeltaMs);
+      }
+      receiveIntervals.sort((a, b) => a - b);
       const result = {
         payloadBytes: PAYLOAD_BYTES,
         targetRatePerSecond: 1000 / slidingIntervalMs,
@@ -411,7 +436,18 @@ async function probeTracker(url) {
         lostPackets: slidingPacketCount - slidingReceivedAt.size,
         lossPercent: Number(((slidingPacketCount - slidingReceivedAt.size) / slidingPacketCount * 100).toFixed(2)),
         elapsedMs: Math.round(performance.now() - slidingStarted),
-        latencyMs: { min: latencies.length ? Math.round(latencies[0]) : null, median: percentile(0.5), p95: percentile(0.95), max: latencies.length ? Math.round(latencies[latencies.length - 1]) : null },
+        latencyMs: { min: latencies.length ? Math.round(latencies[0]) : null, median: percentile(latencies, 0.5), p95: percentile(latencies, 0.95), max: latencies.length ? Math.round(latencies[latencies.length - 1]) : null },
+        senderTimeline: "monotonic elapsed microseconds since packet 0",
+        timingMetadataBytesPerPacket: 8,
+        interPacketTiming: {
+          comparedIntervals: timelineDeltas.length,
+          medianAbsoluteDeltaErrorMs: percentile(timelineDeltas, 0.5),
+          p95AbsoluteDeltaErrorMs: percentile(timelineDeltas, 0.95),
+          maxConsecutiveReceiveGapMs: receiveIntervals.length ? Math.round(receiveIntervals[receiveIntervals.length - 1]) : null,
+          detectedSenderGaps: senderGaps.length,
+          detectedReceiveGaps: receiveGaps.length,
+          sequenceHolesBetweenReceived
+        },
         averageJoinMs: joinTimes.length ? Math.round(joinTimes.reduce((a, b) => a + b, 0) / joinTimes.length) : null,
         maxConcurrentJoins,
         maxJoinedRooms,
