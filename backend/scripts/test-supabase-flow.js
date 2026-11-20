@@ -116,10 +116,11 @@ async function rpc(baseUrl, key, user, name, args) {
   return data;
 }
 
-async function readMessage(baseUrl, key, user, messageId) {
+async function readMessage(baseUrl, key, user, senderId, nonce) {
   const query = new URLSearchParams({
-    select: "message_id,sender_id,recipient_id,payload",
-    message_id: "eq." + messageId
+    select: "sender_id,recipient_id,payload,created_at",
+    sender_id: "eq." + senderId,
+    "payload->>nonce": "eq." + nonce
   });
   const { response, data } = await apiRequest(
     baseUrl + "/rest/v1/messages?" + query.toString(),
@@ -196,21 +197,23 @@ async function main() {
       "Invitation storage must contain exactly one database-side SHA-256 hash of the original ID.");
     console.log("PASS: invitation ID is sent raw; database stores exactly one SHA-256 hash.");
 
+    const nonceA = crypto.randomUUID();
+    const nonceB = crypto.randomUUID();
     const attempts = await Promise.allSettled([
       rpc(config.url, config.publishableKey, redeemerA, "submit_message", {
-        p_payload: { type: "integration_test", nonce: crypto.randomUUID() },
+        p_payload: { type: "integration_test", nonce: nonceA },
         p_recipient_id: null,
         p_invitation_id: invitationId
       }),
       rpc(config.url, config.publishableKey, redeemerB, "submit_message", {
-        p_payload: { type: "integration_test", nonce: crypto.randomUUID() },
+        p_payload: { type: "integration_test", nonce: nonceB },
         p_recipient_id: null,
         p_invitation_id: invitationId
       })
     ]);
 
     const successful = attempts
-      .map((attempt, index) => ({ attempt, user: index === 0 ? redeemerA : redeemerB }))
+      .map((attempt, index) => ({ attempt, user: index === 0 ? redeemerA : redeemerB, nonce: index === 0 ? nonceA : nonceB }))
       .filter(item => item.attempt.status === "fulfilled");
     const rejected = attempts.filter(item => item.status === "rejected");
 
@@ -220,37 +223,40 @@ async function main() {
     assert(/invalid or already used|P0001/i.test(rejectionText),
       "The losing redemption did not fail because the one-time invitation had already been consumed.");
     const winner = successful[0].user;
-    const messageId = successful[0].attempt.value;
-    assert(typeof messageId === "string" && /^[0-9a-f-]{36}$/i.test(messageId),
-      "submit_message did not return a message UUID.");
+    const nonce = successful[0].nonce;
+    const createdAt = successful[0].attempt.value;
+    assert(typeof createdAt === "string" && !Number.isNaN(Date.parse(createdAt)),
+      "submit_message did not return the created_at timestamp.");
     console.log("PASS: concurrent redemption is atomic; exactly one sender succeeds.");
 
-    const ownerInbox = await readMessage(config.url, config.publishableKey, owner, messageId);
+    const ownerInbox = await readMessage(config.url, config.publishableKey, owner, winner.id, nonce);
     assert(ownerInbox.length === 1, "Invitation owner cannot read the delivered inbox message.");
-    assert(ownerInbox[0].sender_id === winner.id && ownerInbox[0].recipient_id === owner.id,
-      "Inbox message sender/recipient routing is incorrect.");
+    assert(ownerInbox[0].sender_id === winner.id && ownerInbox[0].recipient_id === owner.id &&
+      Date.parse(ownerInbox[0].created_at) === Date.parse(createdAt),
+      "Inbox message sender/recipient routing or created_at return value is incorrect.");
     console.log("PASS: recipient can read the message from their own inbox.");
 
-    const winnerInbox = await readMessage(config.url, config.publishableKey, winner, messageId);
+    const winnerInbox = await readMessage(config.url, config.publishableKey, winner, winner.id, nonce);
     assert(winnerInbox.length === 0, "Sender can read a message addressed to another user.");
     const loser = winner.id === redeemerA.id ? redeemerB : redeemerA;
-    const loserInbox = await readMessage(config.url, config.publishableKey, loser, messageId);
+    const loserInbox = await readMessage(config.url, config.publishableKey, loser, winner.id, nonce);
     assert(loserInbox.length === 0, "Unrelated user can read another user's inbox message.");
-    console.log("PASS: RLS prevents sender and unrelated user from reading recipient's message.");
 
     await assertDirectInsertDenied(config.url, config.publishableKey, winner, owner.id);
     console.log("PASS: authenticated clients cannot INSERT directly into messages.");
 
-    const followUpId = await rpc(config.url, config.publishableKey, winner, "submit_message", {
-      p_payload: { type: "integration_test_follow_up", nonce: crypto.randomUUID() },
+    const followUpNonce = crypto.randomUUID();
+    const followUpCreatedAt = await rpc(config.url, config.publishableKey, winner, "submit_message", {
+      p_payload: { type: "integration_test_follow_up", nonce: followUpNonce },
       p_recipient_id: owner.id,
       p_invitation_id: null
     });
-    assert(typeof followUpId === "string" && /^[0-9a-f-]{36}$/i.test(followUpId),
-      "Existing-contact message did not return a message UUID.");
-    const followUp = await readMessage(config.url, config.publishableKey, owner, followUpId);
-    assert(followUp.length === 1 && followUp[0].sender_id === winner.id,
-      "Existing-contact message was not routed to the recipient.");
+    assert(typeof followUpCreatedAt === "string" && !Number.isNaN(Date.parse(followUpCreatedAt)),
+      "Existing-contact submit_message did not return created_at.");
+    const followUp = await readMessage(config.url, config.publishableKey, owner, winner.id, followUpNonce);
+    assert(followUp.length === 1 && followUp[0].sender_id === winner.id &&
+      Date.parse(followUp[0].created_at) === Date.parse(followUpCreatedAt),
+      "Existing-contact message was not routed or its created_at return value was incorrect.");
     console.log("PASS: existing linked contacts can submit messages through the RPC.");
 
     console.log("ALL SUPABASE INTEGRATION CHECKS PASSED.");
