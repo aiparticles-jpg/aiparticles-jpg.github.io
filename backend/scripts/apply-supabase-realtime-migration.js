@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-// Applies only the VoiceLink private Realtime inbox authorization policy.
+// Applies the VoiceLink private Broadcast inbox authorization policy.
 // This is run explicitly by the GitHub Actions integration workflow, never by npm start.
 
 const { Client } = require("pg");
@@ -51,7 +51,7 @@ async function main() {
       fail("Connected database is missing required Supabase Auth/Realtime objects.");
     }
     if (state.database_role !== "postgres") {
-      fail("Refusing to apply Realtime policy unless connected as the project's postgres role.");
+      fail("Refusing to apply Broadcast policy unless connected as the project's postgres role.");
     }
 
     await client.query("begin");
@@ -82,7 +82,7 @@ async function main() {
         fail("Realtime inbox authorization policy verification failed.");
       }
       await client.query("commit");
-      console.log("Realtime inbox authorization policy applied and verified.");
+      console.log("Private Broadcast inbox authorization policy applied and verified.");
     } catch (error) {
       await client.query("rollback");
       throw error;
