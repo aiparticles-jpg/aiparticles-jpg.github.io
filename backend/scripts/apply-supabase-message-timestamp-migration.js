@@ -62,15 +62,21 @@ async function main() {
               and tgname='messages_broadcast_insert'
               and not tgisinternal
           ) as has_broadcast_trigger,
-          (select relreplident = 'f' from pg_class where oid='public.messages'::regclass) as replica_identity_full
+          (select relreplident = 'd' from pg_class where oid='public.messages'::regclass) as replica_identity_default,
+          not exists (
+            select 1 from pg_publication_tables
+            where pubname='supabase_realtime'
+              and schemaname='public'
+              and tablename='messages'
+          ) as removed_from_wal_publication
       `);
       const state = result.rows[0];
       if (state.has_message_id || !state.has_created_at || state.submit_result !== "timestamp with time zone" ||
-          !state.has_broadcast_function || !state.has_broadcast_trigger || !state.replica_identity_full) {
+          !state.has_broadcast_function || !state.has_broadcast_trigger || !state.replica_identity_default || !state.removed_from_wal_publication) {
         throw new Error("Timestamp-only inbox / private Broadcast schema verification failed.");
       }
       await db.query("commit");
-      console.log("Supabase inbox migrated: no message_id; created_at retained; submit_message returns created_at; private Broadcast trigger installed; FULL replica identity enabled.");
+      console.log("Supabase inbox migrated: no message_id; created_at retained; submit_message returns created_at; private Broadcast trigger installed; table removed from WAL publication.");
     } catch (error) {
       if (error.position) {
         const offset = Number(error.position) - 1;
