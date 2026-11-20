@@ -44,7 +44,7 @@ button:disabled{opacity:.45;cursor:not-allowed}.muted{font-size:13px;color:#94a3
 </section>
 <section class="card">
 <h2>3. Результат</h2>
-<p class="muted">Получатель должен увидеть сообщение после Realtime-события и прочитать его из постоянного inbox. Отправитель отдельно проверит, что не может прочитать адресованную получателю строку.</p>
+<p class="muted">Получатель должен обработать полную строку прямо из Realtime INSERT-события, без дополнительного SELECT. Отправитель отдельно проверит, что не может прочитать адресованную получателю строку.</p>
 <ol id="events"><li class="muted">Ожидаем действия…</li></ol>
 </section>
 </main>
@@ -64,15 +64,12 @@ button:disabled{opacity:.45;cursor:not-allowed}.muted{font-size:13px;color:#94a3
   if(!session){status("Создаём анонимную сессию…");({data,error}=await client.auth.signInAnonymously());if(error)throw error;session=data.session}
   user=session?.user;if(!user?.is_anonymous)throw Error("Для теста нужна анонимная сессия Supabase.");
   $("uid").textContent=user.id;status("Анонимная авторизация выполнена",true);
-  channel=client.channel("inbox:"+user.id,{config:{private:true}}).on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:"recipient_id=eq."+user.id},async event=>{
-    const id=event.new?.message_id;if(!id)return;
-    log("Realtime INSERT получен. Загружаем строку из inbox…");
-    const {data:rows,error}=await client.from("messages").select("message_id,sender_id,recipient_id,payload,created_at").eq("message_id",id).limit(1);
-    if(error){log("Не удалось прочитать inbox: "+error.message,false);return}
-    if(!rows?.length){log("Realtime был, но строка не прочиталась из inbox.",false);return}
-    const row=rows[0];
-    if(row.recipient_id!==user.id||row.payload?.type!=="browser_realtime_test"){log("Получена строка с неожиданным адресатом или типом.",false);return}
-    log("PASS: сообщение получено через Postgres Changes и прочитано из durable inbox. ID: "+row.message_id,true);
+  channel=client.channel("inbox:"+user.id,{config:{private:true}}).on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:"recipient_id=eq."+user.id},event=>{
+    // Process the complete INSERT row carried by Realtime. No per-event SELECT.
+    const row=event.new;
+    if(!row?.message_id)return;
+    if(row.recipient_id!==user.id||row.payload?.test!=="browser_realtime_test"){log("Получена строка с неожиданным адресатом или тестовым содержимым.",false);return}
+    log("PASS: полная строка получена и обработана прямо из Realtime, без дополнительного SELECT. ID: "+row.message_id,true);
   }).subscribe((state,error)=>{
     $("subscription").textContent=state+(error?" — "+error.message:"");
     if(state==="SUBSCRIBED"){$("create").disabled=false;status("Подписка на собственный inbox активна",true);log("PASS: подписка Postgres Changes активна для recipient_id="+user.id,true)}
@@ -95,7 +92,7 @@ button:disabled{opacity:.45;cursor:not-allowed}.muted{font-size:13px;color:#94a3
   const token=$("invitation").value.trim();if(!/^[A-Za-z0-9_-]{43}$/.test(token)){$("send-status").textContent="Invitation ID должен содержать 43 символа base64url.";return}
   $("send").disabled=true;$("send-status").textContent="Погашаем приглашение и отправляем сообщение…";
   try{
-   const payload={type:"browser_realtime_test",nonce:crypto.randomUUID(),text:"Тестовое сообщение VoiceLink",sent_at:new Date().toISOString()};
+   const payload={test:"browser_realtime_test",nonce:crypto.randomUUID(),text:"Тестовое сообщение VoiceLink",sent_at:new Date().toISOString()};
    const {data:messageId,error}=await client.rpc("submit_message",{p_payload:payload,p_recipient_id:null,p_invitation_id:token});if(error)throw error;
    if(typeof messageId!=="string")throw Error("RPC не вернул message UUID.");
    $("send-status").textContent="RPC принял сообщение. Проверяем запрет чтения отправителем…";
