@@ -420,3 +420,19 @@ Implemented in the existing static app without switching its active signaling tr
 - Unused Supabase invitation rows currently remain as SHA-256 digests until redeemed. An explicit revoke/expiry cleanup path is still to be designed; do not claim these invitations are revoked when a local invitation is replaced or deleted.
 
 Keep ntfy active until the next steps implement initial invitation redemption, inbox subscription/recovery, and the real two-device signaling flow.
+
+## 16. First-contact Supabase redemption in the production app — 2026-11-20
+
+Implemented in the production browser app while preserving the existing ntfy exchange.
+
+- Added `submitSupabaseInvitationAcceptance()` to `js/supabase-client.js`.
+- When a newly imported contact is sent the existing encrypted ntfy contact-response message, the app also attempts to redeem the verified contact's `supabase_invitation_id`.
+- The first Supabase message uses the existing 32-byte `invitation_secret` as shared E2EE key material and the version-1 Supabase envelope. Its encrypted plaintext is `{type:"contact_accept",seq:"1",body:{}}`.
+- The sender UUID is obtained from the current Supabase Auth session. The recipient UUID and one-time invitation token come from the verified contact package. The client calls `submit_message(p_payload, null, p_invitation_id)`; it does not send a client-selected sender UUID.
+- A successful RPC atomically consumes the one-time token, creates the bidirectional `links` row, and inserts the encrypted first message into the inviter's durable inbox.
+- On success, the invitee stores a local `supabase_invitation_redeemed_at` marker to avoid deliberately retrying the same one-time token. Raw invitation tokens are not logged.
+- If the invitation has no Supabase fields, the app continues with ntfy only. If Supabase submission fails, the legacy ntfy exchange remains operational and the failure is recorded in the diagnostic log.
+- The production app does not yet subscribe to the Supabase inbox or process incoming Supabase messages. The initial row is durable, but the inviter will not yet display/process it through the new transport. Realtime subscription, inbox recovery, and normal call signaling remain the next implementation stage.
+- GitHub Actions syntax check passed for commit `031e74cd779ac66a50b94e1df80cd5145cccc310` (run `44714979485`); GitHub Pages deployment also succeeded (run `44714979359`).
+
+This is a staged dual-write/first-contact bridge, not a completed ntfy replacement. Keep ntfy active until inbox processing and a real two-device call work over Supabase.
