@@ -334,19 +334,14 @@ async function probeTracker(url) {
     async function leaveSlidingRoom(index) {
       const room = slidingRooms[index];
       if (!room || !joinedRooms.has(index)) return;
-      const started = performance.now();
-      const ack = waitForMessage(
-        receiver,
-        (m) => m.action === "announce" && m.info_hash === room.hash,
-        "sliding leave room " + index
-      );
+      // The public tracker processes "stopped" but does not send an announce
+      // acknowledgement for it. Send it fire-and-forget; do not block the window.
       send(receiver, {
         action: "announce", info_hash: room.hash, peer_id: receiverId,
         uploaded: 0, downloaded: 0, left: 1, event: "stopped", numwant: 0
       });
-      await ack;
       joinedRooms.delete(index);
-      leaveTimes.push(performance.now() - started);
+      leaveTimes.push(0);
     }
 
     const slidingListener = (raw) => {
@@ -417,7 +412,7 @@ async function probeTracker(url) {
       elapsedMs: Math.round(performance.now() - slidingStarted),
       latencyMs: { min: slidingLatencies.length ? Math.round(slidingLatencies[0]) : null, median: slidingPercentile(0.5), p95: slidingPercentile(0.95), max: slidingLatencies.length ? Math.round(slidingLatencies[slidingLatencies.length - 1]) : null },
       averageJoinMs: joinTimes.length ? Math.round(joinTimes.reduce((a, b) => a + b, 0) / joinTimes.length) : null,
-      averageLeaveMs: leaveTimes.length ? Math.round(leaveTimes.reduce((a, b) => a + b, 0) / leaveTimes.length) : null,
+      stoppedAnnouncementsSent: leaveTimes.length,
       remainingJoinedRooms: joinedRooms.size,
       maintenanceError: slidingFailure
     };
