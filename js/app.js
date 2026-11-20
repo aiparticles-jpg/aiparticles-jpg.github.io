@@ -5,6 +5,7 @@ import { listContacts, getContact, saveContact, updateContact, deleteContact, sa
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
+import { getSupabaseIdentity } from "./supabase-client.js?v=1";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -179,7 +180,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callPeer:"",callPeerLabel:"",callReturnFocus:null,micMuted:false,speakerOutputId:null,audioOutputCount:null,audioOutputCheckPending:false};
+const state={secure:null,webrtc:null,supabaseUserId:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callPeer:"",callPeerLabel:"",callReturnFocus:null,micMuted:false,speakerOutputId:null,audioOutputCount:null,audioOutputCheckPending:false};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -1372,8 +1373,19 @@ async function createContactInvitationNow({expectedRevision=null}={}){
  try{
   const subscriptionId=await enableOneSignalPush();
   const identity=await getCurrentSignalingIdentity();
+  const isCurrentRevision=()=>profileRevision===profileInviteRevision&&
+   displayName===getProfileDisplayName()&&inviteContactName===getInviteContactName()&&
+   (expectedRevision===null||expectedRevision===profileInviteRevision);
+  if(!isCurrentRevision())return false;
+  let supabaseUserId=state.supabaseUserId;
+  if(!supabaseUserId){
+   try{const supabaseIdentity=await getSupabaseIdentity();supabaseUserId=supabaseIdentity.user_id;state.supabaseUserId=supabaseUserId;}
+   catch(error){debug("Supabase Auth недоступен; приглашение будет совместимо со старым транспортом: "+(error.message||String(error)));}
+  }
   const unsigned={
-   version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,push_subscription_id:subscriptionId,
+   version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,
+   ...(supabaseUserId?{supabase_user_id:supabaseUserId}:{}),
+   push_subscription_id:subscriptionId,
    invitation_id:crypto.randomUUID(),
    invitation_secret:toBase64UrlBytes(crypto.getRandomValues(new Uint8Array(32))),
    shared_secret_created_at:Date.now(),
@@ -1382,9 +1394,6 @@ async function createContactInvitationNow({expectedRevision=null}={}){
   const contactPackage=unsigned;
   const encoded=toBase64UrlBytes(new TextEncoder().encode(JSON.stringify(contactPackage)));
   const url=window.location.origin+window.location.pathname+"#contact="+encoded;
-  const isCurrentRevision=()=>profileRevision===profileInviteRevision&&
-   displayName===getProfileDisplayName()&&inviteContactName===getInviteContactName()&&
-   (expectedRevision===null||expectedRevision===profileInviteRevision);
   if(!isCurrentRevision())return false;
   await createIssuedInvitation({
    id:unsigned.invitation_id,secret:unsigned.invitation_secret,created_at:Date.now(),
@@ -1504,7 +1513,7 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   const contact=await getContact(peer);if(!contact?.push_subscription_id||!contact?.invitation_secret||!contact?.invitation_id)throw Error("У контакта отсутствуют данные приглашения. Попросите его прислать новую ссылку.");
   const subscriptionId=await getOptionalOneSignalSubscriptionId(),identity=await getCurrentSignalingIdentity(),invitationId=contact.invitation_id,createdAt=Number(contact.shared_secret_created_at)||Date.now();
   if(!subscriptionId)debug("На этом устройстве Web Push недоступен или не разрешён; ответное приглашение будет отправлено через ntfy без push-подписки.");
-  const pack={version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,...(subscriptionId?{push_subscription_id:subscriptionId}:{}),invitation_id:invitationId,invitation_secret:contact.invitation_secret,shared_secret_created_at:createdAt,...(senderDisplayName?{display_name:senderDisplayName}:{})};
+  const pack={version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,...(state.supabaseUserId?{supabase_user_id:state.supabaseUserId}:{}),...(subscriptionId?{push_subscription_id:subscriptionId}:{}),invitation_id:invitationId,invitation_secret:contact.invitation_secret,shared_secret_created_at:createdAt,...(senderDisplayName?{display_name:senderDisplayName}:{})};
   const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER,msg=await createContactRequestEnvelope({contact,contactPackage:pack,from:identity.user_id,to:peer,requestId,expiresAt});
   const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
@@ -2429,6 +2438,14 @@ async function initializeApp(){
     if(key?.startsWith("vl.identity.v1.")||key?.startsWith("vl.peer.v1."))localStorage.removeItem(key);
    }
   }catch(error){debug("Не удалось очистить устаревшие локальные ключи: "+(error.message||String(error)));}
+  try{
+   const supabaseIdentity=await getSupabaseIdentity();
+   state.supabaseUserId=supabaseIdentity.user_id;
+   debug("Supabase Anonymous Auth готов; UUID="+state.supabaseUserId+".");
+  }catch(error){
+   state.supabaseUserId=null;
+   debug("Supabase Auth пока недоступен; старый ntfy-транспорт продолжит работать: "+(error.message||String(error)));
+  }
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
   await refreshContactOptions();

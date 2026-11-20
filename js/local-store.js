@@ -435,6 +435,7 @@ export async function saveContact(contact) {
       typeof contact.user_id !== "string" || !/^[a-f0-9]{64}$/.test(contact.user_id) ||
       typeof contact.invitation_id !== "string" || !/^[0-9a-f-]{36}$/i.test(contact.invitation_id) ||
       typeof contact.invitation_secret !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(contact.invitation_secret) ||
+      (contact.supabase_user_id != null && (typeof contact.supabase_user_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(contact.supabase_user_id)) ) ||
       (contact.push_subscription_id != null && (typeof contact.push_subscription_id !== "string" || !contact.push_subscription_id.trim())) || !contact.name)
     throw new TypeError("A contact requires a local name, shared 256-bit secret, and invitation ID; push subscription ID is optional.");
   const record={...contact,name:String(contact.name).trim(),updated_at:new Date().toISOString()};
@@ -457,6 +458,17 @@ export async function getContact(userId) {
   const record = await requestValue(tx.objectStore("contacts").get(userId));
   await done;
   return record || null;
+}
+
+/** Resolve a saved local contact from its independent Supabase Auth routing UUID. */
+export async function findContactBySupabaseUserId(supabaseUserId) {
+  if (typeof supabaseUserId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(supabaseUserId)) return null;
+  const tx = await openTransaction("contacts", "readonly");
+  const done = transactionDone(tx);
+  const records = await requestValue(tx.objectStore("contacts").getAll());
+  await done;
+  return records.find(record => record.supabase_user_id === supabaseUserId.toLowerCase()) || null;
 }
 
 export async function updateContact(userId, updates) {
