@@ -738,7 +738,7 @@ async function probeTracker(url) {
           for (let attempt = 0; attempt < 5; attempt++) {
             const t1 = await clockNow(sender);
             const outboundMs = 14 + ((round * 3 + attempt) % 4) * 7;
-            const returnMs = 19 + ((round + attempt * 2) % 5) * 6;
+            const returnMs = outboundMs; // symmetric variable transit delay isolates clock drift from path asymmetry.
             await sleep(outboundMs);
             const t2 = await clockNow(receiver);
             const t3 = await clockNow(receiver);
