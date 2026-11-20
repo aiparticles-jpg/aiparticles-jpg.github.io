@@ -461,6 +461,29 @@ export async function getContact(userId) {
   return record || null;
 }
 
+/** Check whether a durable Supabase inbox row was already processed locally. */
+export async function hasProcessedSupabaseMessage(messageId) {
+  if (typeof messageId !== "string" || !/^[0-9a-f-]{36}$/i.test(messageId)) return false;
+  const tx = await openTransaction("meta", "readonly");
+  const done = transactionDone(tx);
+  const record = await requestValue(tx.objectStore("meta").get("supabase_processed_messages"));
+  await done;
+  return Array.isArray(record?.value) && record.value.includes(messageId.toLowerCase());
+}
+
+export async function markSupabaseMessageProcessed(messageId) {
+  if (typeof messageId !== "string" || !/^[0-9a-f-]{36}$/i.test(messageId)) throw new TypeError("A valid Supabase message UUID is required.");
+  const tx = await openTransaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("meta");
+  const record = await requestValue(store.get("supabase_processed_messages"));
+  const ids = Array.isArray(record?.value) ? record.value : [];
+  const normalized = messageId.toLowerCase();
+  if (!ids.includes(normalized)) ids.push(normalized);
+  store.put({ key: "supabase_processed_messages", value: ids.slice(-2000), updated_at: Date.now() });
+  await done;
+}
+
 /** Resolve a saved local contact from its independent Supabase Auth routing UUID. */
 export async function findContactBySupabaseUserId(supabaseUserId) {
   if (typeof supabaseUserId !== "string" ||
