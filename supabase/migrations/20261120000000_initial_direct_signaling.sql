@@ -20,7 +20,6 @@ create table if not exists public.links (
 );
 
 create table if not exists public.messages (
-  message_id uuid primary key default gen_random_uuid(),
   sender_id uuid not null references auth.users(id) on delete cascade,
   recipient_id uuid not null references auth.users(id) on delete cascade,
   payload jsonb not null
@@ -82,7 +81,7 @@ create or replace function public.submit_message(
   p_recipient_id uuid default null,
   p_invitation_id text default null
 )
-returns uuid
+returns timestamptz
 language plpgsql
 security definer
 set search_path = pg_catalog, public, extensions
@@ -91,7 +90,7 @@ declare
   v_sender_id uuid := auth.uid();
   v_recipient_id uuid;
   v_invitation_owner_id uuid;
-  v_message_id uuid;
+  v_created_at timestamptz;
   v_user_a uuid;
   v_user_b uuid;
 begin
@@ -157,9 +156,9 @@ begin
 
   insert into public.messages (sender_id, recipient_id, payload)
   values (v_sender_id, v_recipient_id, p_payload)
-  returning message_id into v_message_id;
+  returning created_at into v_created_at;
 
-  return v_message_id;
+  return v_created_at;
 end;
 $function$;
 
@@ -188,8 +187,8 @@ comment on table public.invitations is
 comment on table public.links is
   'Bidirectional contact authorization, keyed directly by Supabase Auth UUIDs.';
 comment on table public.messages is
-  'Durable recipient inbox. Only recipients may SELECT; writes are routed by submit_message().';
+  'Durable recipient inbox. created_at is retained; encrypted per-direction seq defines order and deduplication.';
 comment on function public.create_invitation(text) is
   'Stores only the SHA-256 hash of a 32-byte base64url invitation ID.';
 comment on function public.submit_message(jsonb, uuid, text) is
-  'Atomically redeems an invitation or validates an existing link, then inserts into the recipient inbox.';
+  'Atomically redeems an invitation or validates an existing link, inserts into the recipient inbox, and returns created_at.';
