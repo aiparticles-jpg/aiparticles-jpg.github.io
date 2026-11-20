@@ -293,7 +293,137 @@ async function probeTracker(url) {
     };
     console.log("ROOM_STREAM " + JSON.stringify(roomStreamResult));
 
-    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, sameRunnerIp: true }));
+    // Sliding-window test: receiver keeps at most five rooms joined.
+    // On receipt of packet i, it joins i+5, then leaves room i.
+    const slidingPacketCount = 75;
+    const slidingWindowSize = 5;
+    const slidingIntervalMs = 40;
+    const slidingBase = 5000;
+    const slidingRooms = Array.from({ length: slidingPacketCount }, (_, i) => {
+      const hash = roomHash(slidingBase + i);
+      return { index: i, hash, hashHex: Buffer.from(hash, "latin1").toString("hex") };
+    });
+    const slidingPayload = Buffer.alloc(PAYLOAD_BYTES, 0x6d);
+    const slidingSentAt = new Map();
+    const slidingReceivedAt = new Map();
+    const joinedRooms = new Set();
+    const joinTimes = [];
+    const leaveTimes = [];
+    let nextRoomToJoin = slidingWindowSize;
+    let slidingFailure = null;
+    let slidingWork = Promise.resolve();
+
+    async function joinSlidingRoom(index) {
+      const room = slidingRooms[index];
+      if (!room || joinedRooms.has(index)) return;
+      const started = performance.now();
+      const ack = waitForMessage(
+        receiver,
+        (m) => m.action === "announce" && m.info_hash === room.hash,
+        "sliding join room " + index
+      );
+      send(receiver, {
+        action: "announce", info_hash: room.hash, peer_id: receiverId,
+        uploaded: 0, downloaded: 0, left: 1, event: "started", numwant: 0
+      });
+      await ack;
+      joinedRooms.add(index);
+      joinTimes.push(performance.now() - started);
+    }
+
+    async function leaveSlidingRoom(index) {
+      const room = slidingRooms[index];
+      if (!room || !joinedRooms.has(index)) return;
+      const started = performance.now();
+      const ack = waitForMessage(
+        receiver,
+        (m) => m.action === "announce" && m.info_hash === room.hash,
+        "sliding leave room " + index
+      );
+      send(receiver, {
+        action: "announce", info_hash: room.hash, peer_id: receiverId,
+        uploaded: 0, downloaded: 0, left: 1, event: "stopped", numwant: 0
+      });
+      await ack;
+      joinedRooms.delete(index);
+      leaveTimes.push(performance.now() - started);
+    }
+
+    const slidingListener = (raw) => {
+      let message;
+      try { message = JSON.parse(raw.toString()); } catch { return; }
+      if (message.action !== "announce" || !message.offer?.sdp) return;
+      const room = slidingRooms.find((entry) => entry.hash === message.info_hash);
+      if (!room) return;
+      const markerLine = message.offer.sdp.split("\\r\\n").find((line) => line.startsWith("a=x-voicelink-sliding:"));
+      if (!markerLine) return;
+      const markerParts = markerLine.slice("a=x-voicelink-sliding:".length).split(":");
+      if (markerParts.length !== 2) return;
+      const packetNumber = Number(markerParts[0]);
+      if (packetNumber !== room.index || !slidingSentAt.has(packetNumber) || slidingReceivedAt.has(packetNumber)) return;
+      const decoded = Buffer.from(markerParts[1], "base64");
+      if (decoded.length !== PAYLOAD_BYTES || !decoded.equals(slidingPayload)) return;
+      slidingReceivedAt.set(packetNumber, performance.now());
+
+      // Serialize window maintenance so joins/leaves cannot race each other.
+      slidingWork = slidingWork.then(async () => {
+        const newIndex = nextRoomToJoin;
+        if (newIndex < slidingPacketCount) {
+          await joinSlidingRoom(newIndex);
+          nextRoomToJoin++;
+        }
+        await leaveSlidingRoom(packetNumber);
+      }).catch((error) => {
+        slidingFailure = error.message;
+        console.error("SLIDING WINDOW ERROR:", error.message);
+      });
+    };
+
+    // Initial window: exactly five joined rooms.
+    for (let i = 0; i < slidingWindowSize; i++) await joinSlidingRoom(i);
+    receiver.on("message", slidingListener);
+
+    const slidingStarted = performance.now();
+    for (let i = 0; i < slidingPacketCount; i++) {
+      const room = slidingRooms[i];
+      const offerId = binaryString(createHash("sha256").update("sliding-offer:" + i).digest().subarray(0, 20));
+      const marker = "a=x-voicelink-sliding:" + i + ":" + slidingPayload.toString("base64");
+      const sdp = ["v=0", "o=- 4 4 IN IP4 127.0.0.1", "s=VoiceLink sliding-window probe", "t=0 0", marker, ""].join("\\r\\n");
+      slidingSentAt.set(i, performance.now());
+      send(sender, {
+        action: "announce", info_hash: room.hash, peer_id: senderId,
+        uploaded: 0, downloaded: 0, left: 1, event: "started", numwant: 1,
+        offers: [{ offer: { type: "offer", sdp }, offer_id: offerId }]
+      });
+      if (i + 1 < slidingPacketCount) await new Promise((resolve) => setTimeout(resolve, slidingIntervalMs));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await slidingWork;
+    receiver.off("message", slidingListener);
+    const slidingLatencies = Array.from(slidingReceivedAt, ([packet, received]) => received - slidingSentAt.get(packet)).sort((a, b) => a - b);
+    const slidingPercentile = (p) => slidingLatencies.length ? Math.round(slidingLatencies[Math.min(slidingLatencies.length - 1, Math.floor((slidingLatencies.length - 1) * p))]) : null;
+    const slidingResult = {
+      payloadBytes: PAYLOAD_BYTES,
+      targetRatePerSecond: 1000 / slidingIntervalMs,
+      packetCount: slidingPacketCount,
+      windowSize: slidingWindowSize,
+      initialJoinedRooms: slidingWindowSize,
+      maxJoinedRooms: slidingWindowSize,
+      sentPackets: slidingPacketCount,
+      receivedPackets: slidingReceivedAt.size,
+      lostPackets: slidingPacketCount - slidingReceivedAt.size,
+      lossPercent: Number(((slidingPacketCount - slidingReceivedAt.size) / slidingPacketCount * 100).toFixed(2)),
+      elapsedMs: Math.round(performance.now() - slidingStarted),
+      latencyMs: { min: slidingLatencies.length ? Math.round(slidingLatencies[0]) : null, median: slidingPercentile(0.5), p95: slidingPercentile(0.95), max: slidingLatencies.length ? Math.round(slidingLatencies[slidingLatencies.length - 1]) : null },
+      averageJoinMs: joinTimes.length ? Math.round(joinTimes.reduce((a, b) => a + b, 0) / joinTimes.length) : null,
+      averageLeaveMs: leaveTimes.length ? Math.round(leaveTimes.reduce((a, b) => a + b, 0) / leaveTimes.length) : null,
+      remainingJoinedRooms: joinedRooms.size,
+      maintenanceError: slidingFailure
+    };
+    console.log("SLIDING_WINDOW " + JSON.stringify(slidingResult));
+
+    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindow: slidingResult, sameRunnerIp: true }));
     return true;
   } finally {
     for (const ws of [sender, receiver]) {
