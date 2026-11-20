@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VoiceLink — проверка синхронизации часов</title>
+<style>
+:root{color-scheme:light dark;font:16px system-ui,sans-serif}body{max-width:760px;margin:0 auto;padding:20px;line-height:1.45}
+h1{font-size:1.35rem}.muted{opacity:.72}.panel{border:1px solid #8886;border-radius:12px;padding:14px;margin:14px 0}
+label{display:block;margin:10px 0 5px}input,select,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #888;background:transparent;color:inherit}
+input{width:100%;box-sizing:border-box}button{cursor:pointer;margin:5px 5px 5px 0}button:disabled{opacity:.45;cursor:default}
+#log{white-space:pre-wrap;overflow-wrap:anywhere;font:12px ui-monospace,monospace;max-height:320px;overflow:auto}
+.stat{font-variant-numeric:tabular-nums}.ok{color:#16834a}.bad{color:#c33}
+</style>
+</head>
+<body>
+<h1>VoiceLink — проверка часов через WebTorrent tracker</h1>
+<p class="muted">Экспериментальная страница. Она не запрашивает микрофон, не устанавливает аудиозвонок и не меняет рабочее приложение VoiceLink. Передаются только короткие контрольные сообщения.</p>
+<div class="panel">
+<label for="room">Общий код комнаты (одинаковый на обоих телефонах)</label>
+<input id="room" value="voicelink-clock-test-2026" autocomplete="off">
+<label for="role">Роль этого телефона</label>
+<select id="role"><option value="A">Телефон A — инициатор проверки</option><option value="B">Телефон B — отвечает на запросы</option></select>
+<div><button id="connect">Подключиться</button><button id="disconnect" disabled>Отключиться</button></div>
+<div id="status" class="stat">Не подключено</div>
+</div>
+<div class="panel">
+<button id="start" disabled>Начать 20 измерений (только телефон A)</button>
+<div id="summary" class="stat">Результатов пока нет.</div>
+</div>
+<div class="panel">
+<strong>Журнал</strong>
+<div id="log">Ожидание подключения.</div>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const TRACKERS = ["wss://tracker.webtorrent.dev", "wss://tracker.openwebtorrent.com"];
+  const ROOM_PREFIX = "a=x-vl-clock:";
+  let ws = null, infoHash = null, peerId = null, connected = false, activeTracker = "";
+  let requestCounter = 0, pending = new Map(), samples = [], runActive = false;
+  const log = (s) => { $("log").textContent += "\n" + new Date().toLocaleTimeString() + " " + s; $("log").scrollTop = $("log").scrollHeight; };
+  const status = (s, cls="") => { $("status").textContent=s; $("status").className="stat "+cls; };
+  const binary = (bytes) => Array.from(bytes, b => String.fromCharCode(b)).join("");
+  const randomBinary = (n) => { const b=new Uint8Array(n); crypto.getRandomValues(b); return binary(b); };
+  const base64 = (obj) => btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+  const unbase64 = (s) => JSON.parse(decodeURIComponent(escape(atob(s))));
+  async function hashRoom(value) {
+    const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(value));
+    return binary(new Uint8Array(digest));
+  }
+  function sendAnnounce(offers=[]) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error("WebSocket не подключён");
+    ws.send(JSON.stringify({action:"announce",info_hash:infoHash,peer_id:peerId,uploaded:0,downloaded:0,left:1,event:"update",numwant:1,offers}));
+  }
+  function sendPayload(payload) {
+    const sdp = ["v=0","o=- 1 1 IN IP4 127.0.0.1","s=VoiceLink clock probe","t=0 0",ROOM_PREFIX+base64(payload),""].join("\r\n");
+    sendAnnounce([{offer:{type:"offer",sdp},offer_id:randomBinary(20)}]);
+  }
+  function onMessage(event) {
+    let m; try { m=JSON.parse(event.data); } catch { return; }
+    if (m.action !== "announce" || m.info_hash !== infoHash || !m.offer?.sdp) return;
+    const line=m.offer.sdp.split("\r\n").find(x=>x.startsWith(ROOM_PREFIX));
+    if (!line) return;
+    let p; try { p=unbase64(line.slice(ROOM_PREFIX.length)); } catch { return; }
+    if ($("role").value==="B" && p.kind==="request") {
+      const t2=performance.now(), t3=performance.now();
+      sendPayload({kind:"response",id:p.id,t1:p.t1,t2,t3});
+      log("Ответ на измерение "+p.id);
+    } else if ($("role").value==="A" && p.kind==="response") {
+      const item=pending.get(p.id); if (!item) return;
+      pending.delete(p.id);
+      const t4=performance.now();
+      const offset=((p.t2-p.t1)+(p.t3-t4))/2;
+      const rtt=Math.max(0,(t4-p.t1)-(p.t3-p.t2));
+      samples.push({offset,rtt,receiverMid:(p.t2+p.t3)/2});
+      $("summary").textContent="Получено "+samples.length+" из 20 измерений. Последний RTT: "+rtt.toFixed(1)+" мс.";
+      log("Измерение "+p.id+": RTT "+rtt.toFixed(1)+" мс; оценка offset B−A "+offset.toFixed(1)+" мс");
+      item.resolve();
+    }
+  }
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  async function connectToTracker(index=0) {
+    if(index>=TRACKERS.length) throw new Error("Не удалось подключиться ни к одному публичному tracker.");
+    const url=TRACKERS[index];
+    status("Подключение к "+url+"…");
+    const socket=new WebSocket(url);
+    const opened=await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error("Тайм-аут подключения к "+url)),10000);
+      socket.onopen=()=>{clearTimeout(timer);resolve(true);};
+      socket.onerror=()=>{clearTimeout(timer);reject(new Error("Ошибка WebSocket: "+url));};
+    }).catch(async e=>{try{socket.close();}catch{};log(e.message);return connectToTracker(index+1);});
+    if(opened!==true) return;
+    ws=socket; activeTracker=url; infoHash=await hashRoom($("room").value.trim()); peerId=randomBinary(20);
+    socket.addEventListener("message",onMessage);
+    socket.addEventListener("close",()=>{connected=false;$("connect").disabled=false;$("disconnect").disabled=true;$("start").disabled=true;status("Соединение закрыто","bad");});
+    socket.addEventListener("error",()=>log("Ошибка WebSocket"));
+    const ack=await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error("Tracker не подтвердил вход в комнату")),10000);
+      const handler=(event)=>{let m;try{m=JSON.parse(event.data)}catch{return}
+        if(m.action==="announce"&&m.info_hash===infoHash&&!m.offer){clearTimeout(timer);socket.removeEventListener("message",handler);resolve(m);}
+      };
+      socket.addEventListener("message",handler);
+      socket.send(JSON.stringify({action:"announce",info_hash:infoHash,peer_id:peerId,uploaded:0,downloaded:0,left:1,event:"started",numwant:1}));
+    });
+    connected=true;$("connect").disabled=true;$("disconnect").disabled=false;
+    $("start").disabled=$("role").value!=="A";
+    status("Подключено: "+activeTracker+"; комната принята","ok");
+    log("Вход подтверждён. Роль "+$("role").value+".");
+  }
+  async function startMeasurements() {
+    if(!connected||$("role").value!=="A"||runActive)return;
+    runActive=true;samples=[];$("start").disabled=true;$("summary").textContent="Измерения выполняются…";
+    for(let i=0;i<20;i++){
+      if(!connected)break;
+      const id=++requestCounter;
+      const result=new Promise(resolve=>pending.set(id,{resolve}));
+      const t1=performance.now();
+      sendPayload({kind:"request",id,t1});
+      const timeout=Promise.race([result,wait(2500)]);
+      await timeout;
+      if(pending.has(id)){pending.delete(id);log("Тайм-аут измерения "+id);}
+      await wait(250);
+    }
+    runActive=false;
+    if(samples.length>=3){
+      const sorted=samples.map(x=>x.rtt).sort((a,b)=>a-b);
+      const percentile=p=>sorted[Math.min(sorted.length-1,Math.floor((sorted.length-1)*p))];
+      const meanX=samples.reduce((s,x)=>s+x.receiverMid,0)/samples.length;
+      const meanY=samples.reduce((s,x)=>s+x.offset,0)/samples.length;
+      const den=samples.reduce((s,x)=>s+(x.receiverMid-meanX)**2,0);
+      const slope=den?samples.reduce((s,x)=>s+(x.receiverMid-meanX)*(x.offset-meanY),0)/den:0;
+      const offsets=samples.map(x=>x.offset);
+      $("summary").textContent="Завершено: "+samples.length+"/20. RTT: min "+percentile(0).toFixed(1)+" мс, median "+percentile(.5).toFixed(1)+" мс, p95 "+percentile(.95).toFixed(1)+" мс. Оценка относительного дрейфа: "+(slope*1e6).toFixed(1)+" ppm. Разброс offset: "+(Math.max(...offsets)-Math.min(...offsets)).toFixed(1)+" мс. Это оценка по tracker-маршруту, не эталон абсолютного времени.";
+      log("ИТОГ: "+$("summary").textContent);
+    } else $("summary").textContent="Недостаточно ответов: "+samples.length+"/20. Проверьте, что телефон B подключён к той же комнате.";
+    $("start").disabled=!connected;
+  }
+  $("connect").addEventListener("click",()=>{if(!$("room").value.trim()){status("Введите код комнаты","bad");return;} $("connect").disabled=true;connectToTracker().catch(e=>{status(e.message,"bad");$("connect").disabled=false;log(e.message);});});
+  $("disconnect").addEventListener("click",()=>{if(ws){try{ws.close();}catch{}ws=null;}connected=false;$("connect").disabled=false;$("disconnect").disabled=true;$("start").disabled=true;status("Отключено");});
+  $("start").addEventListener("click",startMeasurements);
+  $("role").addEventListener("change",()=>{$("start").disabled=!connected||$("role").value!=="A";});
+})();
+</script>
+</body>
+</html>
