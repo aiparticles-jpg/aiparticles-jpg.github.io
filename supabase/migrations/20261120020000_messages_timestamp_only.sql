@@ -28,6 +28,10 @@ $drop_message_pk$;
 
 alter table public.messages drop column if exists message_id;
 
+-- With no primary key, FULL replica identity is required for published DELETEs
+-- (for example, auth.users cleanup cascading to inbox rows).
+alter table public.messages replica identity full;
+
 create or replace function public.submit_message(
   p_payload jsonb,
   p_recipient_id uuid default null,
