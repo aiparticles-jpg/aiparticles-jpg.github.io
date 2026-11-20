@@ -1,89 +1,41 @@
-# Supabase Realtime — private channel test
+# Direct Supabase inbox test (two browsers)
 
-This is a temporary security/transport experiment only. It does not alter VoiceLink's current ntfy signaling, OneSignal push flow, calls, identity, contacts, or invitations.
+This isolated browser test exercises the selected VoiceLink signaling architecture against the existing test-stage Supabase schema. It does not change the production application: ntfy, OneSignal, WebRTC calls, contacts, and invitations remain untouched.
 
-## What this stage verifies
+## What it verifies
 
-- Browsers authenticate with separate temporary Supabase anonymous sessions.
-- Each browser subscribes to the same private Realtime Broadcast topic.
-- RLS permits reading only the dedicated test topic.
-- A deliberately different private topic is rejected.
-- Render publishes only dummy test text to the private topic.
-- The browser never publishes Broadcast messages directly.
+- Each independent browser profile gets its own Supabase Anonymous Auth session.
+- Each browser subscribes to Postgres Changes on `public.messages`, filtered to its own `recipient_id`.
+- The recipient creates a one-time 256-bit invitation. The database stores only its SHA-256 hash.
+- A second browser redeems the invitation using `submit_message()`.
+- The database atomically consumes the invitation, creates the contact link, and inserts a durable inbox row.
+- The recipient receives a Postgres Changes notification and reads the actual row from its own inbox.
+- The sender cannot read the recipient's inbox row (RLS).
 
-This is an authorization smoke test, not the final VoiceLink access-control model. The policy below intentionally lets any authenticated anonymous test user subscribe to this one fixed test topic. Production must use per-recipient authorization/membership, not this broad test-only rule.
+No Render endpoint or OneSignal secret is used by this test page. It talks directly to Supabase using the public publishable key and the browser's anonymous Auth JWT.
 
-## 1. Supabase Auth: enable anonymous sign-ins
+## Prerequisites already verified
 
-In the Supabase Dashboard for project `Voice Link`:
+The Supabase migration and the GitHub Actions integration tests have been applied/run for the VoiceLink project. The tests verified invitation redemption, the concurrent one-time-use race, recipient-only inbox reads, blocked direct INSERT, and recipient-only Postgres Changes delivery.
 
-1. Open **Authentication** settings.
-2. Find the **Allow anonymous sign-ins** option under user sign-up settings.
-3. Enable it and save.
+## Run the browser-to-browser test
 
-The test page creates one anonymous Auth user per browser profile and keeps its session in that browser. Supabase stores these temporary users in its internal `auth.users` table. No application/public table is created. Do not clear browser site data between test runs unless you are happy to create another temporary test user.
+1. Open [the direct Supabase test page](https://aiparticles-jpg.github.io/supabase-realtime-test.html) in two independent browser profiles or on two devices. For example, use Chrome and Firefox, or a normal and private profile.
+2. Wait until both pages show that the Postgres Changes subscription is active.
+3. In browser A, press **Создать одноразовое приглашение**. Copy the 43-character invitation ID.
+4. Paste that ID into browser B and press **Погасить приглашение и отправить**.
+5. Browser B should report that `submit_message()` succeeded and that RLS prevents the sender from reading the inbox row.
+6. Browser A should report a Realtime INSERT, then confirm that it fetched the same message from its durable inbox.
 
-## 2. Supabase Realtime: disable public channels
+The test payload is dummy text only. Do not use real call signaling, personal messages, OneSignal IDs, or production invitation data here.
 
-Open **Project Settings → Realtime Settings** and switch **Allow public access to channels** off.
+## Test users and cleanup
 
-This makes the project private-channel-only. The test page uses `config: { private: true }`.
+The page creates or reuses one anonymous Auth user per browser profile. These users are not automatically removed when the tab closes. The GitHub Actions integration tests create their own temporary users and delete them in a `finally` cleanup step, but that cleanup does not delete browser-created users. Remove only the dedicated test users later from Supabase Auth if desired; do not delete real application users.
 
-## 3. Add the test-only RLS policy
+## Scope and limitations
 
-Open **SQL Editor** and run this SQL:
-
-```sql
-drop policy if exists "vl_realtime_test_read" on realtime.messages;
-
-create policy "vl_realtime_test_read"
-on realtime.messages
-for select
-to authenticated
-using (
-  extension = 'broadcast'
-  and (select realtime.topic()) = 'voicelink-realtime-test-9224dd59711e2e0aab5aed1572e4d6c0'
-  and (select auth.jwt() ->> 'is_anonymous') = 'true'
-);
-```
-
-This policy:
-- grants read/subscribe permission only for Broadcast;
-- grants it only for the exact temporary topic above;
-- requires a Supabase anonymous-auth session;
-- does not grant clients permission to publish messages.
-
-Do not add a broad `USING (true)` policy. Review existing policies on `realtime.messages`; another permissive policy can broaden access because permissive policies are combined with OR.
-
-No SQL table needs to be created. Supabase already provides `realtime.messages` and its RLS is enabled.
-
-## 4. Render environment variables
-
-Keep the existing variables in the same Render backend service:
-
-- `SUPABASE_URL=https://lcmccpecmtnqknthtijl.supabase.co`
-- `SUPABASE_SECRET_KEY` = the project's Secret key (`sb_secret_...`)
-
-The Secret key stays only in Render. Do not put it in GitHub, the test HTML, or chat. The browser uses only the Publishable key.
-
-The Render test endpoint now uses Supabase's documented single-message REST endpoint with `?private=true`. The existing `/v1/push` route is unchanged.
-
-## 5. Test
-
-1. Wait for the Render deployment and GitHub Pages deployment.
-2. Open `https://aiparticles-jpg.github.io/supabase-realtime-test.html` in two different browser profiles or devices.
-3. Both pages should create an anonymous test session and show `SUBSCRIBED — private channel разрешён RLS`.
-4. Enter the existing Render backend URL in both pages.
-5. Send a dummy message from one page. It should appear in the other page.
-6. Press **Проверить запрет доступа** in either page. Expected result: Supabase rejects the subscription to the different topic.
-7. Repeat in Android Chrome and Firefox, preferably on separate devices/networks.
-
-A successful message delivery confirms Render private REST publish + authenticated private WebSocket subscription. A rejected probe confirms the exact-topic RLS rule is active.
-
-## Important limitations
-
-- Anonymous test users are stored in Supabase Auth. Supabase does not automatically clean up anonymous users; this is a temporary project, so remove test users later if desired.
-- The policy is deliberately broad for this one test topic. It is not suitable for production.
-- The test endpoint is rate-limited and accepts only short dummy text.
-- Do not send real user IDs, recipient tokens, OneSignal IDs, SDP/ICE, contacts, or call data through this test.
-- Current ntfy, OneSignal, and VoiceLink calls remain unchanged.
+- This is a browser transport smoke test, not production frontend integration.
+- It validates the direct browser → Supabase route without Render. Render may still be retained for OneSignal server-side push.
+- The current production ntfy signaling path remains unchanged until the browser test, reconnect/recovery behavior, abuse controls, and migration/rollback plan are reviewed and explicitly approved.
+- Anonymous-account abuse controls, invitation/message rate limits, inbox retention, and database quota measurements remain open pre-production tasks.
