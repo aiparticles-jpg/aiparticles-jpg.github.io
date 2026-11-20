@@ -1,4 +1,4 @@
-name: VoiceLink Supabase Realtime test
+name: VoiceLink Supabase private Broadcast test
 
 on:
   push:
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   realtime-integration:
-    name: Postgres Changes integration test
+    name: Private inbox Broadcast integration test
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -40,7 +40,7 @@ jobs:
         working-directory: backend
         run: npm install --no-package-lock --no-audit --no-fund
 
-      - name: Run isolated Supabase Postgres Changes test
+      - name: Run isolated Supabase private Broadcast test
         working-directory: backend
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
