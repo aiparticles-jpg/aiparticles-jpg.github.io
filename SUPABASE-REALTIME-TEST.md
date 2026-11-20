@@ -9,7 +9,7 @@ This isolated browser test exercises the selected VoiceLink signaling architectu
 - The recipient creates a one-time 256-bit invitation. The database stores only its SHA-256 hash.
 - A second browser redeems the invitation using `submit_message()`.
 - The database atomically consumes the invitation, creates the contact link, and inserts a durable inbox row.
-- The recipient receives a Postgres Changes notification and reads the actual row from its own inbox.
+- The recipient receives the complete Postgres Changes INSERT row (including `payload`) and processes it directly, without a follow-up SELECT on the normal delivery path.
 - The sender cannot read the recipient's inbox row (RLS).
 
 No Render endpoint or OneSignal secret is used by this test page. It talks directly to Supabase using the public publishable key and the browser's anonymous Auth JWT.
@@ -25,7 +25,7 @@ The Supabase migration and the GitHub Actions integration tests have been applie
 3. In browser A, press **Создать одноразовое приглашение**. Copy the 43-character invitation ID.
 4. Paste that ID into browser B and press **Погасить приглашение и отправить**.
 5. Browser B should report that `submit_message()` succeeded and that RLS prevents the sender from reading the inbox row.
-6. Browser A should report a Realtime INSERT, then confirm that it fetched the same message from its durable inbox.
+6. Browser A should report that the full Realtime INSERT row was processed directly, without a follow-up SELECT.
 
 The test payload is dummy text only. Do not use real call signaling, personal messages, OneSignal IDs, or production invitation data here.
 
