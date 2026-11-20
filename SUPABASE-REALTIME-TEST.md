@@ -21,7 +21,7 @@ The Supabase migration and the GitHub Actions integration tests have been applie
 ## Run the browser-to-browser test
 
 1. Open [the direct Supabase test page](https://aiparticles-jpg.github.io/supabase-realtime-test.html) in two independent browser profiles or on two devices. For example, use Chrome and Firefox, or a normal and private profile.
-2. Wait until both pages show that the Postgres Changes subscription is active.
+2. Wait until both pages show that the Postgres Changes subscription is active. Press **Проверить шифрование** to run the local envelope/AAD self-test.
 3. In browser A, press **Создать одноразовое приглашение**. Copy the 43-character invitation ID.
 4. Paste that ID into browser B and press **Погасить приглашение и отправить**.
 5. Browser B should report that `submit_message()` succeeded and that RLS prevents the sender from reading the inbox row.

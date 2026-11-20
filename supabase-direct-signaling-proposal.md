@@ -344,3 +344,47 @@ For an established contact:
 - These decisions update the target protocol specification only. They do not yet change the current SQL migrations, test page, or production ntfy signaling implementation.
 - The existing two-browser test proved the current test implementation's invitation redemption, RLS, durable inbox, and private Realtime notification. It did not yet prove full-row direct processing without SELECT, the revised single-hash invitation flow, the new envelope, sequence-gap recovery, or an actual VoiceLink call.
 - Implement the SQL and browser changes together in a new test stage. Keep the existing production ntfy path intact until the revised protocol passes browser tests and a real two-device call.
+
+
+## 14. Implementation progress — 2026-11-20
+
+This section records code that has been implemented and verified after the protocol decisions above.
+
+### 14.1 Database-side invitation hashing and full-row Realtime delivery
+
+- The browser creates the original 32-byte random invitation ID and sends its 43-character unpadded Base64URL representation directly to `create_invitation()` or `submit_message()`.
+- PostgreSQL computes SHA-256 once for storage and once on redemption input; only the digest is stored in `public.invitations`.
+- The integration test now checks the stored value equals exactly SHA-256 of the original ID and is not a double hash.
+- The browser test page processes `event.new` from the Postgres Changes INSERT directly. It no longer performs a per-notification SELECT.
+- The Node integration test confirms the actual Realtime event contains the complete inserted row, including `payload` and `created_at`, and confirms that the event is delivered only to the intended recipient.
+
+### 14.2 Isolated version-1 E2EE envelope helper
+
+Implemented in `js/supabase-protocol.mjs`. This is an isolated protocol module and is not yet connected to the production VoiceLink signaling path.
+
+- `createInvitationId()` generates the original 32 random bytes and Base64URL-encodes them. It performs no hashing.
+- `encryptSupabaseMessage()` accepts the shared 32-byte contact secret, sender and recipient Supabase UUIDs, and an inner `{type, seq, body}` message.
+- The outer payload is exactly `{v: 1, data: ...}`, with data encoding the 12-byte IV followed by AES-GCM ciphertext and its 16-byte tag.
+- HKDF-SHA-256 derives a directional AES-256-GCM key from the shared contact secret. The pair UUIDs determine the salt; ordered sender and recipient UUIDs determine the direction-specific HKDF info.
+- AES-GCM AAD binds protocol version, sender UUID, and recipient UUID.
+- `decryptSupabaseMessage()` obtains those UUIDs from the database row context, rejects unsupported versions, malformed envelopes, modified ciphertext, invalid sequence values, and plaintext that includes top-level `from` or `to`.
+- Sequence values are decimal strings bounded to unsigned 64-bit range. This helper validates them; persistent IndexedDB sequence allocation/processing has not yet been implemented.
+
+### 14.3 Automated verification
+
+GitHub Actions run `44704710294` succeeded. It ran:
+- the isolated E2EE envelope test (round-trip, tamper rejection, unsupported-version rejection, AAD sender/recipient binding, uint64 bounds, no clear `from/to`);
+- the Supabase integration flow (single-hash invitation storage, concurrent one-time redemption, RLS, blocked direct INSERT, existing-contact RPC routing);
+- the Postgres Changes test (complete INSERT row, direct delivery without follow-up SELECT, recipient-only delivery).
+
+The GitHub Pages deployment for the updated browser test page also succeeded (run `44704764777`).
+
+### 14.4 Not yet implemented
+
+- The new envelope helper is not wired into `app.js` or the existing `NtfySecureSignaling` implementation.
+- Production contacts still use the legacy 64-hex ntfy identity as their IndexedDB primary key; the separate Supabase UUID routing field and migration/import path are not yet implemented.
+- Supabase session initialization in the production app is not yet implemented.
+- Persistent outgoing/incoming sequence state, pending-send retry behavior, gap buffering, and inbox recovery are not yet implemented.
+- No production signaling, invitation UI, OneSignal, WebRTC, or ntfy code has been switched or removed.
+
+Keep the production ntfy path unchanged until the new transport is integrated and validated with two independent devices and a real call.
