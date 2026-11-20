@@ -28,8 +28,6 @@ create table if not exists public.messages (
   constraint messages_distinct_users check (sender_id <> recipient_id)
 );
 
-alter table public.messages replica identity full;
-
 create index if not exists messages_recipient_created_idx
   on public.messages (recipient_id, created_at desc);
 
@@ -168,21 +166,6 @@ revoke all on function public.create_invitation(text) from public, anon;
 revoke all on function public.submit_message(jsonb, uuid, text) from public, anon;
 grant execute on function public.create_invitation(text) to authenticated;
 grant execute on function public.submit_message(jsonb, uuid, text) to authenticated;
-
--- The durable inbox is notified by a private Broadcast trigger installed in the timestamp-only migration.
-do $publication$
-begin
-  if not exists (
-    select 1
-    from pg_publication_tables
-    where pubname = 'supabase_realtime'
-      and schemaname = 'public'
-      and tablename = 'messages'
-  ) then
-    alter publication supabase_realtime add table public.messages;
-  end if;
-end;
-$publication$;
 
 comment on table public.invitations is
   'One-time invitations; only SHA-256 hashes are stored. Successful redemption deletes the row.';
