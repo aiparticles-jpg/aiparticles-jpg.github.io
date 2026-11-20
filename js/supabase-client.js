@@ -118,12 +118,10 @@ export function subscribeSupabaseInbox(userId, onMessage, onStatus = () => {}) {
   }
   return getSupabaseClient()
     .channel("inbox:" + userId.toLowerCase(), { config: { private: true } })
-    .on("postgres_changes", {
-      event: "INSERT", schema: "public", table: "messages",
-      filter: "recipient_id=eq." + userId.toLowerCase()
-    }, payload => {
-      // The INSERT event carries the full row; normal delivery needs no SELECT.
-      Promise.resolve(onMessage(payload?.new)).catch(error => console.error("VoiceLink Supabase inbox handler failed:", error));
+    .on("broadcast", { event: "INSERT" }, message => {
+      // The database trigger broadcasts the complete inserted row to inbox:<recipient>.
+      const record = message?.payload?.record || message?.record || null;
+      Promise.resolve(onMessage(record)).catch(error => console.error("VoiceLink Supabase inbox handler failed:", error));
     })
     .subscribe(status => onStatus(status));
 }
