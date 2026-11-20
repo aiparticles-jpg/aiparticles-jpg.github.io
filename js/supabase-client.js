@@ -1,4 +1,4 @@
-import { createInvitationId } from "./supabase-protocol.mjs?v=1";
+import { createInvitationId, encryptSupabaseMessage } from "./supabase-protocol.mjs?v=1";
 
 const SUPABASE_URL = "https://lcmccpecmtnqknthtijl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
@@ -67,4 +67,44 @@ export async function createSupabaseInvitation() {
     supabase_user_id: identity.user_id,
     supabase_invitation_id: invitationId
   };
+}
+
+
+/**
+ * Redeem a contact invitation and enqueue the first encrypted Supabase inbox
+ * message. Sender identity is derived from the authenticated Supabase session.
+ */
+export async function submitSupabaseInvitationAcceptance({ contact }) {
+  if (!contact || typeof contact !== "object" ||
+      typeof contact.supabase_user_id !== "string" ||
+      typeof contact.supabase_invitation_id !== "string" ||
+      typeof contact.invitation_secret !== "string") {
+    throw new TypeError("Контакт не содержит полного Supabase-приглашения.");
+  }
+
+  const identity = await getSupabaseIdentity();
+  if (identity.user_id === contact.supabase_user_id.toLowerCase()) {
+    throw new Error("Нельзя принять собственное Supabase-приглашение.");
+  }
+
+  const payload = await encryptSupabaseMessage({
+    sharedSecret: contact.invitation_secret,
+    senderId: identity.user_id,
+    recipientId: contact.supabase_user_id,
+    message: { type: "contact_accept", seq: "1", body: {} }
+  });
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.rpc("submit_message", {
+    p_payload: payload,
+    p_recipient_id: null,
+    p_invitation_id: contact.supabase_invitation_id
+  });
+  if (error) {
+    throw new Error("Supabase не принял первое зашифрованное сообщение: " + error.message);
+  }
+  if (typeof data !== "string" || !data) {
+    throw new Error("Supabase не вернул ID первого сообщения.");
+  }
+  return { message_id: data, sender_id: identity.user_id, recipient_id: contact.supabase_user_id.toLowerCase() };
 }
