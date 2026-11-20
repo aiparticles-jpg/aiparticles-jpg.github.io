@@ -1,0 +1,36 @@
+name: WebTorrent tracker payload experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "experiments/webtorrent-tracker-probe.mjs"
+      - ".github/workflows/webtorrent-tracker-probe.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webtorrent-tracker-payload-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install WebSocket client
+        run: npm install --no-save --no-package-lock ws@8
+
+      - name: Probe public WebTorrent trackers from one runner IP
+        run: node experiments/webtorrent-tracker-probe.mjs
