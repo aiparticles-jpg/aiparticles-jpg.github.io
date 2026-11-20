@@ -126,8 +126,7 @@ The inbox row is created only after the database validates the sender and routin
 
 Use Supabase **private Broadcast** on the `inbox:<recipient UUID>` topic. An AFTER INSERT trigger on `public.messages` sends the full row using `realtime.broadcast_changes()`.
 
-- Add `public.messages` to the `supabase_realtime` publication.
-- Each browser subscribes to INSERT events filtered by its own `recipient_id`.
+- Keep `public.messages` out of the `supabase_realtime` WAL publication; the trigger emits a private Broadcast to `inbox:<recipient UUID>`.
 - RLS SELECT policy allows the recipient to read only their own inbox rows.
 - The Realtime event contains the full inserted row and wakes the recipient's application; normal delivery does not require a second SELECT.
 - If the recipient is offline, the inbox row remains stored and is fetched during recovery after reconnect.
@@ -266,11 +265,11 @@ The existing RPC parameter name p_invitation_id remains appropriate. Its documen
 
 - A private Broadcast INSERT event for public.messages is expected to contain the inserted row, including its payload.
 - The recipient processes the row carried by the Realtime event directly. Do not issue a second SELECT for every normal notification.
-- The private Realtime channel and RLS remain in force. The recipient subscription is filtered by its own recipient_id; the RLS policy remains the actual authorization boundary.
+- The private Broadcast channel and RLS remain in force. The recipient joins only `inbox:<own Supabase UUID>`; the policy on `realtime.messages` is the authorization boundary.
 - The durable inbox row remains the source of truth. Realtime is a notification/delivery path, not a guarantee that every event reaches an offline or disconnected browser.
 - On ordinary successful delivery, one database write and one Realtime event are sufficient; there is no follow-up read.
 - A database read is reserved for recovery: after reconnect/reload when messages may have been missed, or when the browser detects a sequence gap. The recovery query fetches a suitable overlapping range of the recipient's inbox (optionally narrowed by sender_id and created_at), then the browser decrypts, orders, and deduplicates locally. The exact overlap/retention strategy must be finalized during implementation so timestamp boundaries cannot cause missed rows.
-- Test that the deployed Supabase private Broadcast configuration actually supplies the full INSERT row under the project's RLS/private-channel configuration before removing the test page's existing read-after-notification step.
+- The automated integration test must verify that the deployed trigger supplies the complete inserted row and that only the intended recipient can join/receive on the private topic.
 
 ### 13.4 Message ordering and deduplication are client responsibilities
 
@@ -348,8 +347,8 @@ This section records code that has been implemented and verified after the proto
 - The browser creates the original 32-byte random invitation ID and sends its 43-character unpadded Base64URL representation directly to `create_invitation()` or `submit_message()`.
 - PostgreSQL computes SHA-256 once for storage and once on redemption input; only the digest is stored in `public.invitations`.
 - The integration test now checks the stored value equals exactly SHA-256 of the original ID and is not a double hash.
-- The browser test page processes `event.new` from the private Broadcast INSERT directly. It no longer performs a per-notification SELECT.
-- The Node integration test confirms the actual Realtime event contains the complete inserted row, including `payload` and `created_at`, and confirms that the event is delivered only to the intended recipient.
+- The browser inbox adapter processes the row carried in the private Broadcast payload directly. It performs no per-notification SELECT.
+- The Node integration test is being updated to verify the Broadcast trigger's full-row payload and private-topic authorization.
 
 ### 14.2 Isolated version-1 E2EE envelope helper
 
