@@ -5,7 +5,7 @@ import { listContacts, getContact, saveContact, updateContact, deleteContact, sa
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
-import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance } from "./supabase-client.js?v=2";
+import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance } from "./supabase-client.js?v=3";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -1525,24 +1525,39 @@ async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.
   const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER,msg=await createContactRequestEnvelope({contact,contactPackage:pack,from:identity.user_id,to:peer,requestId,expiresAt});
   const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
   const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
-  // Keep ntfy as the compatibility path while also redeeming the Supabase route.
-  if(contact.supabase_user_id&&contact.supabase_invitation_id&&!contact.supabase_invitation_redeemed_at){
-   try{
-    const result=await submitSupabaseInvitationAcceptance({contact});
-    await updateContact(peer,{supabase_invitation_redeemed_at:new Date().toISOString()});
-    debug("Одноразовое приглашение Supabase погашено; связь создана, первое зашифрованное сообщение записано (message_id="+result.message_id+").");
-   }catch(error){
-    debug("Не удалось погасить приглашение Supabase; старый канал ntfy продолжает работать: "+(error.message||String(error)));
-   }
-  }else if(!contact.supabase_user_id||!contact.supabase_invitation_id){
-   debug("У контакта нет Supabase-маршрута; обмен остаётся на ntfy.");
-  }
   markContactRequestSent(peer,invitationId,createdAt);await updateContact(peer,{shared_secret_created_at:createdAt});setContactReplyFailure(peer,false);updateCallButtons();
   try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug,{invitation_id:invitationId,sender_name:senderDisplayName});debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
   catch(e){debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(e.message||String(e)))}
   return true;
  }catch(e){const d=e.message||String(e),m="Не удалось отправить ответное приглашение: "+d;setContactReplyFailure(peer,true);if(els.debugMode.checked){const dialog=statusElement?.closest('[role="dialog"]');if(dialog&&!dialog.classList.contains("hidden"))showError(d)}debug(m);return false}
  finally{els.replyInvite.disabled=false;updateCallButtons()}
+}
+
+/**
+ * One-shot migration of imported contacts to their Supabase route.
+ * The attempt is recorded before sending so it is never duplicated.
+ */
+async function redeemSupabaseInvitationOnce(contact,source="импорт"){
+ if(!contact?.user_id||!contact.supabase_user_id||!contact.supabase_invitation_id||
+    !contact.invitation_secret||contact.supabase_invitation_attempted_at||
+    contact.supabase_invitation_redeemed_at||contact.request_pending)return false;
+ await updateContact(contact.user_id,{supabase_invitation_attempted_at:new Date().toISOString()});
+ try{
+  const result=await submitSupabaseInvitationAcceptance({contact});
+  await updateContact(contact.user_id,{supabase_invitation_redeemed_at:new Date().toISOString()});
+  debug("Supabase-приглашение погашено ("+source+"); связь создана, первое зашифрованное сообщение записано (message_id="+result.message_id+").");
+  return true;
+ }catch(error){
+  debug("Единственная попытка погасить Supabase-приглашение ("+source+") не удалась; повторной отправки не будет. Старый ntfy остаётся активен: "+(error.message||String(error)));
+  return false;
+ }
+}
+async function redeemPendingSupabaseInvitations(){
+ for(const contact of await listContacts()){
+  if(contact.supabase_user_id&&contact.supabase_invitation_id&&!contact.supabase_invitation_attempted_at&&!contact.supabase_invitation_redeemed_at&&!contact.request_pending){
+   await redeemSupabaseInvitationOnce(contact,"проверка сохранённых контактов");
+  }
+ }
 }
 
 function formatInvitationAge(timestamp){
@@ -1717,6 +1732,10 @@ async function importContactFromInput(){
   await saveContact(existing
    ?{...existing,...verified,name:existing.name,last_interaction_at:addedAt}
    :{...verified,name,last_interaction_at:addedAt});
+  const savedContact=await getContact(verified.user_id);
+  if(savedContact?.supabase_user_id&&savedContact?.supabase_invitation_id&&!savedContact.supabase_invitation_attempted_at&&!savedContact.supabase_invitation_redeemed_at){
+   await redeemSupabaseInvitationOnce(savedContact,"сразу после импорта");
+  }
   await refreshContactOptions(verified.user_id);
   if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
   if(saveSenderName){
@@ -2468,6 +2487,7 @@ async function initializeApp(){
   }
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
+  await redeemPendingSupabaseInvitations();
   await refreshContactOptions();
 
   const requestedChat=new URLSearchParams(window.location.search).get("openChat");
