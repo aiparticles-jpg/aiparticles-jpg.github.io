@@ -28,9 +28,22 @@ $drop_message_pk$;
 
 alter table public.messages drop column if exists message_id;
 
--- The inbox has no primary key. Keep FULL replica identity while the table
--- remains in the existing publication, so cascading DELETEs remain valid.
-alter table public.messages replica identity full;
+-- The inbox is notified through Broadcast, not Postgres Changes. Remove it from
+-- the WAL publication so no synthetic row identity is needed.
+do $drop_messages_publication$
+begin
+  if exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'messages'
+  ) then
+    execute 'alter publication supabase_realtime drop table public.messages';
+  end if;
+end;
+$drop_messages_publication$;
+
+alter table public.messages replica identity default;
 
 create or replace function public.broadcast_message_to_inbox()
 returns trigger
