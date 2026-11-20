@@ -354,7 +354,7 @@ async function probeTracker(url) {
         if (message.action !== "announce" || !message.offer?.sdp) return;
         const room = slidingRooms.find((entry) => entry.hash === message.info_hash);
         if (!room) return;
-        const markerLine = message.offer.sdp.split("\\\\r\\\\n").find((line) => line.startsWith("a=x-voicelink-sliding:"));
+        const markerLine = message.offer.sdp.split("\\r\\n").find((line) => line.startsWith("a=x-voicelink-sliding:"));
         if (!markerLine) return;
         const markerParts = markerLine.slice("a=x-voicelink-sliding:".length).split(":");
         if (markerParts.length !== 2) return;
@@ -386,7 +386,7 @@ async function probeTracker(url) {
         const room = slidingRooms[i];
         const offerId = binaryString(createHash("sha256").update("sliding-offer:" + windowSize + ":" + i).digest().subarray(0, 20));
         const marker = "a=x-voicelink-sliding:" + i + ":" + slidingPayload.toString("base64");
-        const sdp = ["v=0", "o=- 4 4 IN IP4 127.0.0.1", "s=VoiceLink sliding-window probe", "t=0 0", marker, ""].join("\\\\r\\\\n");
+        const sdp = ["v=0", "o=- 4 4 IN IP4 127.0.0.1", "s=VoiceLink sliding-window probe", "t=0 0", marker, ""].join("\\r\\n");
         slidingSentAt.set(i, performance.now());
         send(sender, {
           action: "announce", info_hash: room.hash, peer_id: senderId,
