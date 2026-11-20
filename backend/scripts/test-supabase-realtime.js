@@ -119,21 +119,6 @@ async function rpc(baseUrl, key, user, name, args) {
   return data;
 }
 
-async function readMessage(baseUrl, key, user, messageId) {
-  const query = new URLSearchParams({
-    select: "message_id,sender_id,recipient_id,payload",
-    message_id: "eq." + messageId
-  });
-  const { response, data } = await apiRequest(
-    baseUrl + "/rest/v1/messages?" + query.toString(),
-    key,
-    user.accessToken,
-    { method: "GET" }
-  );
-  if (!response.ok) fail(`Inbox read failed (HTTP ${response.status}).`);
-  assert(Array.isArray(data), "Inbox query returned an unexpected response.");
-  return data;
-}
 
 function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
   if (typeof WebSocket !== "function") {
@@ -179,7 +164,7 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
       event: "INSERT",
       schema: "public",
       table: "messages",
-      select: ["message_id", "sender_id", "recipient_id", "payload", "created_at"]
+      select: ["sender_id", "recipient_id", "payload", "created_at"]
     };
     change.filter = "recipient_id=eq." + user.id;
 
@@ -352,17 +337,18 @@ async function main() {
     console.log("PASS: recipient, sender and unrelated user established authenticated Postgres Changes subscriptions.");
 
     const nonce = crypto.randomUUID();
-    const messageId = await rpc(config.url, config.publishableKey, sender, "submit_message", {
+    const createdAt = await rpc(config.url, config.publishableKey, sender, "submit_message", {
       p_payload: { type: "integration_test_realtime", nonce },
       p_recipient_id: null,
       p_invitation_id: invitationId
     });
-    assert(typeof messageId === "string" && /^[0-9a-f-]{36}$/i.test(messageId),
-      "submit_message did not return a message UUID.");
+    assert(typeof createdAt === "string" && !Number.isNaN(Date.parse(createdAt)),
+      "submit_message did not return the created_at timestamp.");
 
     const event = await waitForEvent(
       recipientSub,
-      item => item.data && item.data.record && item.data.record.message_id === messageId,
+      item => item.data && item.data.record && item.data.record.payload &&
+        item.data.record.payload.nonce === nonce,
       DELIVERY_TIMEOUT_MS
     );
 
@@ -373,8 +359,9 @@ async function main() {
       "Realtime event was routed to the wrong sender or recipient.");
     assert(record.payload && record.payload.nonce === nonce,
       "Realtime event payload does not match the inserted message.");
-    assert(record.created_at && !Number.isNaN(Date.parse(record.created_at)),
-      "Realtime INSERT event did not include the full row's created_at field.");
+    assert(record.created_at && !Number.isNaN(Date.parse(record.created_at)) &&
+      Date.parse(record.created_at) === Date.parse(createdAt),
+      "Realtime INSERT event did not include the returned created_at timestamp.");
     assert(Array.isArray(event.ids) && event.ids.includes(recipientSub.subscriptionId),
       "Realtime event subscription ID does not match the recipient subscription.");
     console.log("PASS: Postgres Changes delivered the new messages INSERT to the recipient's filtered subscription.");
@@ -385,10 +372,10 @@ async function main() {
 
     await sleep(UNAUTHORIZED_GRACE_MS);
     const leakedToSender = senderSub.received.some(item =>
-      item.data && item.data.record && item.data.record.message_id === messageId
+      item.data && item.data.record && item.data.record.payload && item.data.record.payload.nonce === nonce
     );
     const leakedToUnrelated = unrelatedSub.received.some(item =>
-      item.data && item.data.record && item.data.record.message_id === messageId
+      item.data && item.data.record && item.data.record.payload && item.data.record.payload.nonce === nonce
     );
     assert(!leakedToSender && !leakedToUnrelated,
       "RLS check failed: message change was delivered to the sender or unrelated user.");
