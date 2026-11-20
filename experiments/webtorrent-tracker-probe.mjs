@@ -733,9 +733,9 @@ async function probeTracker(url) {
       const samples = [];
       const started = performance.now();
       try {
-        for (let round = 0; round < 5; round++) {
+        for (let round = 0; round < 9; round++) {
           const roundSamples = [];
-          for (let attempt = 0; attempt < 3; attempt++) {
+          for (let attempt = 0; attempt < 5; attempt++) {
             const t1 = await clockNow(sender);
             const outboundMs = 14 + ((round * 3 + attempt) % 4) * 7;
             const returnMs = 19 + ((round + attempt * 2) % 5) * 6;
@@ -751,7 +751,7 @@ async function probeTracker(url) {
           }
           roundSamples.sort((a, b) => a.rtt - b.rtt);
           samples.push(roundSamples[0]);
-          if (round < 4) await sleep(900);
+          if (round < 8) await sleep(650);
         }
 
         // Linear fit: offset(receiverClock - senderClock) as a function of
