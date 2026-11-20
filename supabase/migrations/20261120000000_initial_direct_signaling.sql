@@ -28,6 +28,8 @@ create table if not exists public.messages (
   constraint messages_distinct_users check (sender_id <> recipient_id)
 );
 
+alter table public.messages replica identity full;
+
 create index if not exists messages_recipient_created_idx
   on public.messages (recipient_id, created_at desc);
 
