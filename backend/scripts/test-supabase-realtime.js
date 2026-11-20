@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-// Isolated integration test for Supabase Postgres Changes on public.messages.
+// Isolated integration test for private Supabase Broadcast notifications from public.messages.
 // Creates temporary anonymous users, subscribes over WebSocket, redeems an
 // invitation, verifies recipient delivery and RLS filtering, then cleans up.
 // This script is explicit and is never part of "npm start".
@@ -120,7 +120,7 @@ async function rpc(baseUrl, key, user, name, args) {
 }
 
 
-function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
+function openRealtimeSubscriber(baseUrl, publishableKey, user, label, topicUserId = user.id) {
   if (typeof WebSocket !== "function") {
     fail("This Node.js runtime does not provide the built-in WebSocket API.");
   }
@@ -131,13 +131,11 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
   wsUrl.searchParams.set("vsn", "1.0.0");
 
   // Each authenticated user listens only on their own private inbox topic.
-  const topic = "realtime:inbox:" + user.id;
+  const topic = "realtime:inbox:" + topicUserId;
   const joinRef = "1";
   const ws = new WebSocket(wsUrl);
   const received = [];
   let joinAccepted = false;
-  let postgresReady = false;
-  let subscriptionId = null;
   let heartbeatRef = 1;
   let heartbeatTimer = null;
   let resolveReady;
@@ -153,20 +151,13 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
   }, JOIN_TIMEOUT_MS);
 
   function maybeReady() {
-    if (joinAccepted && postgresReady && subscriptionId !== null) {
+    if (joinAccepted) {
       clearTimeout(readyTimeout);
       resolveReady();
     }
   }
 
   ws.addEventListener("open", () => {
-    const change = {
-      event: "INSERT",
-      schema: "public",
-      table: "messages"
-    };
-    change.filter = "recipient_id=eq." + user.id;
-
     ws.send(JSON.stringify({
       topic,
       event: "phx_join",
@@ -174,7 +165,6 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
         config: {
           broadcast: { ack: false, self: false },
           presence: { enabled: false },
-          postgres_changes: [change],
           private: true
         },
         access_token: user.accessToken
@@ -216,29 +206,12 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
         rejectReady(new Error(`Realtime channel join failed for ${label}: ${safeReason}`));
         return;
       }
-      const subscriptions = message.payload.response && message.payload.response.postgres_changes;
-      if (!Array.isArray(subscriptions) || !subscriptions[0] || subscriptions[0].id === undefined) {
-        rejectReady(new Error(`Realtime did not confirm the Postgres Changes subscription for ${label}.`));
-        return;
-      }
-      subscriptionId = subscriptions[0].id;
       joinAccepted = true;
       maybeReady();
       return;
     }
 
-    if (message.event === "system" && message.payload &&
-        message.payload.extension === "postgres_changes") {
-      if (message.payload.status !== "ok") {
-        rejectReady(new Error(`Postgres Changes subscription rejected for ${label}: ${String(message.payload.message || "unknown error").slice(0, 160)}`));
-        return;
-      }
-      postgresReady = true;
-      maybeReady();
-      return;
-    }
-
-    if (message.event === "postgres_changes" && message.payload && message.payload.data) {
+    if (message.event === "broadcast" && message.payload) {
       received.push(message.payload);
     }
 
@@ -260,7 +233,6 @@ function openRealtimeSubscriber(baseUrl, publishableKey, user, label) {
   return {
     label,
     received,
-    get subscriptionId() { return subscriptionId; },
     ready,
     close() {
       clearTimeout(readyTimeout);
@@ -283,7 +255,7 @@ async function waitForEvent(subscriber, predicate, timeoutMs) {
         resolve(found);
       } else if (Date.now() >= deadline) {
         clearInterval(poll);
-        reject(new Error(`No matching Postgres Changes event arrived for ${subscriber.label} within ${timeoutMs} ms.`));
+        reject(new Error(`No matching private Broadcast event arrived for ${subscriber.label} within ${timeoutMs} ms.`));
       }
     }, 50);
   });
@@ -328,12 +300,15 @@ async function main() {
     });
 
     const recipientSub = openRealtimeSubscriber(config.url, config.publishableKey, recipient, "recipient");
-    const senderSub = openRealtimeSubscriber(config.url, config.publishableKey, sender, "sender");
-    const unrelatedSub = openRealtimeSubscriber(config.url, config.publishableKey, unrelated, "unrelated user");
+    const senderSub = openRealtimeSubscriber(config.url, config.publishableKey, sender, "sender", recipient.id);
+    const unrelatedSub = openRealtimeSubscriber(config.url, config.publishableKey, unrelated, "unrelated user", recipient.id);
     subscribers.push(recipientSub, senderSub, unrelatedSub);
 
-    await Promise.all(subscribers.map(subscriber => subscriber.ready));
-    console.log("PASS: recipient, sender and unrelated user established authenticated Postgres Changes subscriptions.");
+    await recipientSub.ready;
+    const unauthorizedJoins = await Promise.allSettled([senderSub.ready, unrelatedSub.ready]);
+    assert(unauthorizedJoins.every(result => result.status === "rejected"),
+      "Private Broadcast authorization allowed a non-recipient to join another user's inbox topic.");
+    console.log("PASS: recipient joined the private inbox topic; sender and unrelated user were denied.");
 
     const nonce = crypto.randomUUID();
     const createdAt = await rpc(config.url, config.publishableKey, sender, "submit_message", {
@@ -346,41 +321,31 @@ async function main() {
 
     const event = await waitForEvent(
       recipientSub,
-      item => item.data && item.data.record && item.data.record.payload &&
-        item.data.record.payload.nonce === nonce,
+      item => item.event === "INSERT" && item.payload && item.payload.record &&
+        item.payload.record.payload && item.payload.record.payload.nonce === nonce,
       DELIVERY_TIMEOUT_MS
     );
 
-    const record = event.data.record;
-    assert(event.data.schema === "public" && event.data.table === "messages" && event.data.type === "INSERT",
-      "Realtime event has an unexpected schema, table or event type.");
+    const broadcast = event;
+    const record = broadcast.payload.record;
+    assert(broadcast.event === "INSERT" && record,
+      "Broadcast event does not contain the inserted inbox record.");
     assert(record.recipient_id === recipient.id && record.sender_id === sender.id,
-      "Realtime event was routed to the wrong sender or recipient.");
+      "Broadcast event was routed to the wrong sender or recipient.");
     assert(record.payload && record.payload.nonce === nonce,
-      "Realtime event payload does not match the inserted message.");
+      "Broadcast event payload does not match the inserted message.");
     assert(record.created_at && !Number.isNaN(Date.parse(record.created_at)) &&
       Date.parse(record.created_at) === Date.parse(createdAt),
-      "Realtime INSERT event did not include the returned created_at timestamp.");
-    assert(Array.isArray(event.ids) && event.ids.includes(recipientSub.subscriptionId),
-      "Realtime event subscription ID does not match the recipient subscription.");
-    console.log("PASS: Postgres Changes delivered the new messages INSERT to the recipient's filtered subscription.");
-
-    // The notification itself carries the complete row. The normal delivery path
-    // deliberately performs no follow-up SELECT; durable recovery is tested separately.
-    console.log("PASS: Realtime INSERT contains the complete inbox row and payload; no per-message SELECT is needed.");
+      "Broadcast event did not include the returned created_at timestamp.");
+    console.log("PASS: database trigger broadcast the complete inserted row to the recipient's private topic.");
 
     await sleep(UNAUTHORIZED_GRACE_MS);
-    const leakedToSender = senderSub.received.some(item =>
-      item.data && item.data.record && item.data.record.payload && item.data.record.payload.nonce === nonce
-    );
-    const leakedToUnrelated = unrelatedSub.received.some(item =>
-      item.data && item.data.record && item.data.record.payload && item.data.record.payload.nonce === nonce
-    );
-    assert(!leakedToSender && !leakedToUnrelated,
-      "RLS check failed: message change was delivered to the sender or unrelated user.");
-    console.log("PASS: Postgres Changes did not deliver the recipient's message to the sender or unrelated user.");
+    assert(!senderSub.received.length && !unrelatedSub.received.length,
+      "A non-recipient received a private inbox Broadcast event.");
+    console.log("PASS: no Broadcast event leaked to non-recipients.");
 
-    console.log("ALL SUPABASE POSTGRES CHANGES CHECKS PASSED.");
+
+    console.log("ALL SUPABASE PRIVATE BROADCAST CHECKS PASSED.");
   } finally {
     for (const subscriber of subscribers) subscriber.close();
 
