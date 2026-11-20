@@ -12,7 +12,7 @@ The selected direction is to replace ntfy as the signaling-message transport wit
 - The browser keeps its Supabase session, including the refresh token, using the Supabase client session persistence.
 - Browsers may submit signaling requests directly to Supabase.
 - PostgreSQL validates the authenticated sender, invitation or contact relationship, and routes accepted messages into the recipient's inbox.
-- Supabase Realtime **Postgres Changes** notifies the intended recipient about new rows in the inbox table.
+- Supabase Realtime **private Broadcast** notifies the intended recipient about new rows in the inbox table.
 - The recipient reads the actual message from the database. A Realtime event is a wake-up/notification, not the durable message itself.
 - WebRTC audio/video remains peer-to-peer. Supabase carries signaling/control data only.
 - Render is removed from the normal signaling-message path. It may remain for OneSignal server-side push delivery and may be reconsidered as a gate/proxy if anonymous-account abuse cannot be controlled adequately in the database-only design.
@@ -124,7 +124,7 @@ The inbox row is created only after the database validates the sender and routin
 
 ## 5. Realtime notification
 
-Use Supabase **Postgres Changes** on `public.messages`, listening for `INSERT`.
+Use Supabase **private Broadcast** on the `inbox:<recipient UUID>` topic. An AFTER INSERT trigger on `public.messages` sends the full row using `realtime.broadcast_changes()`.
 
 - Add `public.messages` to the `supabase_realtime` publication.
 - Each browser subscribes to INSERT events filtered by its own `recipient_id`.
@@ -134,7 +134,7 @@ Use Supabase **Postgres Changes** on `public.messages`, listening for `INSERT`.
 - Do not call `realtime.send()` for normal message routing.
 - Do not depend on Broadcast Replay for durable storage or missed-message recovery.
 
-Postgres Changes delivery and database storage are separate concerns: the durable inbox is the source of truth; Realtime is a best-effort notification path.
+private Broadcast delivery and database storage are separate concerns: the durable inbox is the source of truth; Realtime is a best-effort notification path.
 
 ## 6. Authorization and cryptography
 
@@ -190,7 +190,7 @@ Implement this as a staged migration, not as an immediate destructive replacemen
 1. Design and review the SQL schema, RLS policies, trigger/function security, and transactional invitation redemption.
 2. Add the schema/migrations and test with two independent anonymous Auth users.
 3. Verify that a user can read only their own inbox and cannot insert directly into another user's inbox.
-4. Verify that only the intended recipient receives/reads Postgres Changes events.
+4. Verify that only the intended recipient receives/reads private Broadcast events.
 5. Test concurrent redemption of the same invitation; exactly one attempt must succeed.
 6. Test offline recipient, reconnect, duplicate Realtime events, browser reload, and local IndexedDB deduplication.
 7. Measure database growth, deletion, vacuum behavior, and actual quota accounting.
@@ -264,13 +264,13 @@ The existing RPC parameter name p_invitation_id remains appropriate. Its documen
 
 ### 13.3 Realtime event carries the message; no SELECT per notification
 
-- A Postgres Changes INSERT event for public.messages is expected to contain the inserted row, including its payload.
+- A private Broadcast INSERT event for public.messages is expected to contain the inserted row, including its payload.
 - The recipient processes the row carried by the Realtime event directly. Do not issue a second SELECT for every normal notification.
 - The private Realtime channel and RLS remain in force. The recipient subscription is filtered by its own recipient_id; the RLS policy remains the actual authorization boundary.
 - The durable inbox row remains the source of truth. Realtime is a notification/delivery path, not a guarantee that every event reaches an offline or disconnected browser.
 - On ordinary successful delivery, one database write and one Realtime event are sufficient; there is no follow-up read.
 - A database read is reserved for recovery: after reconnect/reload when messages may have been missed, or when the browser detects a sequence gap. The recovery query fetches a suitable overlapping range of the recipient's inbox (optionally narrowed by sender_id and created_at), then the browser decrypts, orders, and deduplicates locally. The exact overlap/retention strategy must be finalized during implementation so timestamp boundaries cannot cause missed rows.
-- Test that the deployed Supabase Postgres Changes configuration actually supplies the full INSERT row under the project's RLS/private-channel configuration before removing the test page's existing read-after-notification step.
+- Test that the deployed Supabase private Broadcast configuration actually supplies the full INSERT row under the project's RLS/private-channel configuration before removing the test page's existing read-after-notification step.
 
 ### 13.4 Message ordering and deduplication are client responsibilities
 
@@ -348,7 +348,7 @@ This section records code that has been implemented and verified after the proto
 - The browser creates the original 32-byte random invitation ID and sends its 43-character unpadded Base64URL representation directly to `create_invitation()` or `submit_message()`.
 - PostgreSQL computes SHA-256 once for storage and once on redemption input; only the digest is stored in `public.invitations`.
 - The integration test now checks the stored value equals exactly SHA-256 of the original ID and is not a double hash.
-- The browser test page processes `event.new` from the Postgres Changes INSERT directly. It no longer performs a per-notification SELECT.
+- The browser test page processes `event.new` from the private Broadcast INSERT directly. It no longer performs a per-notification SELECT.
 - The Node integration test confirms the actual Realtime event contains the complete inserted row, including `payload` and `created_at`, and confirms that the event is delivered only to the intended recipient.
 
 ### 14.2 Isolated version-1 E2EE envelope helper
@@ -368,7 +368,7 @@ Implemented in `js/supabase-protocol.mjs`. This is an isolated protocol module a
 GitHub Actions run `44704710294` succeeded. It ran:
 - the isolated E2EE envelope test (round-trip, tamper rejection, unsupported-version rejection, AAD sender/recipient binding, uint64 bounds, no clear `from/to`);
 - the Supabase integration flow (single-hash invitation storage, concurrent one-time redemption, RLS, blocked direct INSERT, existing-contact RPC routing);
-- the Postgres Changes test (complete INSERT row, direct delivery without follow-up SELECT, recipient-only delivery).
+- the private Broadcast test (complete INSERT row, direct delivery without follow-up SELECT, recipient-only delivery).
 
 The GitHub Pages deployment for the updated browser test page also succeeded (run `44704764777`).
 
