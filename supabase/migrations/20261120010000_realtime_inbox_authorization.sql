@@ -1,5 +1,5 @@
 -- Authorize each authenticated user to join only their own private inbox topic.
--- Postgres Changes row delivery remains additionally protected by public.messages RLS.
+-- Broadcast delivery is authorized by this private topic policy; inbox row reads remain protected by public.messages RLS.
 
 drop policy if exists realtime_read_own_inbox_topic on realtime.messages;
 
