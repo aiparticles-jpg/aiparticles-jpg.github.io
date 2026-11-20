@@ -177,11 +177,13 @@ async function probeTracker(url) {
       let message;
       try { message = JSON.parse(raw.toString()); } catch { return; }
       if (message.action !== "announce" || message.info_hash !== streamHash || !message.offer?.sdp) return;
-      const match = message.offer.sdp.match(/a=x-voicelink-stream:(\\d+):([A-Za-z0-9+/=]+)/);
-      if (!match) return;
-      const packetNumber = Number(match[1]);
+      const markerLine = message.offer.sdp.split("\\r\\n").find((line) => line.startsWith("a=x-voicelink-stream:"));
+      if (!markerLine) return;
+      const markerParts = markerLine.slice("a=x-voicelink-stream:".length).split(":");
+      if (markerParts.length !== 2) return;
+      const packetNumber = Number(markerParts[0]);
       if (!sentAt.has(packetNumber) || receivedAt.has(packetNumber)) return;
-      const decoded = Buffer.from(match[2], "base64");
+      const decoded = Buffer.from(markerParts[1], "base64");
       if (decoded.length !== PAYLOAD_BYTES || !decoded.equals(streamPayload)) return;
       receivedAt.set(packetNumber, performance.now());
     };
@@ -195,7 +197,7 @@ async function probeTracker(url) {
       sentAt.set(i, performance.now());
       send(sender, {
         action: "announce", info_hash: streamHash, peer_id: senderId,
-        uploaded: 0, downloaded: 0, left: 1, ...(i === 0 ? { event: "started" } : {}), numwant: 1,
+        uploaded: 0, downloaded: 0, left: 1, event: i === 0 ? "started" : "update", numwant: 1,
         offers: [{ offer: { type: "offer", sdp }, offer_id: offerId }]
       });
       if (i + 1 < streamPackets) await new Promise((resolve) => setTimeout(resolve, streamIntervalMs));
