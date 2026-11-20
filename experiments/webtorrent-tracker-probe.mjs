@@ -534,7 +534,167 @@ async function probeTracker(url) {
     }
     const slotTimelineModel = runSlotTimelineModel();
 
-    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, sameRunnerIp: true }));    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, slotTimelineModel, sameRunnerIp: true }));
+    // Real tracker-room test using time-derived slot numbers. The receiver moves
+    // its subscription window from its local monotonic clock, including during
+    // sender silence; there is no elapsed-time field in the packet payload.
+    async function runLiveSlotWindow() {
+      const slotMs = 40;
+      const windowSize = 12;
+      const packetCount = 32;
+      const pauseAfterPacket = 12;
+      const senderPauseMs = 320;
+      const maxSlot = 100;
+      const rooms = Array.from({ length: maxSlot + 1 }, (_, slot) => ({
+        slot,
+        hash: roomHash(30000 + slot)
+      }));
+      const joined = new Set();
+      const joining = new Map();
+      const received = new Map();
+      const sent = new Map();
+      const joinDurations = [];
+      let joinErrors = [];
+      let maxConcurrent = 0;
+      let maxJoined = 0;
+      let epoch = 0;
+      let timer = null;
+
+      async function joinSlot(slot) {
+        if (slot < 0 || slot > maxSlot || joined.has(slot)) return;
+        if (joining.has(slot)) return joining.get(slot);
+        const room = rooms[slot];
+        const started = performance.now();
+        const task = (async () => {
+          const ack = waitForMessage(receiver,
+            (m) => m.action === "announce" && m.info_hash === room.hash,
+            "live slot join " + slot);
+          send(receiver, {
+            action: "announce", info_hash: room.hash, peer_id: receiverId,
+            uploaded: 0, downloaded: 0, left: 1, event: "started", numwant: 0
+          });
+          await ack;
+          joined.add(slot);
+          joinDurations.push(performance.now() - started);
+          maxJoined = Math.max(maxJoined, joined.size);
+        })();
+        joining.set(slot, task);
+        maxConcurrent = Math.max(maxConcurrent, joining.size);
+        try { await task; } finally { joining.delete(slot); }
+      }
+
+      function leaveBefore(currentSlot) {
+        for (const slot of Array.from(joined)) {
+          if (slot < currentSlot) {
+            send(receiver, {
+              action: "announce", info_hash: rooms[slot].hash, peer_id: receiverId,
+              uploaded: 0, downloaded: 0, left: 1, event: "stopped", numwant: 0
+            });
+            joined.delete(slot);
+          }
+        }
+      }
+
+      const listener = (raw) => {
+        let m;
+        try { m = JSON.parse(raw.toString()); } catch { return; }
+        if (m.action !== "announce" || !m.offer?.sdp) return;
+        const room = rooms.find((entry) => entry.hash === m.info_hash);
+        if (!room) return;
+        const line = m.offer.sdp.split("\\r\\n").find((x) => x.startsWith("a=x-voicelink-slot:"));
+        if (!line) return;
+        const parts = line.slice("a=x-voicelink-slot:".length).split(":");
+        if (parts.length !== 2) return;
+        const slot = Number(parts[0]);
+        if (slot !== room.slot || received.has(slot)) return;
+        const bytes = Buffer.from(parts[1], "base64");
+        if (bytes.length !== PAYLOAD_BYTES) return;
+        received.set(slot, performance.now());
+      };
+
+      try {
+        for (let slot = 0; slot < windowSize; slot++) await joinSlot(slot);
+        receiver.on("message", listener);
+        epoch = performance.now();
+
+        // Timer-based window reconciliation is essential: it advances even
+        // when no packets arrive from the sender.
+        timer = setInterval(() => {
+          const currentSlot = Math.floor((performance.now() - epoch) / slotMs);
+          const targetSlot = currentSlot + windowSize - 1;
+          if (targetSlot <= maxSlot && !joined.has(targetSlot) && !joining.has(targetSlot)) {
+            joinSlot(targetSlot).catch((error) => {
+              joinErrors.push({ slot: targetSlot, error: error.message });
+            });
+          }
+          leaveBefore(currentSlot);
+        }, 20);
+
+        const payload = Buffer.alloc(PAYLOAD_BYTES, 0x7b);
+        const sendSlots = [];
+        for (let i = 0; i < packetCount; i++) {
+          if (i === pauseAfterPacket) {
+            await new Promise((resolve) => setTimeout(resolve, senderPauseMs));
+          }
+          const plannedAt = epoch + (i * slotMs) + (i >= pauseAfterPacket ? senderPauseMs : 0);
+          const waitMs = plannedAt - performance.now();
+          if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+          const slot = Math.floor((performance.now() - epoch) / slotMs);
+          const room = rooms[slot];
+          if (!room) throw new Error("live slot exceeded test room range: " + slot);
+          const offerId = binaryString(createHash("sha256").update("live-slot-offer:" + i + ":" + slot).digest().subarray(0, 20));
+          const marker = "a=x-voicelink-slot:" + slot + ":" + payload.toString("base64");
+          const sdp = ["v=0", "o=- 5 5 IN IP4 127.0.0.1", "s=VoiceLink live slot probe", "t=0 0", marker, ""].join("\\r\\n");
+          sent.set(slot, performance.now());
+          sendSlots.push(slot);
+          send(sender, {
+            action: "announce", info_hash: room.hash, peer_id: senderId,
+            uploaded: 0, downloaded: 0, left: 1, event: "started", numwant: 1,
+            offers: [{ offer: { type: "offer", sdp }, offer_id: offerId }]
+          });
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1800));
+        const sortedSent = sendSlots.slice().sort((a, b) => a - b);
+        const missingSlots = sortedSent.filter((slot) => !received.has(slot));
+        const result = {
+          payloadBytes: PAYLOAD_BYTES,
+          slotDurationMs: slotMs,
+          targetRatePerSecond: 1000 / slotMs,
+          windowSize,
+          plannedPackets: packetCount,
+          sentPackets: sent.size,
+          receivedPackets: received.size,
+          missingSentSlots: missingSlots,
+          senderPauseMs,
+          sentSlotSequence: sendSlots,
+          skippedSlotsDuringPause: sendSlots[pauseAfterPacket] - sendSlots[pauseAfterPacket - 1] - 1,
+          averageRoomJoinMs: joinDurations.length ? Math.round(joinDurations.reduce((a,b)=>a+b,0)/joinDurations.length) : null,
+          maxConcurrentJoins: maxConcurrent,
+          maxJoinedRooms: maxJoined,
+          remainingJoinedRooms: joined.size,
+          joinErrors
+        };
+        console.log("LIVE_SLOT_WINDOW " + JSON.stringify(result));
+        if (received.size !== sent.size || joinErrors.length) {
+          throw new Error("live slot window did not receive all sent slots");
+        }
+        return result;
+      } finally {
+        if (timer) clearInterval(timer);
+        receiver.off("message", listener);
+        for (const slot of Array.from(joined)) {
+          send(receiver, {
+            action: "announce", info_hash: rooms[slot].hash, peer_id: receiverId,
+            uploaded: 0, downloaded: 0, left: 1, event: "stopped", numwant: 0
+          });
+          joined.delete(slot);
+        }
+        await Promise.allSettled(Array.from(joining.values()));
+      }
+    }
+    const liveSlotWindow = await runLiveSlotWindow();
+
+    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, sameRunnerIp: true }));    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sequentialRoomStream: roomStreamResult, slidingWindows: slidingWindowResult, slotTimelineModel, liveSlotWindow, sameRunnerIp: true }));
     return true;
   } finally {
     for (const ws of [sender, receiver]) {
