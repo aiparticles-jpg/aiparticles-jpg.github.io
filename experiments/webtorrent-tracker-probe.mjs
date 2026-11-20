@@ -154,7 +154,71 @@ async function probeTracker(url) {
       console.log("PASS: room " + (i + 1) + " relayed " + payload.length + " bytes in " + elapsedMs + " ms");
     }
 
-    console.log("\nRESULT " + JSON.stringify({ tracker: url, rooms: results, sameRunnerIp: true }));
+    // Sustained one-way probe: 1 KiB payloads at 25 messages/second in one room.
+    const streamHash = roomHash(ROOM_COUNT + 1);
+    const streamHashKey = Buffer.from(streamHash, "latin1").toString("hex");
+    const joinStreamRoom = waitForMessage(
+      receiver,
+      (m) => m.action === "announce" && m.info_hash === streamHash,
+      "receiver stream-room announce ack"
+    );
+    send(receiver, {
+      action: "announce", info_hash: streamHash, peer_id: receiverId,
+      uploaded: 0, downloaded: 0, left: 1, event: "started", numwant: 0
+    });
+    await joinStreamRoom;
+
+    const streamPackets = 125;
+    const streamIntervalMs = 40;
+    const sentAt = new Map();
+    const receivedAt = new Map();
+    const streamPayload = Buffer.alloc(PAYLOAD_BYTES, 0x5a);
+    const streamListener = (raw) => {
+      let message;
+      try { message = JSON.parse(raw.toString()); } catch { return; }
+      if (message.action !== "announce" || message.info_hash !== streamHash || !message.offer?.sdp) return;
+      const match = message.offer.sdp.match(/a=x-voicelink-stream:(\\d+):([A-Za-z0-9+/=]+)/);
+      if (!match) return;
+      const packetNumber = Number(match[1]);
+      if (!sentAt.has(packetNumber) || receivedAt.has(packetNumber)) return;
+      const decoded = Buffer.from(match[2], "base64");
+      if (decoded.length !== PAYLOAD_BYTES || !decoded.equals(streamPayload)) return;
+      receivedAt.set(packetNumber, performance.now());
+    };
+    receiver.on("message", streamListener);
+
+    const streamStarted = performance.now();
+    for (let i = 0; i < streamPackets; i++) {
+      const offerId = binaryString(createHash("sha256").update("stream-offer:" + i).digest().subarray(0, 20));
+      const marker = "a=x-voicelink-stream:" + i + ":" + streamPayload.toString("base64");
+      const sdp = ["v=0", "o=- 2 2 IN IP4 127.0.0.1", "s=VoiceLink stream probe", "t=0 0", marker, ""].join("\\r\\n");
+      sentAt.set(i, performance.now());
+      send(sender, {
+        action: "announce", info_hash: streamHash, peer_id: senderId,
+        uploaded: 0, downloaded: 0, left: 1, numwant: 1,
+        offers: [{ offer: { type: "offer", sdp }, offer_id: offerId }]
+      });
+      if (i + 1 < streamPackets) await new Promise((resolve) => setTimeout(resolve, streamIntervalMs));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    receiver.off("message", streamListener);
+    const latencies = Array.from(receivedAt, ([packet, received]) => received - sentAt.get(packet)).sort((a, b) => a - b);
+    const percentile = (p) => latencies.length ? Math.round(latencies[Math.min(latencies.length - 1, Math.floor((latencies.length - 1) * p))]) : null;
+    const streamResult = {
+      room: streamHashKey,
+      payloadBytes: PAYLOAD_BYTES,
+      targetRatePerSecond: 1000 / streamIntervalMs,
+      sentPackets: streamPackets,
+      receivedPackets: receivedAt.size,
+      lostPackets: streamPackets - receivedAt.size,
+      lossPercent: Number(((streamPackets - receivedAt.size) / streamPackets * 100).toFixed(2)),
+      elapsedMs: Math.round(performance.now() - streamStarted),
+      latencyMs: { min: latencies.length ? Math.round(latencies[0]) : null, median: percentile(0.5), p95: percentile(0.95), max: latencies.length ? Math.round(latencies[latencies.length - 1]) : null }
+    };
+    console.log("STREAM " + JSON.stringify(streamResult));
+
+    console.log("\\nRESULT " + JSON.stringify({ tracker: url, rooms: results, stream: streamResult, sameRunnerIp: true }));
     return true;
   } finally {
     for (const ws of [sender, receiver]) {
