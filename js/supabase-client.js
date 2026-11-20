@@ -126,15 +126,28 @@ export function subscribeSupabaseInbox(userId, onMessage, onStatus = () => {}) {
     .subscribe(status => onStatus(status));
 }
 
-export async function fetchSupabaseInbox(userId, limit = 500) {
+export async function fetchSupabaseInbox(userId, pageSize = 500) {
   if (typeof userId !== "string" || !SUPABASE_UUID_RE.test(userId)) throw new TypeError("A valid Supabase inbox identity is required.");
-  const safeLimit = Math.max(1, Math.min(1000, Math.trunc(Number(limit) || 500)));
-  const { data, error } = await getSupabaseClient().from("messages")
-    .select("sender_id,recipient_id,payload,created_at")
-    .eq("recipient_id", userId.toLowerCase())
-    .order("created_at", { ascending: false }).limit(safeLimit);
-  if (error) throw new Error("Не удалось восстановить входящие сообщения Supabase: " + error.message);
-  return Array.isArray(data) ? data.reverse() : [];
+  const safePageSize = Math.max(1, Math.min(1000, Math.trunc(Number(pageSize) || 500)));
+  const supabase = getSupabaseClient();
+  const rows = [];
+  // Read the complete durable inbox in bounded pages. Broadcast is already
+  // subscribed by the caller, so inserts concurrent with this scan are also
+  // delivered live; seq makes overlap/duplicate delivery harmless.
+  for (let offset = 0; ; offset += safePageSize) {
+    const { data, error } = await supabase.from("messages")
+      .select("sender_id,recipient_id,payload,created_at")
+      .eq("recipient_id", userId.toLowerCase())
+      .order("created_at", { ascending: true })
+      .order("sender_id", { ascending: true })
+      .order("payload", { ascending: true })
+      .range(offset, offset + safePageSize - 1);
+    if (error) throw new Error("Не удалось восстановить входящие сообщения Supabase: " + error.message);
+    const page = Array.isArray(data) ? data : [];
+    rows.push(...page);
+    if (page.length < safePageSize) break;
+  }
+  return rows;
 }
 
 export async function decryptSupabaseInboxRecord(record, sharedSecret) {
