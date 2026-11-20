@@ -1,204 +1,113 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101827">
-  <title>VoiceLink — тест Supabase Realtime (private)</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <style>
-    :root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#101827;color:#f8fafc}
-    *{box-sizing:border-box}
-    body{margin:0;padding:24px 16px}
-    main{max-width:680px;margin:0 auto}
-    h1{font-size:24px;margin:0 0 8px}
-    p{color:#cbd5e1;line-height:1.5}
-    .card{background:#1e293b;border:1px solid #475569;border-radius:14px;padding:18px;margin:16px 0}
-    label{display:block;font-weight:600;margin:12px 0 6px}
-    input,textarea,button{font:inherit}
-    input,textarea{width:100%;padding:11px;border-radius:9px;border:1px solid #64748b;background:#0f172a;color:#f8fafc}
-    textarea{min-height:76px;resize:vertical}
-    button{padding:11px 16px;border:0;border-radius:9px;background:#60a5fa;color:#0f172a;font-weight:700;cursor:pointer;margin-top:12px}
-    button:disabled{opacity:.5;cursor:not-allowed}
-    #status{font-weight:700}
-    #messages{padding-left:20px;overflow-wrap:anywhere}
-    #messages li{margin:10px 0;color:#e2e8f0}
-    .muted{font-size:13px;color:#94a3b8}
-    code{overflow-wrap:anywhere;color:#bfdbfe}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827">
+<title>VoiceLink — прямой тест Supabase</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#101827;color:#f8fafc}
+*{box-sizing:border-box}body{margin:0;padding:22px 14px}main{max-width:700px;margin:auto}
+h1{font-size:23px;margin:0 0 8px}h2{font-size:18px;margin:0 0 10px}
+p{color:#cbd5e1;line-height:1.5}.card{background:#1e293b;border:1px solid #475569;border-radius:14px;padding:17px;margin:14px 0}
+label{display:block;font-weight:600;margin:12px 0 6px}input,button{font:inherit}
+input{width:100%;padding:11px;border-radius:9px;border:1px solid #64748b;background:#0f172a;color:#f8fafc}
+button{padding:11px 15px;border:0;border-radius:9px;background:#60a5fa;color:#0f172a;font-weight:700;cursor:pointer;margin-top:10px}
+button:disabled{opacity:.45;cursor:not-allowed}.muted{font-size:13px;color:#94a3b8;overflow-wrap:anywhere}
+#status{font-weight:700}code{color:#bfdbfe;overflow-wrap:anywhere}.token{padding:10px;background:#0f172a;border-radius:8px;overflow-wrap:anywhere;user-select:all}
+#events{padding-left:20px}#events li{margin:9px 0;overflow-wrap:anywhere}
+.pass{color:#86efac}.fail{color:#fca5a5}
+</style>
 </head>
-<body>
-<main>
-  <h1>Тест Supabase Realtime — приватный канал</h1>
-  <p>Изолированная проверка private Broadcast через Render и Supabase. Используются только временные анонимные тестовые сессии и фиктивные сообщения. Рабочие звонки, контакты, ntfy и OneSignal не затрагиваются.</p>
-
-  <section class="card">
-    <div>Состояние: <span id="status">Инициализация…</span></div>
-    <div class="muted">Тестовый Auth user ID: <code id="auth-user">—</code></div>
-    <p class="muted">Private topic: <code>voicelink-realtime-test-9224dd59711e2e0aab5aed1572e4d6c0</code></p>
-  </section>
-
-  <section class="card">
-    <h2>Отправить тестовое сообщение</h2>
-    <label for="backend">Адрес Render backend</label>
-    <input id="backend" type="url" placeholder="https://ваш-сервис.onrender.com" autocomplete="url">
-    <label for="message">Текст сообщения</label>
-    <textarea id="message" maxlength="160">Привет из VoiceLink — тест приватного Supabase Realtime</textarea>
-    <button id="send" type="button" disabled>Отправить через Render</button>
-    <p id="send-status" class="muted" aria-live="polite"></p>
-  </section>
-
-  <section class="card">
-    <h2>Проверка ограничения доступа</h2>
-    <p class="muted">Попробуем подписаться на другой private topic, для которого нет RLS-разрешения. Supabase должен отклонить подключение.</p>
-    <button id="probe" type="button" disabled>Проверить запрет доступа</button>
-    <p id="probe-status" class="muted" aria-live="polite"></p>
-  </section>
-
-  <section class="card">
-    <h2>Полученные сообщения</h2>
-    <ol id="messages"><li class="muted">Ожидаем сообщения…</li></ol>
-    <button id="clear" type="button">Очистить список</button>
-  </section>
+<body><main>
+<h1>Прямой тест Supabase — два браузера</h1>
+<p>Проверяет выбранную архитектуру без Render и без изменения рабочих звонков: анонимная авторизация → одноразовое приглашение → RPC → inbox в PostgreSQL → уведомление Postgres Changes. Используй эту страницу в двух независимых браузерах или профилях.</p>
+<section class="card">
+<div>Состояние: <span id="status">Инициализация…</span></div>
+<div class="muted">Текущий Supabase Auth UUID: <code id="uid">—</code></div>
+<div class="muted">Подписка на собственный inbox: <span id="subscription">ожидание…</span></div>
+</section>
+<section class="card">
+<h2>1. Создать приглашение (браузер получателя)</h2>
+<p class="muted">Создаёт случайный 256-битный invitation ID. В базе хранится только SHA-256 хеш. Передай ID во второй браузер.</p>
+<button id="create" disabled>Создать одноразовое приглашение</button>
+<div id="token-wrap" hidden><label>Одноразовый ID приглашения</label><div id="token" class="token"></div><button id="copy" type="button">Скопировать ID</button></div>
+<p id="create-status" class="muted" aria-live="polite"></p>
+</section>
+<section class="card">
+<h2>2. Отправить тестовое сообщение (браузер отправителя)</h2>
+<label for="invitation">Вставь invitation ID из первого браузера</label>
+<input id="invitation" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="43 символа base64url">
+<button id="send" disabled>Погасить приглашение и отправить</button>
+<p id="send-status" class="muted" aria-live="polite"></p>
+</section>
+<section class="card">
+<h2>3. Результат</h2>
+<p class="muted">Получатель должен увидеть сообщение после Realtime-события и прочитать его из постоянного inbox. Отправитель отдельно проверит, что не может прочитать адресованную получателю строку.</p>
+<ol id="events"><li class="muted">Ожидаем действия…</li></ol>
+</section>
 </main>
 <script>
-(() => {
-  const SUPABASE_URL = "https://lcmccpecmtnqknthtijl.supabase.co";
-  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
-  const TOPIC = "voicelink-realtime-test-9224dd59711e2e0aab5aed1572e4d6c0";
-  const EVENT = "vl-test-message";
-
-  const status = document.getElementById("status");
-  const messages = document.getElementById("messages");
-  const sendButton = document.getElementById("send");
-  const probeButton = document.getElementById("probe");
-  const sendStatus = document.getElementById("send-status");
-  const backendInput = document.getElementById("backend");
-  const probeStatus = document.getElementById("probe-status");
-
-  function setStatus(message, color) {
-    status.textContent = message;
-    status.style.color = color || "#fbbf24";
-  }
-
-  function addMessage(payload) {
-    if (messages.children.length === 1 && messages.firstElementChild.classList.contains("muted")) {
-      messages.replaceChildren();
-    }
-    const item = document.createElement("li");
-    const time = payload && payload.sent_at ? new Date(payload.sent_at).toLocaleTimeString() : new Date().toLocaleTimeString();
-    const text = payload && typeof payload.message === "string" ? payload.message : JSON.stringify(payload);
-    item.textContent = time + " — " + text;
-    messages.prepend(item);
-  }
-
-  if (!window.supabase || typeof window.supabase.createClient !== "function") {
-    setStatus("Не загрузилась библиотека Supabase", "#fca5a5");
-    return;
-  }
-
-  const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-
-  async function start() {
-    setStatus("Проверяем тестовую сессию…");
-    let { data: sessionData, error: sessionError } = await client.auth.getSession();
-    if (sessionError) throw sessionError;
-
-    let session = sessionData.session;
-    if (!session) {
-      setStatus("Создаём анонимную тестовую сессию…");
-      const result = await client.auth.signInAnonymously();
-      if (result.error) throw result.error;
-      session = result.data.session;
-    }
-
-    if (!session || !session.user || !session.user.is_anonymous) {
-      throw new Error("В браузере уже есть неанонимная сессия этого Supabase-проекта. Для теста нужна анонимная сессия.");
-    }
-
-    document.getElementById("auth-user").textContent = session.user.id;
-    setStatus("Анонимная авторизация выполнена. Подключаем private channel…");
-
-    const channel = client.channel(TOPIC, { config: { private: true } });
-    channel
-      .on("broadcast", { event: EVENT }, ({ payload }) => addMessage(payload))
-      .subscribe((state, error) => {
-        if (state === "SUBSCRIBED") {
-          setStatus("SUBSCRIBED — private channel разрешён RLS", "#86efac");
-          sendButton.disabled = false;
-          probeButton.disabled = false;
-        } else {
-          setStatus(state + (error ? ": " + (error.message || String(error)) : ""));
-        }
-      });
-  }
-
-  start().catch(error => setStatus("Ошибка авторизации/подписки: " + (error.message || String(error)), "#fca5a5"));
-
-  sendButton.addEventListener("click", async () => {
-    const base = backendInput.value.trim().replace(/\/+$/, "");
-    const message = document.getElementById("message").value.trim();
-    if (!base) {
-      sendStatus.textContent = "Укажи адрес Render backend.";
-      return;
-    }
-    if (!message) {
-      sendStatus.textContent = "Введи текст сообщения.";
-      return;
-    }
-
-    sendButton.disabled = true;
-    sendStatus.textContent = "Отправляем private Broadcast через Render…";
-    try {
-      const response = await fetch(base + "/v1/test/realtime", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message })
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error || "HTTP " + response.status);
-      }
-      sendStatus.textContent = "Render принял сообщение и передал private Broadcast в Supabase.";
-    } catch (error) {
-      sendStatus.textContent = "Ошибка отправки: " + error.message;
-    } finally {
-      sendButton.disabled = false;
-    }
+(async()=>{
+ const URL="https://lcmccpecmtnqknthtijl.supabase.co";
+ const KEY="sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
+ const $=id=>document.getElementById(id);
+ const status=(s,ok)=>{$("status").textContent=s;$("status").className=ok===true?"pass":ok===false?"fail":""};
+ const log=(s,ok)=>{const li=document.createElement("li");li.textContent=s;if(ok===true)li.className="pass";if(ok===false)li.className="fail";if($("events").children.length===1&&$("events").firstElementChild.classList.contains("muted"))$("events").replaceChildren();$("events").prepend(li)};
+ const client=window.supabase?.createClient(URL,KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+ if(!client){status("Не загрузилась библиотека Supabase",false);return}
+ let user=null,channel=null;
+ try{
+  let {data,error}=await client.auth.getSession();if(error)throw error;
+  let session=data.session;
+  if(!session){status("Создаём анонимную сессию…");({data,error}=await client.auth.signInAnonymously());if(error)throw error;session=data.session}
+  user=session?.user;if(!user?.is_anonymous)throw Error("Для теста нужна анонимная сессия Supabase.");
+  $("uid").textContent=user.id;status("Анонимная авторизация выполнена",true);
+  channel=client.channel("voicelink-inbox-test-"+user.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:"recipient_id=eq."+user.id},async event=>{
+    const id=event.new?.message_id;if(!id)return;
+    log("Realtime INSERT получен. Загружаем строку из inbox…");
+    const {data:rows,error}=await client.from("messages").select("message_id,sender_id,recipient_id,payload,created_at").eq("message_id",id).limit(1);
+    if(error){log("Не удалось прочитать inbox: "+error.message,false);return}
+    if(!rows?.length){log("Realtime был, но строка не прочиталась из inbox.",false);return}
+    const row=rows[0];
+    if(row.recipient_id!==user.id||row.payload?.type!=="browser_realtime_test"){log("Получена строка с неожиданным адресатом или типом.",false);return}
+    log("PASS: сообщение получено через Postgres Changes и прочитано из durable inbox. ID: "+row.message_id,true);
+  }).subscribe((state,error)=>{
+    $("subscription").textContent=state+(error?" — "+error.message:"");
+    if(state==="SUBSCRIBED"){$("create").disabled=false;status("Подписка на собственный inbox активна",true);log("PASS: подписка Postgres Changes активна для recipient_id="+user.id,true)}
+    else if(state==="CHANNEL_ERROR"||state==="TIMED_OUT"){status("Ошибка подписки Realtime: "+state,false);log("Realtime: "+state+(error?.message?"; "+error.message:""),false)}
   });
-
-  probeButton.addEventListener("click", async () => {
-    probeButton.disabled = true;
-    probeStatus.textContent = "Проверяем, что другой topic закрыт…";
-    const probe = client.channel(TOPIC + ":unauthorized-probe", { config: { private: true } });
-    let settled = false;
-    const finish = async (message) => {
-      if (settled) return;
-      settled = true;
-      probeStatus.textContent = message;
-      await client.removeChannel(probe);
-      probeButton.disabled = false;
-    };
-    probe.subscribe((state, error) => {
-      if (state === "SUBSCRIBED") {
-        finish("ОШИБКА: посторонний topic оказался доступен. Проверь RLS-политики.");
-      } else if (state === "CHANNEL_ERROR") {
-        finish("Доступ отклонён — RLS не разрешил подписку на посторонний topic.");
-      } else if (state === "TIMED_OUT") {
-        finish("Тайм-аут. Результат проверки не определён; повтори позже.");
-      }
-    });
-    window.setTimeout(() => finish("Тайм-аут проверки. Результат не определён."), 12000);
-  });
-
-  document.getElementById("clear").addEventListener("click", () => {
-    messages.replaceChildren();
-    const item = document.createElement("li");
-    item.className = "muted";
-    item.textContent = "Список очищен. Ожидаем сообщения…";
-    messages.append(item);
-  });
-})();
+ }catch(e){status("Ошибка инициализации: "+(e.message||e),false);return}
+ $("create").onclick=async()=>{
+  $("create").disabled=true;$("create-status").textContent="Создаём приглашение…";
+  try{
+   const bytes=crypto.getRandomValues(new Uint8Array(32));let binary="";bytes.forEach(b=>binary+=String.fromCharCode(b));
+   const token=btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+   const {error}=await client.rpc("create_invitation",{p_invitation_id:token});if(error)throw error;
+   $("token").textContent=token;$("token-wrap").hidden=false;$("create-status").textContent="Приглашение создано. Оно одноразовое.";
+   log("PASS: 256-битное приглашение создано через create_invitation().",true);
+  }catch(e){$("create-status").textContent="Ошибка: "+(e.message||e);$("create").disabled=false;log("Создание приглашения: "+(e.message||e),false)}
+ };
+ $("copy").onclick=async()=>{try{await navigator.clipboard.writeText($("token").textContent);$("create-status").textContent="ID скопирован."}catch{$("create-status").textContent="Не удалось скопировать автоматически — выдели ID вручную."}};
+ $("send").disabled=false;
+ $("send").onclick=async()=>{
+  const token=$("invitation").value.trim();if(!/^[A-Za-z0-9_-]{43}$/.test(token)){$("send-status").textContent="Invitation ID должен содержать 43 символа base64url.";return}
+  $("send").disabled=true;$("send-status").textContent="Погашаем приглашение и отправляем сообщение…";
+  try{
+   const payload={type:"browser_realtime_test",nonce:crypto.randomUUID(),text:"Тестовое сообщение VoiceLink",sent_at:new Date().toISOString()};
+   const {data:messageId,error}=await client.rpc("submit_message",{p_payload:payload,p_recipient_id:null,p_invitation_id:token});if(error)throw error;
+   if(typeof messageId!=="string")throw Error("RPC не вернул message UUID.");
+   $("send-status").textContent="RPC принял сообщение. Проверяем запрет чтения отправителем…";
+   const {data:ownRows,error:readError}=await client.from("messages").select("message_id").eq("message_id",messageId);
+   if(readError)throw readError;
+   if(ownRows?.length)throw Error("Нарушение RLS: отправитель прочитал строку чужого inbox.");
+   $("send-status").textContent="PASS: сообщение отправлено; отправитель не может прочитать строку inbox получателя.";
+   log("PASS: submit_message() погасил одноразовое приглашение и вернул message UUID.",true);
+   log("PASS: отправитель не может прочитать адресованную получателю строку (RLS).",true);
+  }catch(e){$("send-status").textContent="Ошибка отправки: "+(e.message||e);log("Отправка/RLS: "+(e.message||e),false);$("send").disabled=false}
+ };
+ window.addEventListener("beforeunload",()=>{if(channel)client.removeChannel(channel)});
+})().catch(e=>{document.getElementById("status").textContent="Ошибка: "+(e.message||e)});
 </script>
-</body>
-</html>
+</body></html>
