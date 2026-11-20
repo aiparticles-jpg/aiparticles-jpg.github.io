@@ -237,3 +237,109 @@ This section supersedes conflicting details in the earlier logical draft above.
 - **Message retention and abuse/rate limits:** not solved by this initial schema and remain mandatory pre-production review items.
 
 The SQL migration is a test-stage artifact only. It must be applied and verified in the Supabase project before any frontend integration. It does not alter the production ntfy path, OneSignal backend, WebRTC media path, or current invitation format.
+
+## 13. Simplified transport and message protocol — decisions confirmed 2026-11-20
+
+This section records decisions made after the two-browser Supabase Auth, invitation, RLS, durable-inbox, and private Realtime test. It supersedes conflicting earlier statements in Sections 2, 4, 5, 6, and 12. These are agreed implementation requirements, not yet implemented in the production frontend or SQL migration.
+
+### 13.1 One network identity only
+
+- Supabase Anonymous Auth UUID is the only network identity used by the new signaling protocol.
+- Do not create, retain, transmit, or require the former separate 64-hex-character VoiceLink user_id for this transport.
+- The browser knows its own Supabase UUID from its authenticated Supabase session. Application code does not need a second locally generated self-ID.
+- Each local contact record stores that contact's Supabase Auth UUID as its network routing key.
+- The browser maintains a local mapping from incoming database sender_id (Supabase UUID) to the corresponding IndexedDB contact record, including the local alias and other local-only fields.
+- Contact aliases, avatars, local contact record IDs, and other local address-book data never leave the browser.
+- OneSignal Subscription ID remains a separate push-notification identifier. It is not a signaling identity and is not used as a replacement for the Supabase UUID.
+- Database functions derive the sender from the verified JWT using auth.uid(). Never trust a client-supplied sender_id.
+
+### 13.2 Client-side invitation hashing
+
+The original random invitation secret must never be sent to Supabase.
+
+1. The inviter's browser generates exactly 32 cryptographically random bytes, T.
+2. The browser calculates H = SHA-256(T).
+3. The browser encodes the 32-byte digest as unpadded Base64URL. The resulting H is exactly 43 characters.
+4. The browser sends this 43-character H as p_invitation_id to create_invitation(), and shares H with the intended invitee as the one-time bearer invitation value. The original T never leaves the inviter's browser.
+5. Supabase validates the 43-character Base64URL format and stores SHA-256(UTF8(H)), a 32-byte digest, together with the inviter's auth.uid().
+6. During redemption, the invitee submits the same 43-character H as p_invitation_id. submit_message() calculates SHA-256(UTF8(H)) and atomically deletes the matching row with DELETE ... RETURNING owner_id.
+
+Thus the database stores a hash of the browser-generated digest (a second hash), not the original random value and not the bearer value used for redemption. The first digest H remains a secret bearer credential: anyone who obtains it can attempt to redeem the invitation. HTTPS remains mandatory. The second hash provides defense in depth against replay directly from a read-only database/table leak; it does not protect against compromise of an active Supabase service that can observe redemption requests.
+
+The existing RPC parameter name p_invitation_id may be retained for compatibility, but its documented meaning changes to “43-character Base64URL client-side SHA-256 digest of the random invitation bytes.” Update SQL comments, tests, and frontend code together. Do not accidentally hash the raw token on one path and the client digest on the other.
+
+### 13.3 Realtime event carries the message; no SELECT per notification
+
+- A Postgres Changes INSERT event for public.messages is expected to contain the inserted row, including its payload.
+- The recipient processes the row carried by the Realtime event directly. Do not issue a second SELECT by message_id for every normal notification.
+- The private Realtime channel and RLS remain in force. The recipient subscription is filtered by its own recipient_id; the RLS policy remains the actual authorization boundary.
+- The durable inbox row remains the source of truth. Realtime is a notification/delivery path, not a guarantee that every event reaches an offline or disconnected browser.
+- On ordinary successful delivery, one database write and one Realtime event are sufficient; there is no follow-up read.
+- A database read is reserved for recovery: after reconnect/reload when messages may have been missed, or when the browser detects a sequence gap. The recovery query fetches a suitable overlapping range of the recipient's inbox (optionally narrowed by sender_id and created_at), then the browser decrypts, orders, and deduplicates locally. The exact overlap/retention strategy must be finalized during implementation so timestamp boundaries cannot cause missed rows.
+- Test that the deployed Supabase Postgres Changes configuration actually supplies the full INSERT row under the project's RLS/private-channel configuration before removing the test page's existing read-after-notification step.
+
+### 13.4 Message ordering and deduplication are client responsibilities
+
+- Do not add a database sequence, per-message read/processed flag, ACK table, or server-side ordering state.
+- Put a monotonically increasing sequence number inside the encrypted plaintext for each sender-to-recipient direction. Each direction has its own counter.
+- Persist the next outgoing counter and last successfully processed incoming counter in IndexedDB, associated with the local contact record / peer Supabase UUID.
+- Use a representation that cannot exceed JavaScript's safe integer range; a decimal string representing an unsigned 64-bit integer is the preferred wire representation.
+- Increment and persist the outgoing counter atomically before publication, so reloads or multiple tabs do not reuse a number. The implementation must serialize concurrent sends for the same peer.
+- The recipient decrypts the message before inspecting its sequence number. It ignores already-processed duplicates, processes the next expected number, and detects a gap when a higher number arrives before the expected one.
+- On a gap, buffer later messages and perform the recovery read described in Section 13.3. Do not advance the last-processed counter past a gap until missing messages have been recovered or an explicit, separately designed recovery policy is applied.
+- Realtime may redeliver events or the application may process them again after reconnect. Keep the database-generated message_id UUID as an internal row identity and local deduplication key; it is not a sequence number, read receipt, or ordering mechanism.
+- Do not assume UUID ordering or timestamps alone prove that no message is missing.
+
+### 13.5 Minimal encrypted message envelope
+
+The previous outer envelope fields type, payload.from, and payload.to are not needed in the new Supabase transport:
+
+- Sender identity is supplied by the database row's sender_id, derived from auth.uid().
+- Recipient identity is supplied by the database row's recipient_id, validated by submit_message().
+- Message type (for example hello, answer, cancel, reject, data, text, or delivery receipt) belongs inside the encrypted plaintext, not in the clear outer envelope.
+- The protocol version remains outside encryption so the receiver can select the correct decryption/decoding procedure before decrypting. The version is also included in AES-GCM Additional Authenticated Data (AAD), so it cannot be changed without authentication failure.
+
+The minimal logical JSONB payload is:
+
+    {
+      "v": 1,
+      "data": "<base64url of 12-byte IV || AES-256-GCM ciphertext || 16-byte GCM tag>"
+    }
+
+The decrypted plaintext is a versioned application message, conceptually:
+
+    {
+      "type": "data",
+      "seq": "42",
+      "body": {
+        "...": "message-type-specific fields"
+      }
+    }
+
+The exact binary framing and plaintext field names may be finalized in implementation, but the following requirements are fixed:
+
+- The only clear envelope metadata is the protocol version and the encrypted data field.
+- Do not expose from, to, or message type in the payload envelope.
+- The IV is 12 cryptographically random bytes and the GCM tag is 16 bytes. The IV must never be reused with the same encryption key.
+- The receiver obtains sender and recipient UUIDs from the authenticated database row. Bind the version and both routing UUIDs into AES-GCM AAD on both encryption and decryption. This authenticates the database routing context without duplicating from/to inside the envelope.
+- The receiver decrypts first, then validates the inner message type, sequence number, and type-specific body.
+- A version that the receiver does not support is rejected without attempting to interpret it as another version.
+- Existing VoiceLink contact AES-GCM/HKDF key derivation and key-rotation behavior must be reviewed and adapted to the new routing context; do not silently assume the old ntfy envelope AAD can be reused unchanged.
+
+### 13.6 Normal message submission and delivery
+
+For an established contact:
+
+1. The sender looks up the peer's Supabase UUID in its local contact record.
+2. It constructs the inner message with type, per-peer-direction seq, and message-specific body.
+3. It encrypts the plaintext locally using the contact's existing E2EE key material and the new version/routing AAD.
+4. It calls submit_message(p_payload, p_recipient_id, null). The sender UUID is not supplied; PostgreSQL derives it from auth.uid().
+5. The database verifies the existing bidirectional links relationship and inserts the inbox row.
+6. Supabase Realtime delivers the INSERT row, including the encrypted payload, to the recipient's authorized private subscription.
+7. The recipient maps row sender_id to its local contact, decrypts the payload, checks type and seq, and processes it. No per-message SELECT is performed on this normal path.
+
+### 13.7 Scope and migration status
+
+- These decisions update the target protocol specification only. They do not yet change the current SQL migrations, test page, or production ntfy signaling implementation.
+- The existing two-browser test proved the current test implementation's invitation redemption, RLS, durable inbox, and private Realtime notification. It did not yet prove full-row direct processing without SELECT, client-side invitation pre-hashing, the new envelope, sequence-gap recovery, or an actual VoiceLink call.
+- Implement the SQL and browser changes together in a new test stage. Keep the existing production ntfy path intact until the revised protocol passes browser tests and a real two-device call.
