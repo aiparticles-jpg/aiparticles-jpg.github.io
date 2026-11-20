@@ -185,7 +185,16 @@ async function main() {
     await rpc(config.url, config.publishableKey, owner, "create_invitation", {
       p_invitation_id: invitationId
     });
-    console.log("PASS: authenticated user can create a 256-bit one-time invitation.");
+    const storedInvitation = await db.query(
+      "select token_hash = extensions.digest(convert_to($1, 'UTF8'), 'sha256') as single_hash, " +
+      "token_hash = extensions.digest(extensions.digest(convert_to($1, 'UTF8'), 'sha256'), 'sha256') as double_hash " +
+      "from public.invitations where token_hash = extensions.digest(convert_to($1, 'UTF8'), 'sha256')",
+      [invitationId]
+    );
+    assert(storedInvitation.rowCount === 1 && storedInvitation.rows[0].single_hash === true &&
+      storedInvitation.rows[0].double_hash === false,
+      "Invitation storage must contain exactly one database-side SHA-256 hash of the original ID.");
+    console.log("PASS: invitation ID is sent raw; database stores exactly one SHA-256 hash.");
 
     const attempts = await Promise.allSettled([
       rpc(config.url, config.publishableKey, redeemerA, "submit_message", {
