@@ -64,7 +64,7 @@ button:disabled{opacity:.45;cursor:not-allowed}.muted{font-size:13px;color:#94a3
   if(!session){status("Создаём анонимную сессию…");({data,error}=await client.auth.signInAnonymously());if(error)throw error;session=data.session}
   user=session?.user;if(!user?.is_anonymous)throw Error("Для теста нужна анонимная сессия Supabase.");
   $("uid").textContent=user.id;status("Анонимная авторизация выполнена",true);
-  channel=client.channel("voicelink-inbox-test-"+user.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:"recipient_id=eq."+user.id},async event=>{
+  channel=client.channel("inbox:"+user.id,{config:{private:true}}).on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:"recipient_id=eq."+user.id},async event=>{
     const id=event.new?.message_id;if(!id)return;
     log("Realtime INSERT получен. Загружаем строку из inbox…");
     const {data:rows,error}=await client.from("messages").select("message_id,sender_id,recipient_id,payload,created_at").eq("message_id",id).limit(1);
