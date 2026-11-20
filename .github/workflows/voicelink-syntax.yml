@@ -1,0 +1,37 @@
+name: VoiceLink browser module syntax check
+
+on:
+  push:
+    paths:
+      - "index.html"
+      - "js/app.js"
+      - "js/contact-exchange.js"
+      - "js/local-store.js"
+      - "js/supabase-client.js"
+      - "js/supabase-protocol.mjs"
+      - ".github/workflows/voicelink-syntax.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voicelink-browser-syntax
+  cancel-in-progress: false
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check browser ES modules
+        run: |
+          set -eu
+          for file in js/app.js js/contact-exchange.js js/local-store.js js/supabase-client.js js/supabase-protocol.mjs; do
+            echo "Checking $file"
+            node --input-type=module --check < "$file"
+          done

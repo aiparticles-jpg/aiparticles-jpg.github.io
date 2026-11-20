@@ -388,3 +388,35 @@ The GitHub Pages deployment for the updated browser test page also succeeded (ru
 - No production signaling, invitation UI, OneSignal, WebRTC, or ntfy code has been switched or removed.
 
 Keep the production ntfy path unchanged until the new transport is integrated and validated with two independent devices and a real call.
+
+
+## 15. Production-app Supabase identity bootstrap — 2026-11-20
+
+Implemented in the existing static app without switching its active signaling transport.
+
+### 15.1 Supabase Anonymous Auth in the app
+
+- The production page loads the same Supabase JS v2 browser SDK used by the isolated test page.
+- `js/supabase-client.js` creates a Supabase client for the VoiceLink project using only the public publishable key. No service-role key or database password is present in browser code.
+- Anonymous Auth session persistence uses a dedicated storage key, `voicelink-supabase-auth-v1`, separate from other browser storage.
+- On app startup, `getSupabaseIdentity()` restores the existing anonymous session or creates one, then exposes its Supabase Auth UUID.
+- If Supabase Auth is temporarily unavailable, startup logs the problem and the existing ntfy application continues to initialize. Supabase failure does not block the legacy calling path.
+
+### 15.2 Supabase identity in contact invitations
+
+- Newly generated contact invitations now attempt to create a one-time Supabase invitation via `create_invitation()`.
+- The invitation package includes `supabase_user_id` and `supabase_invitation_id` when that RPC succeeds. The invitation ID is the original random 32-byte Base64URL value; the browser does not hash it. PostgreSQL stores only its single SHA-256 digest.
+- Contact-package verification validates these fields and retains them in the local contact record.
+- Encrypted contact-response packages include the sender's `supabase_user_id`, allowing the other side to learn the same routing identity after the existing ntfy contact exchange.
+- Local contact records retain their current legacy `user_id` primary key temporarily for compatibility with ntfy. The new `supabase_user_id` is a separate routing field. `findContactBySupabaseUserId()` provides the reverse lookup needed by the future inbox adapter.
+- The diagnostic identity line now displays a short Supabase UUID prefix or indicates that Supabase Auth was unavailable.
+
+### 15.3 Verification boundary
+
+- GitHub Pages deployment for this code completed successfully (run `44706223338`).
+- The earlier Supabase integration tests prove Anonymous Auth and the `create_invitation()` RPC against the same project, but the new production-app bootstrap has not yet been exercised in a real browser session after deployment.
+- This step does not redeem `supabase_invitation_id`, submit an E2EE message through Supabase, subscribe the production app to Realtime, or change WebRTC/ntfy call signaling.
+- The legacy 64-hex local identity remains only as a compatibility key for the still-active ntfy implementation. It must not be sent as sender/recipient identity in the new Supabase transport.
+- Unused Supabase invitation rows currently remain as SHA-256 digests until redeemed. An explicit revoke/expiry cleanup path is still to be designed; do not claim these invitations are revoked when a local invitation is replaced or deleted.
+
+Keep ntfy active until the next steps implement initial invitation redemption, inbox subscription/recovery, and the real two-device signaling flow.

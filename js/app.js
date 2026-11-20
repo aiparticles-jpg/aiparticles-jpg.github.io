@@ -1436,7 +1436,7 @@ async function createContactInvitationNow({expectedRevision=null}={}){
   }catch(qrError){
    setInlineStatus(els.invitationScreenStatus,"Ссылка создана. QR-код пока недоступен: "+(qrError.message||String(qrError)),true);
   }
-  debug("Создано защищённое приглашение с действующим OneSignal Subscription ID.");
+  debug("Создано защищённое приглашение; OneSignal="+(subscriptionId?"доступен":"недоступен")+"; Supabase route="+(supabaseInvitation?"создан":"не создан")+".");
   
   return true;
   }catch(error){
@@ -2478,7 +2478,7 @@ async function initializeApp(){
      window.history.replaceState(null,"",cleanUrl.href);
    }
   const contacts=await listContacts();
-  els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"…";
+  els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"… · Supabase "+(state.supabaseUserId?state.supabaseUserId.slice(0,8)+"…":"недоступен");
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
   document.documentElement.dataset.voicelinkBooted="true";
   updateWebPushStatus();
