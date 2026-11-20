@@ -47,14 +47,14 @@ async function main() {
       "from public.invitations where owner_id = $1::uuid",
       [ownerId]
     );
-    console.log("INVITATIONS_FOR_FIREFOX_ID:", JSON.stringify(invitation.rows[0]));
+    console.log("INVITATIONS_FOR_INVITER_ID:", JSON.stringify(invitation.rows[0]));
 
     const links = await db.query(
       "select case when user_a = $1::uuid then user_b else user_a end as peer_id, created_at " +
       "from public.links where user_a = $1::uuid or user_b = $1::uuid order by created_at desc",
       [ownerId]
     );
-    console.log("LINKS_FOR_FIREFOX_ID:", JSON.stringify(links.rows));
+    console.log("LINKS_FOR_INVITER_ID:", JSON.stringify(links.rows));
 
     const messages = await db.query(
       "select sender_id, recipient_id, created_at, payload->>'type' as message_type " +
@@ -62,7 +62,7 @@ async function main() {
       "order by created_at desc limit 10",
       [ownerId]
     );
-    console.log("RECENT_MESSAGES_FOR_FIREFOX_ID:", JSON.stringify(messages.rows));
+    console.log("RECENT_MESSAGES_FOR_INVITER_ID:", JSON.stringify(messages.rows));
     console.log("READ_ONLY_DIAGNOSTIC_COMPLETE");
   } finally {
     await db.end();
