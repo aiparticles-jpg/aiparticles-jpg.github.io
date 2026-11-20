@@ -25,7 +25,7 @@ input{width:100%;box-sizing:border-box}button{cursor:pointer;margin:5px 5px 5px 
 <div id="status" class="stat">Не подключено</div>
 </div>
 <div class="panel">
-<button id="start" disabled>Начать 20 измерений (только телефон A)</button>
+<button id="start" disabled>Начать 120 измерений — около 2 минут (только телефон A)</button>
 <div id="summary" class="stat">Результатов пока нет.</div>
 </div>
 <div class="panel">
@@ -74,7 +74,7 @@ input{width:100%;box-sizing:border-box}button{cursor:pointer;margin:5px 5px 5px 
       const offset=((p.t2-p.t1)+(p.t3-t4))/2;
       const rtt=Math.max(0,(t4-p.t1)-(p.t3-p.t2));
       samples.push({offset,rtt,receiverMid:(p.t2+p.t3)/2});
-      $("summary").textContent="Получено "+samples.length+" из 20 измерений. Последний RTT: "+rtt.toFixed(1)+" мс.";
+      $("summary").textContent="Получено "+samples.length+" из 120 измерений. Последний RTT: "+rtt.toFixed(1)+" мс.";
       log("Измерение "+p.id+": RTT "+rtt.toFixed(1)+" мс; оценка offset B−A "+offset.toFixed(1)+" мс");
       item.resolve();
     }
@@ -111,7 +111,7 @@ input{width:100%;box-sizing:border-box}button{cursor:pointer;margin:5px 5px 5px 
   async function startMeasurements() {
     if(!connected||$("role").value!=="A"||runActive)return;
     runActive=true;samples=[];$("start").disabled=true;$("summary").textContent="Измерения выполняются…";
-    for(let i=0;i<20;i++){
+    for(let i=0;i<120;i++){
       if(!connected)break;
       const id=++requestCounter;
       const result=new Promise(resolve=>pending.set(id,{resolve}));
@@ -120,20 +120,27 @@ input{width:100%;box-sizing:border-box}button{cursor:pointer;margin:5px 5px 5px 
       const timeout=Promise.race([result,wait(2500)]);
       await timeout;
       if(pending.has(id)){pending.delete(id);log("Тайм-аут измерения "+id);}
-      await wait(250);
+      await wait(1000);
     }
     runActive=false;
-    if(samples.length>=3){
+    if(samples.length>=10){
       const sorted=samples.map(x=>x.rtt).sort((a,b)=>a-b);
       const percentile=p=>sorted[Math.min(sorted.length-1,Math.floor((sorted.length-1)*p))];
-      const meanX=samples.reduce((s,x)=>s+x.receiverMid,0)/samples.length;
-      const meanY=samples.reduce((s,x)=>s+x.offset,0)/samples.length;
-      const den=samples.reduce((s,x)=>s+(x.receiverMid-meanX)**2,0);
-      const slope=den?samples.reduce((s,x)=>s+(x.receiverMid-meanX)*(x.offset-meanY),0)/den:0;
-      const offsets=samples.map(x=>x.offset);
-      $("summary").textContent="Завершено: "+samples.length+"/20. RTT: min "+percentile(0).toFixed(1)+" мс, median "+percentile(.5).toFixed(1)+" мс, p95 "+percentile(.95).toFixed(1)+" мс. Оценка относительного дрейфа: "+(slope*1e6).toFixed(1)+" ppm. Разброс offset: "+(Math.max(...offsets)-Math.min(...offsets)).toFixed(1)+" мс. Это оценка по tracker-маршруту, не эталон абсолютного времени.";
+      const fit=(rows)=>{
+        const meanX=rows.reduce((s,x)=>s+x.receiverMid,0)/rows.length;
+        const meanY=rows.reduce((s,x)=>s+x.offset,0)/rows.length;
+        const den=rows.reduce((s,x)=>s+(x.receiverMid-meanX)**2,0);
+        return den?rows.reduce((s,x)=>s+(x.receiverMid-meanX)*(x.offset-meanY),0)/den:0;
+      };
+      const bestCount=Math.max(10,Math.ceil(samples.length*.25));
+      const best=[...samples].sort((a,b)=>a.rtt-b.rtt).slice(0,bestCount);
+      const allSlope=fit(samples), bestSlope=fit(best);
+      const bestOffsets=best.map(x=>x.offset);
+      const spread=Math.max(...bestOffsets)-Math.min(...bestOffsets);
+      $("summary").textContent="Завершено: "+samples.length+"/120. RTT: min "+percentile(0).toFixed(1)+" мс, median "+percentile(.5).toFixed(1)+" мс, p95 "+percentile(.95).toFixed(1)+" мс. Дрейф по всем пробам: "+(allSlope*1e6).toFixed(1)+" ppm; по лучшим "+best.length+" (минимальный RTT): "+(bestSlope*1e6).toFixed(1)+" ppm. Разброс offset лучших проб: "+spread.toFixed(1)+" мс. Оценка зависит от асимметрии маршрута и задержек браузера.";
+
       log("ИТОГ: "+$("summary").textContent);
-    } else $("summary").textContent="Недостаточно ответов: "+samples.length+"/20. Проверьте, что телефон B подключён к той же комнате.";
+    } else $("summary").textContent="Недостаточно ответов: "+samples.length+"/120. Проверьте, что телефон B подключён к той же комнате.";
     $("start").disabled=!connected;
   }
   $("connect").addEventListener("click",()=>{if(!$("room").value.trim()){status("Введите код комнаты","bad");return;} $("connect").disabled=true;connectToTracker().catch(e=>{status(e.message,"bad");$("connect").disabled=false;log(e.message);});});
