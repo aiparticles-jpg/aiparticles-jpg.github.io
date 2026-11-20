@@ -105,11 +105,10 @@ The client must not have direct INSERT privileges on the recipient inbox table. 
 This is the durable inbox from which recipients read signaling messages.
 
 Logical fields:
-- `message_id`: UUID primary key (no auto-increment sequence is currently required);
 - `sender_id`;
 - `recipient_id`;
 - encrypted/signaling `payload`;
-- `created_at`.
+- `created_at` (database timestamp; not unique and not a message ID).
 
 The inbox row is created only after the database validates the sender and routing permission.
 
@@ -130,8 +129,8 @@ Use Supabase **Postgres Changes** on `public.messages`, listening for `INSERT`.
 - Add `public.messages` to the `supabase_realtime` publication.
 - Each browser subscribes to INSERT events filtered by its own `recipient_id`.
 - RLS SELECT policy allows the recipient to read only their own inbox rows.
-- The Realtime event wakes the recipient's application; the application then reads the actual row from `messages`.
-- If the recipient is offline, the inbox row remains stored and is fetched after reconnect.
+- The Realtime event contains the full inserted row and wakes the recipient's application; normal delivery does not require a second SELECT.
+- If the recipient is offline, the inbox row remains stored and is fetched during recovery after reconnect.
 - Do not call `realtime.send()` for normal message routing.
 - Do not depend on Broadcast Replay for durable storage or missed-message recovery.
 
