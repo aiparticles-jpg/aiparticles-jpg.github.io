@@ -6,6 +6,7 @@ on:
       - "backend/scripts/test-supabase-flow.js"
       - "backend/scripts/test-supabase-realtime.js"
       - "backend/scripts/test-supabase-envelope.mjs"
+      - "backend/scripts/inspect-supabase-state.js"
       - "js/supabase-protocol.mjs"
       - "backend/scripts/apply-supabase-realtime-migration.js"
       - "backend/package.json"
@@ -52,3 +53,11 @@ jobs:
           node scripts/apply-supabase-realtime-migration.js
           node scripts/test-supabase-flow.js
           node scripts/test-supabase-realtime.js
+
+      - name: Inspect current Firefox identity state (read-only)
+        working-directory: backend
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_DIAG_OWNER_ID: "67a312fc-d135-40f6-9b6c-b958c373e86b"
+        run: node scripts/inspect-supabase-state.js
