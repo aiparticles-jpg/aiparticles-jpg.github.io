@@ -28,9 +28,50 @@ $drop_message_pk$;
 
 alter table public.messages drop column if exists message_id;
 
--- With no primary key, FULL replica identity is required for published DELETEs
--- (for example, auth.users cleanup cascading to inbox rows).
-alter table public.messages replica identity full;
+-- The inbox no longer uses Postgres Changes: it has no row ID/primary key.
+-- Remove it from the WAL publication and use a trigger-backed private Broadcast.
+do $drop_messages_publication$
+begin
+  if exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime drop table public.messages;
+  end if;
+end;
+$drop_messages_publication$;
+
+alter table public.messages replica identity default;
+
+create or replace function public.broadcast_message_to_inbox()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public, realtime
+as $broadcast$
+begin
+  perform realtime.broadcast_changes(
+    'inbox:' || new.recipient_id::text,
+    'INSERT',
+    'INSERT',
+    'messages',
+    'public',
+    new,
+    null
+  );
+  return new;
+end;
+$broadcast$;
+
+drop trigger if exists messages_broadcast_insert on public.messages;
+create trigger messages_broadcast_insert
+  after insert on public.messages
+  for each row
+  execute function public.broadcast_message_to_inbox();
+
+revoke all on function public.broadcast_message_to_inbox() from public, anon, authenticated;
 
 create or replace function public.submit_message(
   p_payload jsonb,
@@ -119,6 +160,6 @@ revoke all on function public.submit_message(jsonb, uuid, text) from public, ano
 grant execute on function public.submit_message(jsonb, uuid, text) to authenticated;
 
 comment on table public.messages is
-  'Durable recipient inbox. No synthetic message ID: created_at is retained and encrypted per-direction seq defines order and deduplication.';
+  'Durable recipient inbox without a synthetic message ID. created_at is a retrieval timestamp; encrypted per-direction seq defines order and deduplication. Inserts notify private inbox topics through Broadcast.';
 comment on function public.submit_message(jsonb, uuid, text) is
-  'Atomically redeems an invitation or validates an existing link, then inserts into the recipient inbox and returns created_at.';
+  'Atomically redeems an invitation or validates an existing link, then inserts into the recipient inbox and returns created_at. An AFTER INSERT trigger sends a private Broadcast to the recipient's inbox topic.';
