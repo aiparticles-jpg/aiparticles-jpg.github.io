@@ -103,10 +103,10 @@ export async function submitSupabaseInvitationAcceptance({ contact }) {
   if (error) {
     throw new Error("Supabase не принял первое зашифрованное сообщение: " + error.message);
   }
-  if (typeof data !== "string" || !data) {
-    throw new Error("Supabase не вернул ID первого сообщения.");
+  if (typeof data !== "string" || Number.isNaN(Date.parse(data))) {
+    throw new Error("Supabase не вернул корректное время создания первого сообщения.");
   }
-  return { message_id: data, sender_id: identity.user_id, recipient_id: contact.supabase_user_id.toLowerCase() };
+  return { created_at: data, sender_id: identity.user_id, recipient_id: contact.supabase_user_id.toLowerCase() };
 }
 
 
@@ -132,16 +132,16 @@ export async function fetchSupabaseInbox(userId, limit = 500) {
   if (typeof userId !== "string" || !SUPABASE_UUID_RE.test(userId)) throw new TypeError("A valid Supabase inbox identity is required.");
   const safeLimit = Math.max(1, Math.min(1000, Math.trunc(Number(limit) || 500)));
   const { data, error } = await getSupabaseClient().from("messages")
-    .select("message_id,sender_id,recipient_id,payload,created_at")
+    .select("sender_id,recipient_id,payload,created_at")
     .eq("recipient_id", userId.toLowerCase())
-    .order("created_at", { ascending: true }).limit(safeLimit);
+    .order("created_at", { ascending: false }).limit(safeLimit);
   if (error) throw new Error("Не удалось восстановить входящие сообщения Supabase: " + error.message);
-  return Array.isArray(data) ? data : [];
+  return Array.isArray(data) ? data.reverse() : [];
 }
 
 export async function decryptSupabaseInboxRecord(record, sharedSecret) {
   if (!record || typeof record !== "object" || typeof record.sender_id !== "string" ||
-      typeof record.recipient_id !== "string" || typeof record.message_id !== "string" || !record.payload) {
+      typeof record.recipient_id !== "string" || typeof record.created_at !== "string" || Number.isNaN(Date.parse(record.created_at)) || !record.payload) {
     throw new TypeError("Supabase inbox row is incomplete.");
   }
   return decryptSupabaseMessage({
