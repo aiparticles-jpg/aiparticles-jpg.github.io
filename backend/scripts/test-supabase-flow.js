@@ -183,7 +183,8 @@ async function main() {
           select 1 from pg_constraint
           where conrelid='public.messages'::regclass and contype='p'
         ) as has_primary_key,
-        pg_get_function_result('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_result
+        pg_get_function_result('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_result,
+        (select relreplident = 'f' from pg_class where oid='public.messages'::regclass) as replica_identity_full
     `);
     assert(schemaCheck.rows[0].has_message_id === false,
       "messages must not contain the redundant message_id column.");
@@ -191,6 +192,8 @@ async function main() {
       "messages must not have a synthetic primary key.");
     assert(schemaCheck.rows[0].submit_result === "timestamp with time zone",
       "submit_message must return created_at, not a generated message ID.");
+    assert(schemaCheck.rows[0].replica_identity_full === true,
+      "messages without a primary key must use FULL replica identity for published DELETEs.");
     console.log("PASS: inbox schema has no message ID or synthetic primary key; created_at is returned.");
 
     const owner = await createAnonymousUser(config.url, config.publishableKey);
