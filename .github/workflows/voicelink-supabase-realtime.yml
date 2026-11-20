@@ -54,7 +54,7 @@ jobs:
           node scripts/test-supabase-flow.js
           node scripts/test-supabase-realtime.js
 
-      - name: Inspect current Firefox identity state (read-only)
+      - name: Verify redeemed Firefox invitation and inbox (read-only)
         working-directory: backend
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
