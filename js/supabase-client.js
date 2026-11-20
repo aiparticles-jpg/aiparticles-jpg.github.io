@@ -1,4 +1,4 @@
-import { createInvitationId, encryptSupabaseMessage } from "./supabase-protocol.mjs?v=1";
+import { createInvitationId, encryptSupabaseMessage, decryptSupabaseMessage } from "./supabase-protocol.mjs?v=1";
 
 const SUPABASE_URL = "https://lcmccpecmtnqknthtijl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
@@ -107,4 +107,44 @@ export async function submitSupabaseInvitationAcceptance({ contact }) {
     throw new Error("Supabase не вернул ID первого сообщения.");
   }
   return { message_id: data, sender_id: identity.user_id, recipient_id: contact.supabase_user_id.toLowerCase() };
+}
+
+
+const SUPABASE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function subscribeSupabaseInbox(userId, onMessage, onStatus = () => {}) {
+  if (typeof userId !== "string" || !SUPABASE_UUID_RE.test(userId) || typeof onMessage !== "function") {
+    throw new TypeError("A valid Supabase inbox identity and message handler are required.");
+  }
+  return getSupabaseClient()
+    .channel("inbox:" + userId.toLowerCase(), { config: { private: true } })
+    .on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "messages",
+      filter: "recipient_id=eq." + userId.toLowerCase()
+    }, payload => {
+      // The INSERT event carries the full row; normal delivery needs no SELECT.
+      Promise.resolve(onMessage(payload?.new)).catch(error => console.error("VoiceLink Supabase inbox handler failed:", error));
+    })
+    .subscribe(status => onStatus(status));
+}
+
+export async function fetchSupabaseInbox(userId, limit = 500) {
+  if (typeof userId !== "string" || !SUPABASE_UUID_RE.test(userId)) throw new TypeError("A valid Supabase inbox identity is required.");
+  const safeLimit = Math.max(1, Math.min(1000, Math.trunc(Number(limit) || 500)));
+  const { data, error } = await getSupabaseClient().from("messages")
+    .select("message_id,sender_id,recipient_id,payload,created_at")
+    .eq("recipient_id", userId.toLowerCase())
+    .order("created_at", { ascending: true }).limit(safeLimit);
+  if (error) throw new Error("Не удалось восстановить входящие сообщения Supabase: " + error.message);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function decryptSupabaseInboxRecord(record, sharedSecret) {
+  if (!record || typeof record !== "object" || typeof record.sender_id !== "string" ||
+      typeof record.recipient_id !== "string" || typeof record.message_id !== "string" || !record.payload) {
+    throw new TypeError("Supabase inbox row is incomplete.");
+  }
+  return decryptSupabaseMessage({
+    sharedSecret, senderId: record.sender_id, recipientId: record.recipient_id, envelope: record.payload
+  });
 }
