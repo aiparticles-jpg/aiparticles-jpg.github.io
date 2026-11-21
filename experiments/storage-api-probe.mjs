@@ -51,19 +51,24 @@ async function browserBatch(){
   });
   return {pass:x.same===true,details:x};
  });
- await isolated("Browser-AISenseStorage",async()=>{
-  const x=await page.evaluate(async()=>{
-   const data=crypto.getRandomValues(new Uint8Array(8192)),form=new FormData();
-   form.append("file",new Blob([data],{type:"application/octet-stream"}),"vl-probe.bin");
+ await isolated("Browser-AISenseStorage-2Contexts",async()=>{
+  const upload=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(262144)),form=new FormData();
+   form.append("file",new Blob([data],{type:"application/octet-stream"}),"vl-256k.bin");
    const p=await fetch("https://aisenseapi.com/services/v1/storage",{method:"POST",body:form});
    const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
-   if(!p.ok||!j?.storage_id)return {upload:p.status,body:t.slice(0,160)};
-   const g=await fetch("https://aisenseapi.com/services/v1/storage/"+encodeURIComponent(j.storage_id));
-   const got=new Uint8Array(await g.arrayBuffer());
-   return {upload:p.status,download:g.status,bytes:got.length,expected:8192,
-    same:got.length===data.length&&got.every((v,i)=>v===data[i]),serverSha256:j.sha256_hash??null};
+   return {status:p.status,id:j?.storage_id,expected:await crypto.subtle.digest("SHA-256",data).then(x=>Array.from(new Uint8Array(x)).map(b=>b.toString(16).padStart(2,"0")).join(""))};
   });
-  return {pass:x.same===true,details:x};
+  if(upload.status!==200||!upload.id) return {pass:false,details:upload};
+  const page2=await browser.newPage();
+  await page2.goto(ORIGIN,{waitUntil:"domcontentloaded",timeout:30000});
+  const download=await page2.evaluate(async id=>{
+   const r=await fetch("https://aisenseapi.com/services/v1/storage/"+encodeURIComponent(id));
+   const b=await r.arrayBuffer(),h=await crypto.subtle.digest("SHA-256",b);
+   return {status:r.status,bytes:b.byteLength,hash:Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,"0")).join("")};
+  },upload.id);
+  await page2.close();
+  return {pass:download.status===200&&download.bytes===262144&&download.hash===upload.expected,details:{uploadStatus:upload.status,downloadStatus:download.status,bytes:download.bytes,hashMatch:download.hash===upload.expected}};
  });
  await isolated("Browser-RESTfulAPI",async()=>{
   const x=await page.evaluate(async()=>{

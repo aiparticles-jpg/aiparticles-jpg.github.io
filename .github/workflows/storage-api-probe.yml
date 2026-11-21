@@ -21,7 +21,7 @@ jobs:
           node-version: 22
       - name: Install dependencies and Chromium
         run: |
-          npm install --no-save mqtt@^5 playwright@^1.56
+          npm install --no-save mqtt@^5 playwright@^1.56 nostr-tools@^2
           npx playwright install --with-deps chromium
       - name: Run independent probes
         shell: bash
