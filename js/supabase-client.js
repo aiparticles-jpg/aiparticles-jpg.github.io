@@ -1,4 +1,5 @@
 import { createInvitationId, encryptSupabaseMessage, decryptSupabaseMessage } from "./supabase-protocol.mjs?v=1";
+import { enqueueSupabaseOutboxMessage, listSupabaseOutboxMessages, saveSupabaseOutboxEnvelope, deleteSupabaseOutboxMessage } from "./local-store.js?v=23";
 
 const SUPABASE_URL = "https://lcmccpecmtnqknthtijl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
@@ -74,6 +75,69 @@ export async function createSupabaseInvitation() {
  * Redeem a contact invitation and enqueue the first encrypted Supabase inbox
  * message. Sender identity is derived from the authenticated Supabase session.
  */
+/** Queue and send one encrypted message to an already linked contact. */
+export async function sendSupabaseMessage({ contact, type, body }) {
+  if (!contact || typeof contact !== "object" ||
+      typeof contact.supabase_user_id !== "string" ||
+      typeof contact.invitation_secret !== "string" ||
+      (!contact.supabase_invitation_redeemed_at && !contact.supabase_contact_accepted_at)) {
+    throw new TypeError("Контакт ещё не подтвердил связь через Supabase или не содержит общего ключа.");
+  }
+  const identity = await getSupabaseIdentity();
+  const recipientId = contact.supabase_user_id.toLowerCase();
+  if (identity.user_id === recipientId) throw new Error("Нельзя отправить сообщение самому себе.");
+  // Sequence reservation and the recoverable outbox row share one IndexedDB transaction.
+  const queued = await enqueueSupabaseOutboxMessage(recipientId, type, body);
+  await flushSupabaseOutbox({ contact, senderId: identity.user_id });
+  return { sequence: queued.sequence, queued: false };
+}
+
+/** Flush pending messages in sequence order; uncertain sends retain identical ciphertext for retry. */
+export async function flushSupabaseOutbox({ contact, senderId = null }) {
+  if (!contact || typeof contact !== "object" ||
+      typeof contact.supabase_user_id !== "string" ||
+      typeof contact.invitation_secret !== "string") {
+    throw new TypeError("A valid Supabase contact is required to flush its outbox.");
+  }
+  const identity = senderId ? { user_id: senderId } : await getSupabaseIdentity();
+  const recipientId = contact.supabase_user_id.toLowerCase();
+  const sender = identity.user_id.toLowerCase();
+  if (!SUPABASE_UUID_RE.test(sender) || !SUPABASE_UUID_RE.test(recipientId) || sender === recipientId) {
+    throw new TypeError("Invalid Supabase sender or recipient identity.");
+  }
+  const supabase = getSupabaseClient();
+  const pending = await listSupabaseOutboxMessages(recipientId);
+  let sent = 0;
+  for (let message of pending) {
+    if (!message.payload) {
+      if (!message.body || typeof message.body !== "object") {
+        throw new Error("В исходящей очереди Supabase повреждено неподготовленное сообщение.");
+      }
+      const payload = await encryptSupabaseMessage({
+        sharedSecret: contact.invitation_secret,
+        senderId: sender,
+        recipientId,
+        message: { type: message.type, seq: message.sequence, body: message.body }
+      });
+      message = await saveSupabaseOutboxEnvelope(message.id, payload);
+    }
+    const { data, error } = await supabase.rpc("submit_message", {
+      p_payload: message.payload,
+      p_recipient_id: recipientId,
+      p_invitation_id: null
+    });
+    if (error) {
+      throw new Error("Сообщение Supabase seq=" + message.sequence + " осталось в исходящей очереди: " + error.message);
+    }
+    if (typeof data !== "string" || Number.isNaN(Date.parse(data))) {
+      throw new Error("Supabase не вернул корректное время для сообщения seq=" + message.sequence + "; сообщение оставлено в очереди для безопасного повтора.");
+    }
+    await deleteSupabaseOutboxMessage(message.id);
+    sent++;
+  }
+  return { sent, remaining: (await listSupabaseOutboxMessages(recipientId)).length };
+}
+
 export async function submitSupabaseInvitationAcceptance({ contact }) {
   if (!contact || typeof contact !== "object" ||
       typeof contact.supabase_user_id !== "string" ||
