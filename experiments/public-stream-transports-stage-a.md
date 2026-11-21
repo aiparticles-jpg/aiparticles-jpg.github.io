@@ -350,3 +350,33 @@ For MQTT, each client subscribed to the same run-specific topic, exchanged a ret
 - **nos.lol and Primal now have cross-runner ephemeral event delivery evidence**, not merely a successful WebSocket handshake or subscription.
 - **MantleDB and AISense have cross-runner handoff evidence**, including exact binary integrity for the AISense object.
 - These are still short feasibility tests, not endurance, mobile carrier, browser battery/background, or production SLA tests.
+
+
+## Stage E — additional public MQTT broker and paced cross-runner retest (2026-11-22)
+
+A fourth anonymous MQTT broker, **ConnectMQ**, was added from its operator's published public-broker documentation. Its public endpoint is WSS on port 8084 at broker.connectmq.com with path /mqtt. The operator publishes limits of 64 KB/message and 10 messages/second/client; all traffic in the shared public area is visible to other users. Source: https://connectmq.com/public-mqtt-broker/
+
+**Run:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44963809344  
+**Paced retest:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44963945098
+
+### Results
+
+- **ConnectMQ:** browser WebSocket opened; single-runner MQTT test delivered 75/75 1 KiB messages at 10 messages/second; two independent runner jobs each received 20/20 remote 1 KiB messages at the same rate.
+- **EMQX:** two independent runner jobs each received 20/20 remote 1 KiB messages when paced at 10 messages/second. A previous 25 messages/second test was asymmetric (one side timed out), and the 75-message single-runner test observed 30/75. Treat 10 Hz as the only currently supported positive result; higher-rate reliability remains unproven.
+- **Nostr nos.lol and Primal:** both independent runner jobs received 20/20 remote 1 KiB ephemeral events when paced at approximately 5 events/second. A previous faster burst (~22 events/second) lost 3–4 of 20 events on one receiving side. This suggests that Nostr is promising for low-rate signalling, but not yet a reliable high-rate stream at the tested burst speed.
+- **HiveMQ and Mosquitto:** continued to pass 20/20 in both directions at approximately 25 messages/second.
+- **MantleDB + AISense:** continued to pass the two-runner mailbox and binary file hash-verification exchange.
+
+### Updated observed throughput envelope (not a service guarantee)
+
+| Candidate | Highest currently observed clean cross-runner rate | Caveat |
+|---|---:|---|
+| HiveMQ | ~25 messages/s × 1 KiB | Short burst only; shared public broker |
+| Mosquitto | ~25 messages/s × 1 KiB | Short burst only; shared test broker |
+| ConnectMQ | 10 messages/s × 1 KiB | Operator's stated public limit is 10 msg/s/client |
+| EMQX | 10 messages/s × 1 KiB | 25 msg/s tests were inconsistent |
+| Nostr nos.lol / Primal | ~5 events/s × 1 KiB | 20-event paced burst passed; faster burst showed loss |
+| MantleDB | Shared JSON mailbox, not a stream | 24 KiB cross-runner payload passed |
+| AISense | 128 KiB binary object handoff | Cross-runner download/hash verification passed |
+
+This is a feasibility envelope from short tests on separate Actions runners, not a maximum capacity benchmark. Long-duration tests, congestion, reconnects, mobile backgrounding, and Turkish network paths remain untested.
