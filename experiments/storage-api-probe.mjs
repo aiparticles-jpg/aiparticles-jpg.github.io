@@ -51,6 +51,37 @@ async function browserBatch(){
   });
   return {pass:x.same===true,details:x};
  });
+ await isolated("Browser-AISenseStorage",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(8192)),form=new FormData();
+   form.append("file",new Blob([data],{type:"application/octet-stream"}),"vl-probe.bin");
+   const p=await fetch("https://aisenseapi.com/services/v1/storage",{method:"POST",body:form});
+   const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
+   if(!p.ok||!j?.storage_id)return {upload:p.status,body:t.slice(0,160)};
+   const g=await fetch("https://aisenseapi.com/services/v1/storage/"+encodeURIComponent(j.storage_id));
+   const got=new Uint8Array(await g.arrayBuffer());
+   return {upload:p.status,download:g.status,bytes:got.length,expected:8192,
+    same:got.length===data.length&&got.every((v,i)=>v===data[i]),serverSha256:j.sha256_hash??null};
+  });
+  return {pass:x.same===true,details:x};
+ });
+ await isolated("Browser-RESTfulAPI",async()=>{
+  const x=await page.evaluate(async()=>{
+   const marker="vl-"+crypto.randomUUID();
+   const p=await fetch("https://api.restful-api.dev/objects",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:marker,data:{payload:"hello",marker}})});
+   const pt=await p.text();let j;try{j=JSON.parse(pt)}catch{}
+   if(!p.ok||!j?.id)return {create:p.status,body:pt.slice(0,150)};
+   const u="https://api.restful-api.dev/objects/"+encodeURIComponent(j.id);
+   const g=await fetch(u);const value=await g.json();
+   const patch=await fetch(u,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:{ack:true}})});
+   const verify=await fetch(u);const v=await verify.json();
+   const del=await fetch(u,{method:"DELETE"});
+   return {create:p.status,read:g.status,stored:value.name===marker,patch:patch.status,
+    updated:v.data?.ack===true,delete:del.status,id:j.id};
+  });
+  return {pass:x.create===200&&x.read===200&&x.stored&&x.patch===200&&x.updated&&x.delete>=200&&x.delete<300,details:x};
+ });
  await isolated("Browser-WebSocketEndpoints",async()=>{
   const checks=await page.evaluate(async()=>{
    const es=[["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
