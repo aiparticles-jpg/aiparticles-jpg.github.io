@@ -264,8 +264,17 @@ async publish(to,msg){
   const peerContact=await getPeerSignalingIdentity(this.peer);
   this.peerName=peerContact.name;
   this.peerInvitationId=peerContact.invitation_id;
-  await this.subscribe();
-  // Finish background inspection before switching to active call mode.
+  const supabaseContact=await getContact(this.peer);
+  const useSupabase=!!(supabaseContact?.supabase_user_id&&
+   (supabaseContact.supabase_invitation_redeemed_at||supabaseContact.supabase_contact_accepted_at));
+  if(useSupabase){
+   this.identity=await getCurrentSignalingIdentity();
+   this.rateLimited=false;
+   this.onDebug("[signaling] контакт подтверждён в Supabase; для звонка ntfy-подписка не требуется.");
+  }else{
+   await this.subscribe();
+  }
+  // Finish any already queued background events before switching to active call mode.
   await this.messageQueue;
   this.active=true;
   if(this.preAnswerMessageCount){this.onDebug(`[signaling] до активации проверено ${this.preAnswerMessageCount} входящих событий; отложенная очередь не используется`);this.preAnswerMessageCount=0;}
@@ -375,10 +384,14 @@ async publish(to,msg){
   if(n?.id)this.rememberSeen(n.id);
  }
  async sendText(to,text){
-  if(this.closed||!this.identity)throw Error("Защищённая подписка ещё не готова.");
+  if(this.closed)throw Error("Защищённая подписка ещё не готова.");
   if(!isUserId(to)||to===this.me)throw Error("Выберите сохранённый контакт.");
   const body=String(text||"").trim();if(!body||body.length>2000)throw Error("Сообщение должно содержать от 1 до 2000 символов.");
-  if(!await getContact(to))throw Error("Выберите сохранённый контакт.");
+  const contact=await getContact(to);
+  if(!contact)throw Error("Выберите сохранённый контакт.");
+  const supabaseReady=!!(contact.supabase_user_id&&(contact.supabase_invitation_redeemed_at||contact.supabase_contact_accepted_at));
+  if(!this.identity&&supabaseReady)this.identity=await getCurrentSignalingIdentity();
+  if(!this.identity&&!supabaseReady)throw Error("Защищённая подписка ещё не готова.");
   const createdAt=Date.now(),payload={message_id:crypto.randomUUID(),from:this.me,to,created_at:createdAt,text:body};
   const saved=await this.recordConversationEvent("text",payload,"outgoing",createdAt,"sending");
   if(!saved)throw Error("Не удалось сохранить сообщение на устройстве.");
