@@ -33,6 +33,44 @@ async function sharedStorage(){
   }
  }catch(e){log("CrossRunner-MantleDB-AISense","FAIL",{error:String(e).slice(0,220)})}
 }
+async function fileHandoff(){
+ const base="https://mantledb.sh/v2/vlgha"+run+"/";
+ try{
+  if(role==="A"){
+   const specs={};
+   const tempData=rnd(8192),tf=new FormData();tf.append("files",new Blob([tempData],{type:"text/plain"}),"vl-cross.txt");tf.append("expiryHours","1");
+   const tj=await json("https://tempfile.org/api/upload/local",{method:"POST",body:tf});
+   specs.tempfile={id:tj.files[0].id,url:"https://tempfile.org/"+tj.files[0].id+"/download",bytes:tempData.length,sha256:sha(tempData)};
+   const beaconData=rnd(8192),bf=new FormData();bf.append("file",new Blob([beaconData],{type:"text/plain"}),"vl-cross.txt");
+   const bj=await json("https://beacon.host/v1/publish",{method:"POST",body:bf});
+   specs.beacon={slug:bj.slug,url:bj.fileUrl,claimToken:bj.claimToken,bytes:beaconData.length,sha256:sha(beaconData)};
+   const waifuData=rnd(8192),wf=new FormData();wf.append("file",new Blob([waifuData],{type:"text/plain"}),"vl-cross.txt");
+   const wj=await json("https://waifuvault.moe/rest",{method:"PUT",body:wf});
+   const wurl=wj.url??wj.fileUrl??wj.file?.url;
+   const wtoken=wj.token??wj.file?.token??wurl?.match(/\/f\/([^/]+)\//)?.[1];
+   specs.waifuvault={url:wurl,token:wtoken,bytes:waifuData.length,sha256:sha(waifuData)};
+   await json(base+"filemeta2",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(specs)});
+   const ack=await poll(async()=>{try{return await json(base+"ack2")}catch{return null}});
+   await fetch("https://tempfile.org/api/file/"+specs.tempfile.id,{method:"DELETE"});
+   await fetch("https://beacon.host/v1/sites/"+specs.beacon.slug,{method:"DELETE",headers:{"X-Claim-Token":specs.beacon.claimToken}});
+   if(specs.waifuvault.token)await fetch("https://waifuvault.moe/rest/"+encodeURIComponent(specs.waifuvault.token),{method:"DELETE"});
+   log("CrossRunner-TempFile-Beacon-WaifuVault","PASS",{peerAck:ack.ok===true,services:ack.services});
+  }else{
+   const specs=await poll(async()=>{try{return await json(base+"filemeta2")}catch{return null}});
+   const verified={};
+   for(const name of ["tempfile","beacon","waifuvault"]){
+    const m=specs[name];if(!m.url)throw Error(name+" missing URL");
+    const r=await fetch(m.url,{signal:AbortSignal.timeout(20000)});
+    if(!r.ok)throw Error(name+" download HTTP "+r.status);
+    const b=Buffer.from(await r.arrayBuffer());
+    verified[name]={bytes:b.length,ok:b.length===m.bytes&&sha(b)===m.sha256};
+    if(!verified[name].ok)throw Error(name+" binary hash mismatch");
+   }
+   await json(base+"ack2",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ok:true,services:verified})});
+   log("CrossRunner-TempFile-Beacon-WaifuVault","PASS",{services:verified});
+  }
+ }catch(e){log("CrossRunner-TempFile-Beacon-WaifuVault","FAIL",{error:String(e).slice(0,240)})}
+}
 async function mqttCross(name,url,interval=40){
  const topic="vl/distributed/"+run+"/"+name.toLowerCase();let c;
  try{
@@ -78,5 +116,6 @@ async function nostrCross(name,url){
  finally{try{ws?.close()}catch{}}
 }
 await sharedStorage();
+await fileHandoff();
 await Promise.all([mqttCross("ConnectMQ","wss://broker.connectmq.com:8084/mqtt",100),mqttCross("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),mqttCross("Mosquitto","wss://test.mosquitto.org:8081"),mqttCross("EMQX","wss://broker.emqx.io:8084/mqtt",100)]);
 await Promise.all([nostrCross("nos.lol","wss://nos.lol"),nostrCross("Primal","wss://relay.primal.net")]);
