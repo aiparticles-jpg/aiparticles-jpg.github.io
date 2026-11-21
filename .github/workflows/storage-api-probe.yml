@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "experiments/storage-api-probe.mjs"
+      - "experiments/distributed-transport-probe.mjs"
       - ".github/workflows/storage-api-probe.yml"
 permissions:
   contents: read
@@ -42,3 +43,22 @@ jobs:
           path: storage-probe.log
           if-no-files-found: ignore
           retention-days: 7
+
+  distributed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        client: [A, B]
+    env:
+      CLIENT_ROLE: ${{ matrix.client }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install distributed probe dependencies
+        run: npm install --no-save mqtt@^5 nostr-tools@^2
+      - name: Run cross-runner transport tests
+        run: node experiments/distributed-transport-probe.mjs
