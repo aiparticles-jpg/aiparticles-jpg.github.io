@@ -668,32 +668,38 @@ function validateSupabaseSequence(value) {
 }
 
 /** Atomically reserve a sequence and persist its message body before encryption. */
-export async function enqueueSupabaseOutboxMessage(peerId, type, body) {
+export async function enqueueSupabaseOutboxMessage(peerId, type, body, dedupeKey = null) {
   const peer = validateSupabasePeerId(peerId);
   if (typeof type !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(type) ||
-      !body || typeof body !== "object" || Array.isArray(body)) {
-    throw new TypeError("A valid Supabase message type and object body are required.");
+      !body || typeof body !== "object" || Array.isArray(body) ||
+      (dedupeKey !== null && (typeof dedupeKey !== "string" || !dedupeKey || dedupeKey.length > 256))) {
+    throw new TypeError("A valid Supabase message type, body and optional deduplication key are required.");
   }
-  // Validate ordinary JSON cloning before opening the transaction.
   const bodyCopy = JSON.parse(JSON.stringify(body));
   const tx = await openTransaction(["meta", "supabase_outbox"], "readwrite");
   const done = transactionDone(tx);
   const meta = tx.objectStore("meta");
   const outbox = tx.objectStore("supabase_outbox");
   let queued = null;
-  const request = meta.get("supabase_sequence:" + peer);
-  request.onsuccess = () => {
-    const state = request.result || { key: "supabase_sequence:" + peer, outgoing: "0", incoming: "0" };
-    const current = BigInt(validateSupabaseSequence(state.outgoing ?? "0"));
-    if (current >= SUPABASE_MAX_SEQUENCE) { tx.abort(); return; }
-    const sequence = (current + 1n).toString();
-    const id = peer + ":" + sequence;
-    state.outgoing = sequence;
-    state.incoming = validateSupabaseSequence(state.incoming ?? "0");
-    state.updated_at = Date.now();
-    meta.put(state);
-    queued = { id, peer_id: peer, sequence, type, body: bodyCopy, status: "preparing", created_at: Date.now() };
-    outbox.add(queued);
+  const existingRequest = outbox.index("peer_id").getAll(peer);
+  existingRequest.onsuccess = () => {
+    const existing = Array.isArray(existingRequest.result) ? existingRequest.result : [];
+    const duplicate = dedupeKey ? existing.find(item => item.dedupe_key === dedupeKey) : null;
+    if (duplicate) { queued = duplicate; return; }
+    const request = meta.get("supabase_sequence:" + peer);
+    request.onsuccess = () => {
+      const state = request.result || { key: "supabase_sequence:" + peer, outgoing: "0", incoming: "0" };
+      const current = BigInt(validateSupabaseSequence(state.outgoing ?? "0"));
+      if (current >= SUPABASE_MAX_SEQUENCE) { tx.abort(); return; }
+      const sequence = (current + 1n).toString();
+      const id = peer + ":" + sequence;
+      state.outgoing = sequence;
+      state.incoming = validateSupabaseSequence(state.incoming ?? "0");
+      state.updated_at = Date.now();
+      meta.put(state);
+      queued = { id, peer_id: peer, sequence, type, body: bodyCopy, status: "preparing", created_at: Date.now(), ...(dedupeKey ? { dedupe_key: dedupeKey } : {}) };
+      outbox.add(queued);
+    };
   };
   await done;
   if (!queued) throw new Error("Could not reserve and persist the Supabase outgoing message.");
