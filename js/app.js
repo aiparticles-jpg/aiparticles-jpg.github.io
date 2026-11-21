@@ -1,11 +1,11 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=55";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence } from "./local-store.js?v=22";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence } from "./local-store.js?v=23";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
-import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance, subscribeSupabaseInbox, fetchSupabaseInbox, decryptSupabaseInboxRecord } from "./supabase-client.js?v=5";
+import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance, subscribeSupabaseInbox, fetchSupabaseInbox, decryptSupabaseInboxRecord, flushSupabaseOutbox } from "./supabase-client.js?v=6";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -1662,6 +1662,20 @@ async function redeemPendingSupabaseInvitations(){
  }
 }
 
+async function flushPendingSupabaseOutboxes(source="повторная отправка") {
+ if(!state.supabaseUserId)return;
+ for(const contact of await listContacts()){
+  if(!contact.supabase_user_id||!contact.invitation_secret||
+     (!contact.supabase_invitation_redeemed_at&&!contact.supabase_contact_accepted_at))continue;
+  try{
+   const result=await flushSupabaseOutbox({contact});
+   if(result.sent)debug("Supabase outbox ("+source+"): отправлено сообщений контакту «"+contact.name+"»: "+result.sent+".");
+  }catch(error){
+   debug("Supabase outbox ("+source+"): очередь контакта «"+contact.name+"» сохранена для повтора: "+(error.message||String(error)));
+  }
+ }
+}
+
 function formatInvitationAge(timestamp){
  const elapsed=Math.max(0,Date.now()-Number(timestamp));
  if(elapsed<30000)return "только что";
@@ -2590,6 +2604,7 @@ async function initializeApp(){
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
   await redeemPendingSupabaseInvitations();
+  await flushPendingSupabaseOutboxes("запуск приложения");
   await refreshContactOptions();
   if(state.supabaseUserId){try{startSupabaseInbox();}catch(error){debug("Supabase Realtime пока недоступен; ntfy продолжает работать: "+(error.message||String(error)));}}
 
