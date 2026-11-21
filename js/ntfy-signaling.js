@@ -16,7 +16,7 @@ export class NtfySecureSignaling {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
   this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});this.onConversationDelivery=onConversationDelivery||(()=>{});this.onConversationSent=onConversationSent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.cursorBlocked=false;this.lastProcessedMessageId=null;this.preAnswerMessageCount=0;this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishStartAt=0;this.publishStartTimes=[];this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();this.dataAssemblies=new Map();
+  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.helloEnvelope=null;this.readyNotified=false;this.answer=null;this.answerEnvelope=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.cursorBlocked=false;this.lastProcessedMessageId=null;this.preAnswerMessageCount=0;this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishStartAt=0;this.publishStartTimes=[];this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();this.dataAssemblies=new Map();
  }
  static validUserId(s){return isUserId(s)}
  async deriveEnvelopeKey(secret,from,to){
@@ -272,6 +272,7 @@ async publish(to,msg){
   if(this.answeringIncoming&&this.helloDirection==="incoming"&&this.hello&&!this.answer){
    const p=this.hello;
    this.answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{})};
+   this.answerEnvelope=null;
    this.activateSession(p.sid);
    this.onDebug("[signaling] принятое в фоне hello восстановлено; отправляем answer");
    try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000)}
@@ -457,7 +458,7 @@ async publish(to,msg){
  }
  resetSession(){
   this.active=false;this.answeringIncoming=false;this.clearHelloRetry();this.clearAnswerRetry();this.dataAssemblies.clear();
-  this.hello=null;this.helloDirection=null;this.readyNotified=false;this.answer=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.incomingHello=null;
+  this.hello=null;this.helloEnvelope=null;this.helloDirection=null;this.readyNotified=false;this.answer=null;this.answerEnvelope=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.incomingHello=null;
   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.acceptedSids.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
  }
  async rejectIncoming(){
@@ -484,11 +485,13 @@ async publish(to,msg){
   if(this.closed||this.ready||this.rateLimited||this.helloDirection==="incoming")return;
   if(!this.hello){
    this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),expiresAt:Date.now()+45000};
+   this.helloEnvelope=null;
    this.helloDirection="outgoing";
   }
   this.helloAttempts++;
   this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
-  await this.publish(this.peer,await this.authenticated("hello",this.hello));
+  if(!this.helloEnvelope)this.helloEnvelope=await this.authenticated("hello",this.hello);
+  await this.publish(this.peer,this.helloEnvelope);
   await this.recordConversationEvent("hello",this.hello,"outgoing",Date.now());
   this.onStatus("Запрос отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
   if(!this.ready)this.onDialing({peer:this.peerName||"контакт",expiresAt:this.hello.expiresAt,callId:this.hello.sid});
@@ -511,7 +514,8 @@ async publish(to,msg){
   if(this.closed||this.rateLimited||!this.answer)return;
   this.answerAttempts++;
   this.onDebug(`[signaling] answer POST attempt ${this.answerAttempts}/3`);
-  await this.publish(this.peer,await this.authenticated("answer",this.answer));
+  if(!this.answerEnvelope)this.answerEnvelope=await this.authenticated("answer",this.answer);
+  await this.publish(this.peer,this.answerEnvelope);
   await this.recordConversationEvent("answer",this.answer,"outgoing",Date.now());
   this.lastAnswerAt=Date.now();
   this.clearAnswerRetry();
@@ -659,7 +663,7 @@ async handle(event){
    if(this.ready)return;
    if(this.hello&&this.helloDirection==="outgoing"){
     if(this.me<this.peer)return;
-    this.cancelledSids.add(this.hello.sid);this.clearHelloRetry();this.hello=null;this.helloDirection=null;this.outgoingRequest=null;
+    this.cancelledSids.add(this.hello.sid);this.clearHelloRetry();this.hello=null;this.helloEnvelope=null;this.helloDirection=null;this.outgoingRequest=null;
     this.onDebug("[signaling] crossed call: уступаем hello участника с меньшим ID");
    }
    if(!p.sid||this.cancelledSids.has(p.sid))return;
@@ -669,7 +673,7 @@ async handle(event){
    if(pending){this.pendingCancels.delete(p.sid);this.incomingSid=p.sid;this.incomingIdentity=true;await this.processCancel(pending);if(this.cancelledSids.has(p.sid))return;}
    this.hello=p;this.helloDirection="incoming";this.incomingSid=p.sid;this.incomingIdentity=true;
    const answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{})};
-   this.answer=answer;this.activateSession(p.sid);this.onDebug("[signaling] answer prepared; sending initial response");
+   this.answer=answer;this.answerEnvelope=null;this.activateSession(p.sid);this.onDebug("[signaling] answer prepared; sending initial response");
    try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000);}return;
   }
   if(m.type==="answer"&&!this.ready){
