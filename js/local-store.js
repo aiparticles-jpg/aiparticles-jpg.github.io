@@ -1,5 +1,5 @@
 const DB_NAME = "voicelink-local";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const HISTORY_LIMIT = 10;
 
 let databasePromise;
@@ -27,6 +27,10 @@ function openDatabase() {
       if (!db.objectStoreNames.contains("conversation")) {
         const conversation = db.createObjectStore("conversation", { keyPath: "id" });
         conversation.createIndex("contact_user_id", "contact_user_id");
+      }
+      if (!db.objectStoreNames.contains("supabase_outbox")) {
+        const outbox = db.createObjectStore("supabase_outbox", { keyPath: "id" });
+        outbox.createIndex("peer_id", "peer_id");
       }
     };
 
@@ -661,6 +665,83 @@ function validateSupabaseSequence(value) {
     throw new TypeError("Supabase sequence is outside uint64 range.");
   }
   return text;
+}
+
+/** Atomically reserve a sequence and persist its message body before encryption. */
+export async function enqueueSupabaseOutboxMessage(peerId, type, body) {
+  const peer = validateSupabasePeerId(peerId);
+  if (typeof type !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(type) ||
+      !body || typeof body !== "object" || Array.isArray(body)) {
+    throw new TypeError("A valid Supabase message type and object body are required.");
+  }
+  // Validate ordinary JSON cloning before opening the transaction.
+  const bodyCopy = JSON.parse(JSON.stringify(body));
+  const tx = await openTransaction(["meta", "supabase_outbox"], "readwrite");
+  const done = transactionDone(tx);
+  const meta = tx.objectStore("meta");
+  const outbox = tx.objectStore("supabase_outbox");
+  let queued = null;
+  const request = meta.get("supabase_sequence:" + peer);
+  request.onsuccess = () => {
+    const state = request.result || { key: "supabase_sequence:" + peer, outgoing: "0", incoming: "0" };
+    const current = BigInt(validateSupabaseSequence(state.outgoing ?? "0"));
+    if (current >= SUPABASE_MAX_SEQUENCE) { tx.abort(); return; }
+    const sequence = (current + 1n).toString();
+    const id = peer + ":" + sequence;
+    state.outgoing = sequence;
+    state.incoming = validateSupabaseSequence(state.incoming ?? "0");
+    state.updated_at = Date.now();
+    meta.put(state);
+    queued = { id, peer_id: peer, sequence, type, body: bodyCopy, status: "preparing", created_at: Date.now() };
+    outbox.add(queued);
+  };
+  await done;
+  if (!queued) throw new Error("Could not reserve and persist the Supabase outgoing message.");
+  return queued;
+}
+
+/** Read pending messages in numeric sequence order for one recipient. */
+export async function listSupabaseOutboxMessages(peerId) {
+  const peer = validateSupabasePeerId(peerId);
+  const tx = await openTransaction("supabase_outbox", "readonly");
+  const done = transactionDone(tx);
+  const records = await requestValue(tx.objectStore("supabase_outbox").index("peer_id").getAll(peer));
+  await done;
+  return (Array.isArray(records) ? records : []).sort((a, b) =>
+    BigInt(a.sequence) < BigInt(b.sequence) ? -1 : BigInt(a.sequence) > BigInt(b.sequence) ? 1 : 0
+  );
+}
+
+/** Save the stable encrypted envelope; plaintext body is no longer needed. */
+export async function saveSupabaseOutboxEnvelope(messageId, payload) {
+  if (typeof messageId !== "string" || !payload || typeof payload !== "object" ||
+      Array.isArray(payload) || payload.v !== 1 || typeof payload.data !== "string") {
+    throw new TypeError("A valid outbox message ID and encrypted Supabase envelope are required.");
+  }
+  const tx = await openTransaction("supabase_outbox", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("supabase_outbox");
+  const record = await requestValue(store.get(messageId));
+  if (!record) { tx.abort(); try { await done; } catch {} throw new Error("Supabase outbox reservation no longer exists."); }
+  record.payload = payload;
+  delete record.body;
+  record.status = "pending";
+  record.encrypted_at = Date.now();
+  store.put(record);
+  await done;
+  return record;
+}
+
+/** Remove a message only after submit_message confirms it was accepted. */
+export async function deleteSupabaseOutboxMessage(messageId) {
+  if (typeof messageId !== "string" || !messageId) return false;
+  const tx = await openTransaction("supabase_outbox", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("supabase_outbox");
+  const exists = await requestValue(store.getKey(messageId));
+  if (exists !== undefined) store.delete(messageId);
+  await done;
+  return exists !== undefined;
 }
 
 /** Read durable per-peer counters. Counters are strings to preserve uint64 precision. */
