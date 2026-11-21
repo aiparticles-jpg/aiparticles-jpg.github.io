@@ -582,7 +582,8 @@ async publish(to,msg){
     time:Date.parse(record.created_at)/1000,
     message:JSON.stringify(envelope)
    })};
-   await this.handle(event);
+   try{await this.handle(event)}
+   catch(error){this.seen.delete(eventId);throw error;}
   }
 
 async handle(event){
