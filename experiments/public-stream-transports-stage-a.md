@@ -114,3 +114,162 @@ This supplement records the additional quota research. **A missing published quo
 - For EMQX, HiveMQ and most Nostr relays, exact quota accounting identity is **not publicly established** in the sources reviewed. Live tests may reveal behaviour but cannot prove the operator's internal accounting key.
 - A public service may apply undocumented anti-abuse controls in addition to published limits. Treat all public brokers/relays as revocable experimental infrastructure.
 
+
+---
+# Stage B — server-side objects, public posting systems, and transferable accounts
+
+**Research date:** 2026-11-22  
+**Scope extension:** Investigate websites that already store user-created state: forums, comments, guestbooks, temporary file/paste services, JSON stores, and account profiles. A service can qualify even if data is entered through its normal website rather than a dedicated storage API.
+
+## Terminology: “anonymous account”
+
+For VoiceLink, anonymous account does not mean merely using a pseudonym instead of a real name. It means an account can be created and used without mandatory binding to a phone number, email address, or external identity provider. A username and password may be the complete credential set. CAPTCHA, moderation, IP throttling, and optional recovery email are separate constraints and must be recorded separately.
+
+## New architectural pattern: account as a transferable capability
+
+A newly created account can itself be a server-side container and a signalling event:
+
+1. Device A creates an account using a generated username and strong random password.
+2. Device A uploads or posts the payload into the account (profile field, avatar, cover image, post attachment, private message, draft, etc.).
+3. Device A sends the account credentials and object locator to device B over the small signalling channel.
+4. Device B logs in and retrieves the same server-side object.
+
+This differs from a bearer URL: the transferable credential is the account login. It may expose much more than one object, so it is broader authority and must be treated as a secret. The account may be rate-limited, locked, challenged by CAPTCHA, or terminated for suspicious shared use. Do not assume account sharing is permitted by a site's terms.
+
+### Account / forum candidates
+
+| Candidate | No phone/email requirement | Server-side state and transfer mechanism | Limits / obstacles | Assessment |
+|---|---|---|---|---|
+| **NodeBB Community** — https://community.nodebb.org/register | The live registration form currently asks for username, password, confirmation, CAPTCHA; no email field is shown. NodeBB release notes confirm email-less registration is supported from v1.18 when the operator enables it. | A real account can log in from another device. Topics/posts, profile data and uploads are server-side. NodeBB has Read and Write APIs; normal user-specific API calls need a login session, while API bearer tokens are issued by the forum administrator. | CAPTCHA required. Registration/moderation policy can change. Documented default avatar limit: 256 KiB and 128 px width; profile cover default: 2 MiB. General upload size is configurable (documented default 2 MiB). Image resizing/PNG conversion may transform payload bytes. Cross-origin access from GitHub Pages is not established; forum UI is the safe baseline. | **Strong concrete example of username/password/no-email account creation.** Better for account/post-based storage than assuming a 10 MB avatar. Test account handoff and upload paths. |
+| **NodeBB software generally** | Operator can configure registration without email; not every NodeBB community enables it. | Username/password account, posts, user profile, uploads, optional chat. REST Read/Write APIs exist. | API bearer token is normally provisioned by the forum admin, not by an ordinary member. Logging into the normal UI on device B is a different path. | **Search for other public NodeBB instances** with email-less registration and larger upload limits. |
+| **phpBB guest posting** | Guests can post without registration and a valid email is not required when the board administrator enables guest posting. | Posts are stored server-side and publicly readable on the board. | Depends on board permissions and anti-spam rules. phpBB has no built-in general REST API for remote posting (per phpBB community discussion); automating the normal form is fragile. | **Useful no-account write/read example**, weak programmatic transport. |
+| **Flarum + guest-posting extension** | No account is needed for guest posting when the extension is installed and enabled. | Guests may start discussions, reply, and vote. Posts can later be attributed to a newly created account using browser cookies. | Requires a particular extension and board-owner configuration. Guest posts may be held for moderator approval. Not a transferable username/password account by itself. | **Good guest-post storage pattern**, not yet a dependable generic API. |
+| **Remark42 anonymous comments** | No email or external login is required when the site's operator enables its Anonymous provider. Visitor chooses a display name (at least 3 characters; allowed characters restricted). | Creates an anonymous commenting identity and stores comments server-side. | Not the same as a username/password account. Docs describe anonymous login by name, not a portable password credential. Cross-device identity/session transfer is unproven. Site owner must enable it. | **Interesting anonymous identity primitive**, not yet a proven account handoff. |
+| **WordPress guest comments** | A site can allow comments without requiring author name/email; WordPress settings control this. | Comment text is stored server-side and normally publicly retrievable. | WordPress REST API does not allow anonymous comment creation by default; its filter defaults to false. A site may enable it with custom code/plugins. Moderation/spam checks can delay publication. | **Human-facing inbox/comment channel**, not a general browser API unless anonymous writes are explicitly enabled. |
+| **Discourse** | Standard registration is email / Discourse ID oriented. A no-email username/password temporary-account mode found in search is a feature request, not evidence of a generally available feature. | Topics/posts and attachments are server-side. | Do not classify it as an email-free account platform based on the feature-request thread. | **Not a confirmed candidate** for our definition. |
+
+### NodeBB details for the binary-in-avatar idea
+
+The current NodeBB Community registration page is a useful real-world confirmation: its rendered registration form lists username, password, password confirmation and CAPTCHA, with no email field. NodeBB release notes separately state that operators can make email optional.
+
+The avatar path is much smaller than a hypothetical 10 MB payload:
+- Profile image default maximum: **256 KiB**.
+- Profile image default maximum width: **128 px**.
+- Profile cover default maximum: **2,048 KiB (2 MiB)**.
+- General post upload limit is configurable; documented default configuration value is **2,048 KiB**.
+- NodeBB can resize images and optionally convert uploaded profile images to PNG.
+
+An avatar is therefore a possible proof-of-concept for a few hundred KB only if the server preserves the bytes. It is unsafe to assume that a PNG uploaded as an avatar survives unchanged: resizing, re-encoding, metadata removal, or content processing can destroy bytes appended to the PNG or embedded in ancillary chunks. Prefer a generic file attachment, if allowed, or a post body containing base64/text (with overhead and post-length limits).
+
+NodeBB API distinctions:
+- Public Read API routes can expose topics/posts without login.
+- User-specific operations require a valid login session.
+- Write API bearer tokens are issued in the admin panel; an ordinary forum user cannot mint an arbitrary API token through the public interface.
+- A shared username/password can still be used to sign in through the site's normal UI on device B. Whether direct cross-origin API calls from VoiceLink are allowed must be tested separately.
+
+## Anonymous public state stores and temporary file services
+
+| Candidate | Creation/authentication | Read / write model | Limits and browser integration | Assessment |
+|---|---|---|---|---|
+| **tmp0.cc** — https://tmp0.cc/ | No account and no API key. File/paste IDs are random; delete token is returned once. | Upload file or paste, retrieve by ID; separate delete token. Direct-upload flow issues a single-use upload URL valid for 30 minutes. Supports SSE events for download/expiry/deletion. | File up to 2 GiB; expiry options 1 hour to 30 days (default 7 days); 10 anonymous uploads/min/IP; downloads/reads 60/min/IP; one file's downloads capped at 50/min. **Critical: API intentionally sends no CORS headers and refuses cross-origin browser writes (403).** | **Strong no-account temporary file store, but not directly callable from VoiceLink GitHub Pages JavaScript.** Suitable for manual link exchange or a server-side adapter, not a direct static-browser backend. |
+| **qurl.sh** — https://qurl.sh/docs | No signup, email, or API key. | HTTP PUT upload and GET download by returned URL. Also has one-time encrypted secret endpoint. File exchange, not a mutable key/value record. | Maximum file 500 MB. Browser-viewable files default to 7 days / up to 100 downloads; other binaries default to 24 hours / one download. Max TTL 7 days, max downloads 100; upload rate 10/min/IP, aggregate per-IP caps 50/hour and 200/day. Secret endpoint max 1 MB and burn-after-reading. CORS behaviour not established in reviewed docs. | **Good large one-way payload shuttle**, not a live two-way store. Test CORS before browser fetch. |
+| **KeyVal** — https://keyval.org/ | No signup, no API key, no authentication. | Public key/value REST interface. Anyone who knows the key can read and overwrite the value. | Key length 10–100 characters; value maximum 300 characters. No guaranteed retention/availability and no published TTL guarantee. CORS not confirmed. | **Tiny rendezvous/control mailbox only.** Long random key is bearer-like but not access control. |
+| **Beeceptor free endpoint** — https://beeceptor.com/ | A free endpoint can be created by choosing a name; no account is required for an unclaimed endpoint. | Public mock REST endpoint; State Store/CRUD feature can hold a small number of objects. Requests and payloads can be inspected in the endpoint dashboard. | Free endpoint: 50 requests/day, 3 mock rules, 10 small CRUD objects. Unclaimed endpoint may be removed after 30 days; public endpoint data/request history is visible to anyone who has the dashboard URL. | **Potential tiny JSON store**, but severe daily request limit and public visibility make it test-only. Confirm exact State Store API and CORS in a live test. |
+| **n:point** — https://npoint.io/ | Creation is offered through its web UI; whether a fresh bin can be created without any account is not clearly stated in reviewed material. | JSON bin fetched through GET. Service describes itself as a one-way JSON store; API editing through POST is in private beta. | Published limits: 100 requests/min/IP and 600 requests/min/bin. Not a full backend. | **Read-only distribution / static JSON snapshot**, not two-way signalling. Verify creation/auth requirements. |
+| **JSONBin.io** — https://jsonbin.io/ | Account uses OAuth providers; API create/update requires a Master Key or scoped Access Key. | Public/private JSON bins, GET read, PUT update, versions. Docs describe public bins as readable/updatable by anyone who knows Bin ID, but API request-header tables and examples still specify API keys; anonymous no-key browser access is **not confirmed**. | Free plan: 100 KB max record and 10,000 trial API requests. Free account creation is not a plain username/password-only flow. | **Not an anonymous public store.** Potentially useful only if a trusted backend provisions scoped keys or if a no-key public-bin path is verified. Never expose Master Key in VoiceLink JavaScript. |
+| **JSON Blob** — https://jsonblob.com/ | Site says sign in to save a blob. | JSON blobs have shareable IDs and REST API; paid plan adds access controls. | Anonymous no-login creation is not established. | **Watch list**, not yet qualified. |
+
+## Other previously researched server-object patterns
+
+- **Transloadit TUS upload URL:** special Transloadit extension supports PATCH/HEAD and also GET to read bytes already uploaded, including before upload completion. Closest confirmed example of one capability URL granting incremental write and read. Requires developer account, Assembly/auth provisioning and protected signing backend. Do not generalize GET extension to all TUS servers.
+- **Google Drive / Google Cloud Storage resumable session URI:** transferable secret upload-session URI, but upload/status/resume capability only; not a general way to read partial bytes.
+- **Dropbox upload session:** session ID alone is not enough; OAuth Bearer token is still required.
+- **Supabase Storage signed upload URL / TUS:** developer project and signed token required; upload permission is not the same as read permission.
+- **PrivateBin:** client-side encrypted paste with ID/key in URL; useful for a small sealed message, but instance-specific size, retention, API and CORS need checking.
+- **paste.gg:** anonymous paste/file-like object and API; verify current limits, retention, and no-auth retrieval before relying on it.
+- **Webhook.site:** temporary request inbox; API read authentication is not confirmed for anonymous tokens, so do not treat it as an open mailbox yet.
+- **Cloudflare Queues / QStash:** queues rather than arbitrary shared objects; quotas make sustained high-frequency traffic unsuitable on free tiers.
+
+## Design implications for VoiceLink
+
+### 1. Separate the transport into two planes
+
+- **Small signalling plane:** exchange object ID, URL, username/password, access token, sequence number, expiry, and encryption metadata.
+- **Bulk data plane:** move encrypted payload bytes through the selected server object, file store, attachment, or post.
+
+A username/password account is a high-authority credential. A per-object URL or read/write token is preferable when available because it grants narrower access.
+
+### 2. Do not rely on image appearance as byte preservation
+
+An avatar may be resized, recompressed, converted, stripped of metadata, or served from a thumbnail/CDN cache. Before using PNG as a binary container, test:
+- upload a PNG containing a known random payload;
+- download the original file URL, not a thumbnail;
+- compare exact SHA-256 before and after;
+- test repeated update and cache invalidation;
+- check whether the server rejects appended bytes or strips ancillary chunks;
+- test whether the profile API returns the original upload or a transformed rendition.
+
+Prefer a generic file attachment or opaque binary object over an avatar field.
+
+### 3. Account transfer is not automatically safe or reliable
+
+- Treat username/password as a secret; never log it or include it in a public topic.
+- Generate a fresh account per transfer/call where the service allows it.
+- Do not store personal information in these accounts.
+- Expect CAPTCHA, moderation queues, email-recovery prompts, suspicious-login checks, account-sharing restrictions, and account deletion.
+- A second device signing in may invalidate sessions or trigger extra checks; service-specific testing is required.
+- An account can contain unrelated profile data and messages, so its credential is broader than a single read token.
+- End-to-end encrypt payloads before upload. HTTPS protects the connection but does not hide content from the service operator.
+
+### 4. CORS is a first-class acceptance test
+
+A website can be perfectly usable manually while being unusable from https://aiparticles-jpg.github.io/ because of browser same-origin policy. For every API candidate, record:
+- whether Access-Control-Allow-Origin is present;
+- whether preflight OPTIONS succeeds for the intended method/headers;
+- whether cookies are accepted cross-site (often restricted by SameSite);
+- whether the endpoint permits credentialed requests;
+- whether browser JavaScript can read the response, not merely send a form.
+
+## Updated priority shortlist
+
+1. **NodeBB Community account flow** — strongest verified example of username/password registration without an email field; test login handoff and actual post/attachment storage.
+2. **Transloadit capability upload URL** — strongest previously found read/write capability object, but developer/backend setup required.
+3. **tmp0.cc** — excellent anonymous large-file API and TTL, but no CORS blocks direct calls from VoiceLink static page.
+4. **qurl.sh** — easy anonymous file shuttle, but one-way and CORS unknown.
+5. **Beeceptor** — no-account public endpoint with small CRUD state, but only 50 requests/day and public dashboard visibility.
+6. **KeyVal** — ultra-small key/value rendezvous, no auth and no TTL guarantee.
+7. **Flarum guest posting / phpBB guest posts / WordPress guest comments** — useful server-side inbox patterns when enabled; generally weaker automation/API story.
+8. **Remark42 anonymous login** — interesting no-email commenting identity, but not yet a transferable username/password account.
+9. **n:point / JSONBin / JSON Blob** — retain as JSON storage candidates, with account/API-key restrictions noted above.
+
+## Sources added in Stage B
+
+### Accounts, forums, comments
+- NodeBB Community live registration form (username/password/CAPTCHA; no email field shown): https://community.nodebb.org/register
+- NodeBB release notes — email optional from v1.18 when configured by operator: https://nodebb.org/blog/nodebb-v1-18-0-hanging-tough-with-a-new-release
+- NodeBB upload settings — profile avatar/cover and general upload limits: https://community.nodebb.org/topic/17265/posts-and-tags-and-profile-uploads
+- NodeBB Read API and bearer/session authentication: https://github.com/NodeBB/NodeBB/blob/master/public/openapi/read.yaml
+- NodeBB Write API topic/post/upload routes: https://github.com/NodeBB/nodebb-plugin-write-api/blob/master/routes/v2/readme.md
+- NodeBB default configuration values: https://docs.nodebb.org/development/database-structure/
+- phpBB guest post without valid email (moderator explanation): https://xenforo.com/community/threads/guest-posts.112251/
+- Flarum guest posting extension: https://github.com/convo-extensions/flarum-ext-guest-posting
+- Remark42 anonymous provider: https://remark42.com/docs/configuration/authorization/
+- WordPress comment settings: https://wordpress.org/documentation/article/comments-in-wordpress/
+- WordPress REST API anonymous comment creation disabled by default: https://github.com/WordPress/WordPress/blob/master/wp-includes/rest-api/endpoints/class-wp-rest-comments-controller.php
+- Discourse no-email temporary-account idea (feature request, not proof of implementation): https://meta.discourse.org/t/flexible-user-registration-introducing-temporary-accounts-to-discourse/318979
+
+### Temporary stores and JSON
+- tmp0.cc service and API reference (no account/key, limits, TTL, CORS policy): https://tmp0.cc/
+- tmp0.cc API design and limits explanation: https://tmp0.cc/blog/the-api-written-down
+- qurl.sh HTTP API, TTL, download count and rate limits: https://qurl.sh/docs
+- KeyVal public key/value limits and no-auth semantics: https://keyval.org/
+- KeyVal terms / no retention guarantee: https://keyval.org/terms
+- Beeceptor endpoint creation: https://beeceptor.com/docs/create-endpoint/
+- Beeceptor terms, public visibility and 30/90-day cleanup: https://beeceptor.com/pages/terms-of-service/
+- n:point usage limits and one-way JSON-store statement: https://npoint.genuka.com/
+- JSONBin create/read/update API and key requirements: https://jsonbin.io/api-reference/bins/create ; https://jsonbin.io/api-reference/bins/read ; https://jsonbin.io/api-reference/bins/update
+- JSONBin pricing and free record-size cap: https://jsonbin.io/pricing/
+- JSONBin account sign-up methods: https://jsonbin.io/support
+- JSON Blob overview and sign-in requirement: https://jsonblob.com/
+
+**Stage B conclusion:** The account-as-container idea is valid and materially expands the search space. NodeBB Community currently demonstrates the exact no-email username/password registration form, but its profile image limits are small and its API/CORS path is not a turnkey anonymous storage API. For large binary objects, generic file upload/attachment or a capability URL is a better target than an avatar. The best next experiment is a controlled NodeBB account handoff (including session behaviour and exact upload/download hash comparison), alongside the already identified Transloadit and anonymous file-store candidates.
