@@ -76,11 +76,8 @@ export async function createSupabaseInvitation() {
  * message. Sender identity is derived from the authenticated Supabase session.
  */
 function supabaseOutboxDedupeKey(type, body) {
-  const payload = body?.envelope?.payload || {};
-  if (["hello", "answer", "cancel", "reject"].includes(type) && typeof payload.sid === "string") return type + ":" + payload.sid;
-  if (type === "rotation_response" && typeof payload.rotation_id === "string") return type + ":" + payload.rotation_id;
-  if ((type === "text" || type === "delivered") && typeof payload.message_id === "string") return type + ":" + payload.message_id;
-  return null;
+  const iv = body?.envelope?.auth?.iv;
+  return typeof iv === "string" && iv ? type + ":" + iv : null;
 }
 
 /** Queue and send one encrypted message to an already linked contact. */
