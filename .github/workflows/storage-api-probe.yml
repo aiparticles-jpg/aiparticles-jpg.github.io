@@ -1,58 +1,44 @@
-name: Temporary storage API probe
-
+name: Batch browser transport probe
 on:
   workflow_dispatch:
   push:
     paths:
       - "experiments/storage-api-probe.mjs"
       - ".github/workflows/storage-api-probe.yml"
-
 permissions:
   contents: read
-
 concurrency:
-  group: temporary-storage-api-probe
+  group: batch-browser-transport-probe
   cancel-in-progress: false
-
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Probe anonymous storage APIs
+      - name: Install dependencies and Chromium
+        run: |
+          npm install --no-save mqtt@^5 playwright@^1.56
+          npx playwright install --with-deps chromium
+      - name: Run independent probes
         shell: bash
         run: |
           set -o pipefail
           node experiments/storage-api-probe.mjs | tee storage-probe.log
-
       - name: Add report to job summary
         if: always()
         run: |
           if [ -f storage-probe.log ]; then
-            {
-              echo "## Temporary storage API probe"
-              echo
-              echo '```text'
-              cat storage-probe.log
-              echo '```'
-              echo
-              echo "This is a single-runner HTTP test. It does not establish browser CORS enforcement or two-device behavior."
-            } >> "$GITHUB_STEP_SUMMARY"
+            { echo "## Batch browser transport probe"; echo; cat storage-probe.log; } >> "$GITHUB_STEP_SUMMARY"
           fi
-
       - name: Upload probe log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: temporary-storage-probe
+          name: batch-browser-transport-probe
           path: storage-probe.log
           if-no-files-found: ignore
           retention-days: 7
