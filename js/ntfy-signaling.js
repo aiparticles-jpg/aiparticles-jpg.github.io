@@ -1,6 +1,7 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js?v=3";
 import { decryptContactRequestEnvelope } from "./contact-exchange.js?v=11";
-import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact, getNtfyCursor, saveNtfyCursor } from "./local-store.js?v=20";
+import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact, getNtfyCursor, saveNtfyCursor } from "./local-store.js?v=23";
+import { sendSupabaseMessage } from "./supabase-client.js?v=6";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
@@ -109,6 +110,12 @@ export class NtfySecureSignaling {
  }
 async publish(to,msg){
    const task=async()=>{
+    const contact=await getContact(to);
+    if(contact?.supabase_user_id&&(contact.supabase_invitation_redeemed_at||contact.supabase_contact_accepted_at)){
+     const result=await sendSupabaseMessage({contact,type:msg.type,body:{envelope:msg}});
+     this.onDebug("[Supabase] отправлено "+msg.type+" контакту «"+(contact.name||to.slice(0,10))+"»; seq="+result.sequence+".");
+     return;
+    }
     if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
     const maxMessageBytes=4096,originalBody=JSON.stringify(msg),originalBytes=enc.encode(originalBody).byteLength,messages=[];
     if(msg.type==="data"&&originalBytes>maxMessageBytes){
@@ -563,7 +570,22 @@ async publish(to,msg){
   catch{this.onDebug("[ntfy] собранные data-фрагменты отклонены: исходный конверт некорректен.");return null;}
   this.onDebug(`[ntfy] data envelope собран полностью: ${entry.total} частей, ${entry.size} символов; messageId=${payload.message_id.slice(0,8)}`);return body;
  }
- async handle(event){
+   async handleSupabaseEnvelope(record,message){
+   const envelope=message?.body?.envelope;
+   if(!record||typeof record.sender_id!=="string"||!envelope||envelope.v!==3||
+      envelope.type!==message.type||!envelope.payload||typeof record.created_at!=="string"){
+    throw Error("Некорректное Supabase-сообщение сигналинга.");
+   }
+   const eventId="supabase:"+record.sender_id+":"+message.seq;
+   const event={data:JSON.stringify({
+    id:eventId,
+    time:Date.parse(record.created_at)/1000,
+    message:JSON.stringify(envelope)
+   })};
+   await this.handle(event);
+  }
+
+async handle(event){
   if(!this.active){
    let q;try{q=JSON.parse(event.data)}catch{return;}
    if(!q.message||!q.id||this.seen.has(q.id))return;
