@@ -75,6 +75,14 @@ export async function createSupabaseInvitation() {
  * Redeem a contact invitation and enqueue the first encrypted Supabase inbox
  * message. Sender identity is derived from the authenticated Supabase session.
  */
+function supabaseOutboxDedupeKey(type, body) {
+  const payload = body?.envelope?.payload || {};
+  if (["hello", "answer", "cancel", "reject"].includes(type) && typeof payload.sid === "string") return type + ":" + payload.sid;
+  if (type === "rotation_response" && typeof payload.rotation_id === "string") return type + ":" + payload.rotation_id;
+  if ((type === "text" || type === "delivered") && typeof payload.message_id === "string") return type + ":" + payload.message_id;
+  return null;
+}
+
 /** Queue and send one encrypted message to an already linked contact. */
 export async function sendSupabaseMessage({ contact, type, body }) {
   if (!contact || typeof contact !== "object" ||
@@ -87,7 +95,8 @@ export async function sendSupabaseMessage({ contact, type, body }) {
   const recipientId = contact.supabase_user_id.toLowerCase();
   if (identity.user_id === recipientId) throw new Error("Нельзя отправить сообщение самому себе.");
   // Sequence reservation and the recoverable outbox row share one IndexedDB transaction.
-  const queued = await enqueueSupabaseOutboxMessage(recipientId, type, body);
+  const dedupeKey = supabaseOutboxDedupeKey(type, body);
+  const queued = await enqueueSupabaseOutboxMessage(recipientId, type, body, dedupeKey);
   await flushSupabaseOutbox({ contact, senderId: identity.user_id });
   return { sequence: queued.sequence, queued: false };
 }
@@ -127,7 +136,10 @@ export async function flushSupabaseOutbox({ contact, senderId = null }) {
       p_invitation_id: null
     });
     if (error) {
-      throw new Error("Сообщение Supabase seq=" + message.sequence + " осталось в исходящей очереди: " + error.message);
+      const failure = new Error("Сообщение Supabase seq=" + message.sequence + " осталось в исходящей очереди: " + error.message);
+      const status = Number(error.status);
+      failure.retryable = !Number.isFinite(status) || status === 408 || status === 429 || status >= 500;
+      throw failure;
     }
     if (typeof data !== "string" || Number.isNaN(Date.parse(data))) {
       throw new Error("Supabase не вернул корректное время для сообщения seq=" + message.sequence + "; сообщение оставлено в очереди для безопасного повтора.");
@@ -219,7 +231,17 @@ export async function decryptSupabaseInboxRecord(record, sharedSecret) {
       typeof record.recipient_id !== "string" || typeof record.created_at !== "string" || Number.isNaN(Date.parse(record.created_at)) || !record.payload) {
     throw new TypeError("Supabase inbox row is incomplete.");
   }
-  return decryptSupabaseMessage({
-    sharedSecret, senderId: record.sender_id, recipientId: record.recipient_id, envelope: record.payload
-  });
+  const candidates = (Array.isArray(sharedSecret) ? sharedSecret : [sharedSecret])
+    .filter((secret, index, values) => typeof secret === "string" && secret && values.indexOf(secret) === index);
+  let lastError;
+  for (const secret of candidates) {
+    try {
+      return await decryptSupabaseMessage({
+        sharedSecret: secret, senderId: record.sender_id, recipientId: record.recipient_id, envelope: record.payload
+      });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("No active shared key can decrypt this Supabase inbox message.");
 }
