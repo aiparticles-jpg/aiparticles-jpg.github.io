@@ -168,6 +168,68 @@ async function browserBatch(){
   });
   return {pass:x.same===true,details:x};
  });
+ await isolated("Browser-Gofile-GuestAccount",async()=>{
+  const x=await page.evaluate(async()=>{
+   const a=await fetch("https://api.gofile.is/accounts",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+   const aj=await a.json();if(!a.ok||aj.status!=="ok")return {account:a.status,body:aj};
+   const token=aj.data.token,accountId=aj.data.id;
+   const check=await fetch("https://api.gofile.is/accounts/getid",{headers:{Authorization:"Bearer "+token}});
+   const cj=await check.json();
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("file",new Blob([data],{type:"text/plain"}),"vl-probe.txt");
+   const up=await fetch("https://upload.gofile.is/uploadfile",{method:"POST",headers:{Authorization:"Bearer "+token},body:form});
+   const uj=await up.json();if(!up.ok||uj.status!=="ok")return {account:a.status,accountCheck:check.status,guestEmail:cj.data?.email,tier:cj.data?.tier,upload:up.status,body:uj};
+   const id=uj.data.id,code=uj.data.code;
+   const dl=await fetch("https://gofile.is/dl/"+code,{headers:{Authorization:"Bearer "+token}});
+   const b=new Uint8Array(await dl.arrayBuffer());
+   const del=await fetch("https://api.gofile.is/contents",{method:"DELETE",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({contentsId:id})});
+   const dj=await del.json();
+   return {account:a.status,accountCheck:check.status,guestEmail:cj.data?.email,tier:cj.data?.tier,
+    upload:up.status,download:dl.status,contentType:dl.headers.get("content-type"),bytes:b.length,
+    same:b.length===data.length&&b.every((v,i)=>v===data[i]),delete:del.status,deleteStatus:dj.status};
+  });
+  return {pass:x.guestEmail===null&&x.tier==="guest"&&x.same===true&&x.deleteStatus==="ok",details:x};
+ });
+ await isolated("Browser-Kappa",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("file",new Blob([data],{type:"text/plain"}),"vl-probe.txt");
+   const p=await fetch("https://kappa.lol/api/upload",{method:"POST",body:form});
+   const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
+   if(!p.ok||!j?.link)return {upload:p.status,body:t.slice(0,140)};
+   const g=await fetch(j.link),b=new Uint8Array(await g.arrayBuffer());
+   const del=await fetch(j.delete);
+   return {upload:p.status,download:g.status,bytes:b.length,same:b.length===data.length&&b.every((v,i)=>v===data[i]),delete:del.status};
+  });
+  return {pass:x.same===true,details:x};
+ });
+ await isolated("Browser-Segs",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("file",new Blob([data],{type:"text/plain"}),"vl-probe.txt");
+   const p=await fetch("https://segs.lol/api/upload",{method:"POST",body:form});
+   const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
+   if(!p.ok||!j?.link)return {upload:p.status,body:t.slice(0,140)};
+   const g=await fetch(j.link),b=new Uint8Array(await g.arrayBuffer());
+   const del=await fetch(j.delete);
+   return {upload:p.status,download:g.status,bytes:b.length,same:b.length===data.length&&b.every((v,i)=>v===data[i]),delete:del.status};
+  });
+  return {pass:x.same===true,details:x};
+ });
+ await isolated("Browser-Tmpfiles",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("file",new Blob([data],{type:"text/plain"}),"vl-probe.txt");form.append("expire","3600");
+   const p=await fetch("https://tmpfiles.org/api/v1/upload",{method:"POST",body:form});
+   const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
+   const url=j?.data?.url??j?.url??j?.data?.downloadUrl;
+   if(!p.ok||!url)return {upload:p.status,body:t.slice(0,160)};
+   const raw=url.replace("://tmpfiles.org/","://tmpfiles.org/dl/");
+   const g=await fetch(raw),b=new Uint8Array(await g.arrayBuffer());
+   return {upload:p.status,download:g.status,bytes:b.length,same:b.length===data.length&&b.every((v,i)=>v===data[i]),url:raw};
+  });
+  return {pass:x.same===true,details:x};
+ });
  await isolated("Browser-WebSocketEndpoints",async()=>{
   const checks=await page.evaluate(async()=>{
    const es=[["ConnectMQ","wss://broker.connectmq.com:8084/mqtt"],["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
