@@ -165,8 +165,12 @@ async function probeMantleDB() {
         allowHeaders: h.get("access-control-allow-headers"),
       },
       namespace: ns,
-      cleanup: "not attempted: public unclaimed namespace has no documented delete route",
+      cleanup: "attempted",
     });
+    const del = await request(path, { method: "DELETE" });
+    if (!del.response.ok && del.response.status !== 404) {
+      console.log(JSON.stringify({ name, cleanupWarning: `DELETE returned HTTP ${del.response.status}` }));
+    }
   } catch (error) {
     report(name, "FAIL", { namespace: ns, error: String(error) });
   }
