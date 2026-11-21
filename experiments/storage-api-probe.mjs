@@ -1,184 +1,102 @@
 #!/usr/bin/env node
-/**
- * Stage B browser-store probe.
- * Runs from GitHub Actions (one runner / one egress IP).
- * It verifies HTTP API behavior, not browser CORS enforcement.
- */
 import { randomBytes, createHash } from "node:crypto";
-
-const results = [];
-const timeoutMs = 20000;
-
-function report(name, status, details = {}) {
-  results.push({ name, status, ...details });
-  console.log(JSON.stringify(results.at(-1)));
-}
-
-async function request(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    signal: AbortSignal.timeout(timeoutMs),
-    redirect: "follow",
+import mqtt from "mqtt";
+import { chromium } from "playwright";
+const ORIGIN="https://aiparticles-jpg.github.io", results=[];
+const rnd=n=>randomBytes(n), sha=b=>createHash("sha256").update(b).digest("hex");
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+function report(name,status,details={}){const x={name,status,...details};results.push(x);console.log(JSON.stringify(x))}
+async function browserBatch(){
+ let browser;
+ try{
+  browser=await chromium.launch({headless:true});
+  const page=await browser.newPage();
+  await page.goto(ORIGIN,{waitUntil:"domcontentloaded",timeout:30000});
+  const mantle=await page.evaluate(async()=>{
+   const ns="vl-browser-"+crypto.randomUUID().replaceAll("-","");
+   const url="https://mantledb.sh/v2/"+ns+"/probe";
+   const data=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(12000))));
+   const p=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data})});
+   const pt=await p.text();
+   const g=await fetch(url);const gt=await g.text();
+   return {post:p.status,postCors:p.headers.get("access-control-allow-origin"),get:g.status,
+    getCors:g.headers.get("access-control-allow-origin"),same:gt.includes(data),postBody:pt.slice(0,100)};
   });
-  const text = await response.text();
-  let body;
-  try { body = text ? JSON.parse(text) : null; } catch { body = text.slice(0, 300); }
-  return { response, body, text };
+  report("Browser-MantleDB",mantle.post===200&&mantle.get===200&&mantle.same?"PASS":"FAIL",mantle);
+  const one=await page.evaluate(async()=>{
+   const c=await fetch("https://onejsonfile.com/api/v1/anonymous",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+   const ct=await c.text();let j;try{j=JSON.parse(ct)}catch{}
+   if(!c.ok||!j?.token)return {create:c.status,acao:c.headers.get("access-control-allow-origin"),body:ct.slice(0,120)};
+   const u="https://onejsonfile.com/api/v1/files/"+encodeURIComponent(j.token);
+   const p=await fetch(u,{method:"PUT",headers:{"Content-Type":"application/json"},body:'{"browserProbe":true}'});
+   const g=await fetch(u);return {create:c.status,createCors:c.headers.get("access-control-allow-origin"),put:p.status,
+    putCors:p.headers.get("access-control-allow-origin"),get:g.status,getCors:g.headers.get("access-control-allow-origin"),body:await g.text()};
+  });
+  report("Browser-OneJSONFile",one.put===200&&one.get===200&&one.body.includes("browserProbe")?"PASS":"FAIL",one);
+  const q=await page.evaluate(async()=>{
+   const name="vl-"+crypto.randomUUID()+".bin";
+   const data=crypto.getRandomValues(new Uint8Array(4096));
+   const p=await fetch("https://qurl.sh/"+name,{method:"PUT",headers:{"X-Format":"json","X-TTL":"1h","X-Downloads":"2"},body:data});
+   const pt=await p.text();let j;try{j=JSON.parse(pt)}catch{}
+   if(!p.ok||!j?.url)return {put:p.status,putCors:p.headers.get("access-control-allow-origin"),body:pt.slice(0,160)};
+   const g=await fetch(j.url+"?raw=true");const a=new Uint8Array(await g.arrayBuffer());
+   return {put:p.status,putCors:p.headers.get("access-control-allow-origin"),get:g.status,getCors:g.headers.get("access-control-allow-origin"),bytes:a.length,
+    same:a.length===data.length&&a.every((v,i)=>v===data[i])};
+  });
+  report("Browser-qurl",q.same?"PASS":"FAIL",q);
+  const ws=await page.evaluate(async()=>{
+   const endpoints=[["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
+    ["Eclipse","wss://mqtt.eclipseprojects.io:443/mqtt"],["Mosquitto","wss://test.mosquitto.org:8081"]];
+   return await Promise.all(endpoints.map(([name,url])=>new Promise(resolve=>{
+    let s,t=setTimeout(()=>{try{s.close()}catch{};resolve({name,status:"TIMEOUT"})},9000);
+    try{s=new WebSocket(url,"mqtt");s.onopen=()=>{clearTimeout(t);s.close();resolve({name,status:"OPEN"})};
+     s.onerror=()=>{clearTimeout(t);resolve({name,status:"ERROR"})}}
+    catch(e){clearTimeout(t);resolve({name,status:"ERROR",error:String(e)})}
+   })));
+  });
+  for(const x of ws)report("Browser-WS-"+x.name,x.status==="OPEN"?"PASS":"FAIL",x);
+ }catch(e){report("BrowserOrigin","BLOCKED",{error:String(e).slice(0,300)})}
+ finally{await browser?.close()}
 }
-
-async function probeOneJSONFile() {
-  const name = "OneJSONFile";
-  let token;
-  try {
-    const created = await request("https://onejsonfile.com/api/v1/anonymous", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    });
-    if (!created.response.ok || !created.body?.token) {
-      throw new Error(`create returned HTTP ${created.response.status}`);
-    }
-    token = created.body.token;
-    console.log(`::add-mask::${token}`);
-    const url = `https://onejsonfile.com/api/v1/files/${encodeURIComponent(token)}`;
-
-    // 32 KiB binary payload, transported as base64 inside JSON.
-    const bytes = randomBytes(32 * 1024);
-    const expectedHash = createHash("sha256").update(bytes).digest("hex");
-    const payload = { probe: "voicelink", binaryBase64: bytes.toString("base64"), expectedHash };
-
-    const put = await request(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!put.response.ok) throw new Error(`PUT returned HTTP ${put.response.status}`);
-
-    const get = await request(url);
-    if (!get.response.ok || get.body?.binaryBase64 !== payload.binaryBase64) {
-      throw new Error(`GET mismatch / HTTP ${get.response.status}`);
-    }
-    const received = Buffer.from(get.body.binaryBase64, "base64");
-    const actualHash = createHash("sha256").update(received).digest("hex");
-    if (actualHash !== expectedHash) throw new Error("binary SHA-256 mismatch");
-
-    const patch = await request(url, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ receiver: { ack: true } }),
-    });
-    if (!patch.response.ok) throw new Error(`PATCH returned HTTP ${patch.response.status}`);
-
-    const verify = await request(url);
-    if (!verify.response.ok || verify.body?.receiver?.ack !== true) {
-      throw new Error("PATCH verification failed");
-    }
-
-    const cors = await request(url, {
-      method: "OPTIONS",
-      headers: {
-        Origin: "https://aiparticles-jpg.github.io",
-        "Access-Control-Request-Method": "PATCH",
-        "Access-Control-Request-Headers": "content-type",
-      },
-    });
-    const h = cors.response.headers;
-    report(name, "PASS", {
-      binaryBytes: bytes.length,
-      sha256: actualHash,
-      patch: "PASS",
-      cors: {
-        optionsStatus: cors.response.status,
-        allowOrigin: h.get("access-control-allow-origin"),
-        allowMethods: h.get("access-control-allow-methods"),
-        allowHeaders: h.get("access-control-allow-headers"),
-      },
-      expiresAt: created.body.expiresAt ?? null,
-    });
-
-    await request(url, { method: "DELETE" }).catch(() => {});
-  } catch (error) {
-    report(name, "FAIL", { error: String(error).replace(token ?? /$^/, "[redacted]") });
-    if (token) {
-      await request(`https://onejsonfile.com/api/v1/files/${encodeURIComponent(token)}`, {
-        method: "DELETE",
-      }).catch(() => {});
-    }
-  }
+async function mqttProbe(name,url){
+ const id=rnd(8).toString("hex"),topic="vl-probe/"+id;let sub,pub;
+ try{
+  const conn=c=>new Promise((ok,no)=>{const t=setTimeout(()=>no(Error("connect timeout")),12000);
+   c.once("connect",()=>{clearTimeout(t);ok()});c.once("error",e=>{clearTimeout(t);no(e)})});
+  sub=mqtt.connect(url,{clientId:"vls"+id,clean:true,connectTimeout:12000,reconnectPeriod:0});
+  await conn(sub);await new Promise((ok,no)=>sub.subscribe(topic,e=>e?no(e):ok()));
+  pub=mqtt.connect(url,{clientId:"vlp"+id,clean:true,connectTimeout:12000,reconnectPeriod:0});await conn(pub);
+  const payload=rnd(1024),h=sha(payload),count=75,got=new Set();let bad=false;
+  sub.on("message",(_,b)=>{try{const x=JSON.parse(b.toString());if(x.h!==h)bad=true;got.add(x.i)}catch{bad=true}});
+  const start=Date.now();
+  for(let i=0;i<count;i++){await new Promise((ok,no)=>pub.publish(topic,JSON.stringify({i,h,data:payload.toString("base64")}),e=>e?no(e):ok()));await wait(40)}
+  const until=Date.now()+8000;while(got.size<count&&Date.now()<until)await wait(100);
+  report("MQTT-"+name,got.size===count&&!bad?"PASS":"PARTIAL",{sent:count,received:got.size,loss:count-got.size,packetBytes:1024,elapsedMs:Date.now()-start,endpoint:url});
+ }catch(e){report("MQTT-"+name,"FAIL",{endpoint:url,error:String(e).slice(0,220)})}
+ finally{try{sub?.end(true)}catch{}try{pub?.end(true)}catch{}}
 }
-
-async function probeMantleDB() {
-  const name = "MantleDB";
-  const ns = `vl-probe-${randomBytes(8).toString("hex")}`;
-  const path = `https://mantledb.sh/v2/${ns}/probe`;
-  try {
-    const bytes = randomBytes(24 * 1024);
-    const expectedHash = createHash("sha256").update(bytes).digest("hex");
-    const payload = { probe: "voicelink", binaryBase64: bytes.toString("base64"), expectedHash };
-
-    const post = await request(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!post.response.ok) throw new Error(`POST returned HTTP ${post.response.status}`);
-
-    const get = await request(path, {
-      headers: { Origin: "https://aiparticles-jpg.github.io" },
-    });
-    if (!get.response.ok || get.body?.binaryBase64 !== payload.binaryBase64) {
-      throw new Error(`GET mismatch / HTTP ${get.response.status}`);
-    }
-    const actualHash = createHash("sha256")
-      .update(Buffer.from(get.body.binaryBase64, "base64")).digest("hex");
-    if (actualHash !== expectedHash) throw new Error("binary SHA-256 mismatch");
-
-    const patch = await request(path, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ receiver: { ack: true } }),
-    });
-    if (!patch.response.ok) throw new Error(`PATCH returned HTTP ${patch.response.status}`);
-
-    const verify = await request(path);
-    if (!verify.response.ok || verify.body?.receiver?.ack !== true) {
-      throw new Error("PATCH verification failed");
-    }
-
-    const options = await request(path, {
-      method: "OPTIONS",
-      headers: {
-        Origin: "https://aiparticles-jpg.github.io",
-        "Access-Control-Request-Method": "PATCH",
-        "Access-Control-Request-Headers": "content-type",
-      },
-    });
-    const h = options.response.headers;
-    report(name, "PASS", {
-      binaryBytes: bytes.length,
-      sha256: actualHash,
-      patch: "PASS",
-      cors: {
-        optionsStatus: options.response.status,
-        allowOrigin: h.get("access-control-allow-origin"),
-        allowMethods: h.get("access-control-allow-methods"),
-        allowHeaders: h.get("access-control-allow-headers"),
-      },
-      namespace: ns,
-      cleanup: "attempted",
-    });
-    const del = await request(path, { method: "DELETE" });
-    if (!del.response.ok && del.response.status !== 404) {
-      console.log(JSON.stringify({ name, cleanupWarning: `DELETE returned HTTP ${del.response.status}` }));
-    }
-  } catch (error) {
-    report(name, "FAIL", { namespace: ns, error: String(error) });
-  }
+async function nostr(name,url){
+ let s;
+ try{
+  s=new WebSocket(url);
+  const result=await new Promise((ok,no)=>{const t=setTimeout(()=>no(Error("timeout")),9000);
+   s.onopen=()=>s.send(JSON.stringify(["REQ","vl-probe",{"kinds":[20000],"limit":1}]));
+   s.onmessage=e=>{let x;try{x=JSON.parse(e.data)}catch{return}if(x[0]==="EOSE"){clearTimeout(t);ok("EOSE")}if(x[0]==="NOTICE"){clearTimeout(t);ok("NOTICE: "+x[1])}};
+   s.onerror=()=>{clearTimeout(t);no(Error("WebSocket error"))};s.onclose=e=>{clearTimeout(t);no(Error("closed "+e.code))}});
+  report("Nostr-"+name,"PASS",{endpoint:url,subscription:result});
+ }catch(e){report("Nostr-"+name,"FAIL",{endpoint:url,error:String(e).slice(0,200)})}
+ finally{try{s?.close()}catch{}}
 }
-
-await probeOneJSONFile();
-await probeMantleDB();
-
-const failed = results.filter(r => r.status !== "PASS").length;
-console.log(JSON.stringify({ summary: { passed: results.length - failed, failed, note: "Single GitHub Actions runner; not a two-client or browser-enforced CORS test." } }, null, 2));
-if (failed) process.exitCode = 1;
+await browserBatch();
+await Promise.all([
+ mqttProbe("EMQX","wss://broker.emqx.io:8084/mqtt"),
+ mqttProbe("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),
+ mqttProbe("Eclipse","wss://mqtt.eclipseprojects.io:443/mqtt"),
+ mqttProbe("Mosquitto","wss://test.mosquitto.org:8081")
+]);
+await Promise.all([
+ nostr("Primal","wss://relay.primal.net"),nostr("nos.lol","wss://nos.lol"),nostr("Damus","wss://relay.damus.io")
+]);
+console.log(JSON.stringify({summary:{total:results.length,passed:results.filter(x=>x.status==="PASS").length,
+ partial:results.filter(x=>x.status==="PARTIAL").length,failed:results.filter(x=>["FAIL","BLOCKED"].includes(x.status)).length,
+ note:"Browser fetch from deployed GitHub Pages origin; network probes from one Actions runner, not Turkey mobile."}},null,2));
