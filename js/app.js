@@ -1574,8 +1574,9 @@ async function processSupabaseInboxRecord(record,source){
     typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return;
  const contact=await findContactBySupabaseUserId(record.sender_id);
  if(!contact){debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");return}
- if(!contact.invitation_secret)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
- const message=await decryptSupabaseInboxRecord(record,contact.invitation_secret);
+ const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
+ if(!secrets.length)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
+ const message=await decryptSupabaseInboxRecord(record,secrets);
  const sequence=BigInt(message.seq);
  const current=await getSupabaseSequenceState(record.sender_id);
  const last=BigInt(current.incoming);
@@ -1601,31 +1602,35 @@ async function processSupabaseInboxRecord(record,source){
    debug("Supabase inbox: получено и расшифровано подтверждение контакта «"+contact.name+
     "» ("+source+"); created_at="+record.created_at+".");
   }
+ }else if(["hello","answer","cancel","reject","rotation_response","data","text","delivered"].includes(message.type)){
+  const envelope=message.body?.envelope;
+  if(!envelope||envelope.v!==3||envelope.type!==message.type||!envelope.payload){
+   debug("Supabase inbox: некорректный внутренний конверт типа «"+message.type+"»; seq оставлен необработанным.");
+   return;
+  }
+  if(!state.secure||state.secure.closed||state.secure.me!==state.me){
+   state.secure=createSecureSignaling(state.me,contact.user_id);
+  }
+  await state.secure.handleSupabaseEnvelope(record,message);
+  debug("Supabase inbox: обработан сигнал «"+message.type+"» от «"+contact.name+"»; seq="+message.seq+" ("+source+").");
  }else{
-  debug("Supabase inbox: тип «"+message.type+"» от «"+contact.name+
-   "» пока не поддерживается; seq="+message.seq+" оставлен необработанным.");
+  debug("Supabase inbox: неизвестный тип «"+message.type+"» от «"+contact.name+
+   "»; seq="+message.seq+" оставлен необработанным.");
   return;
  }
 
  const advanced=await advanceSupabaseIncomingSequence(record.sender_id,message.seq);
- if(advanced==="gap"){
-  scheduleSupabaseInboxRecovery();
-  return;
- }
+ if(advanced==="gap"){scheduleSupabaseInboxRecovery();return}
  if(advanced==="advanced"){
   const buffer=supabaseInboxBuffers.get(record.sender_id);
   if(buffer){
    const next=(BigInt(message.seq)+1n).toString();
    const nextRecord=buffer.get(next);
-   if(nextRecord){
-    buffer.delete(next);
-    await processSupabaseInboxRecord(nextRecord,"буфер после восстановления");
-   }
+   if(nextRecord){buffer.delete(next);await processSupabaseInboxRecord(nextRecord,"буфер после восстановления")}
    if(!buffer.size)supabaseInboxBuffers.delete(record.sender_id);
   }
  }
 }
-
 function enqueueSupabaseInboxRecord(record,source="Realtime"){
  supabaseInboxQueue=supabaseInboxQueue.then(()=>processSupabaseInboxRecord(record,source))
   .catch(error=>debug("Ошибка обработки Supabase inbox ("+source+"): "+(error.message||String(error))));
