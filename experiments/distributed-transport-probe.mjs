@@ -60,12 +60,12 @@ async function nostrCross(name,url){
    const send=phase=>{const tags=[["d",channel],["phase",phase],["client",role]];if(phase==="data")tags.push(["seq",String(seq++)]);
     const ev=finalizeEvent({kind:20000,created_at:Math.floor(Date.now()/1000),tags,content:phase==="data"?rnd(1024).toString("base64"):"ready"},sk);
     ws.send(JSON.stringify(["EVENT",ev]));};
-   deadline=setTimeout(()=>fail("timeout remoteReady="+remoteReady+" received="+got.size),25000);
+   deadline=setTimeout(()=>fail("timeout remoteReady="+remoteReady+" received="+got.size),45000);
    ws.onopen=()=>ws.send(JSON.stringify(["REQ",sub,{kinds:[20000],"#d":[channel]}]));
    ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
-    if(m[0]==="EOSE"&&m[1]===sub&&!subscribed){subscribed=true;send("ready");interval=setInterval(()=>{if(!remoteReady)send("ready")},350)}
+    if(m[0]==="EOSE"&&m[1]===sub&&!subscribed){subscribed=true;send("ready");interval=setInterval(()=>{if(!remoteReady)send("ready")},1000)}
     if(m[0]==="EVENT"&&m[1]===sub&&m[2]?.kind===20000){const tags=m[2].tags??[],who=tags.find(t=>t[0]==="client")?.[1],phase=tags.find(t=>t[0]==="phase")?.[1];
-     if(who!==role&&phase==="ready"&&!remoteReady){remoteReady=true;clearInterval(interval);for(let i=0;i<20;i++)setTimeout(()=>send("data"),i*45)}
+     if(who!==role&&phase==="ready"&&!remoteReady){remoteReady=true;clearInterval(interval);for(let i=0;i<20;i++)setTimeout(()=>send("data"),i*200)}
      if(who!==role&&phase==="data"){const n=Number(tags.find(t=>t[0]==="seq")?.[1]);if(Number.isInteger(n))got.add(n)}
      if(got.size>=20){clearInterval(interval);clearTimeout(deadline);resolve({remotePackets:got.size,packetBytes:1024})}
     }
@@ -78,5 +78,5 @@ async function nostrCross(name,url){
  finally{try{ws?.close()}catch{}}
 }
 await sharedStorage();
-await Promise.all([mqttCross("ConnectMQ","wss://broker.connectmq.com:8084/mqtt",100),mqttCross("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),mqttCross("Mosquitto","wss://test.mosquitto.org:8081"),mqttCross("EMQX","wss://broker.emqx.io:8084/mqtt")]);
+await Promise.all([mqttCross("ConnectMQ","wss://broker.connectmq.com:8084/mqtt",100),mqttCross("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),mqttCross("Mosquitto","wss://test.mosquitto.org:8081"),mqttCross("EMQX","wss://broker.emqx.io:8084/mqtt",100)]);
 await Promise.all([nostrCross("nos.lol","wss://nos.lol"),nostrCross("Primal","wss://relay.primal.net")]);
