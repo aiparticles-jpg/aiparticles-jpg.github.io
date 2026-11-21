@@ -1676,6 +1676,10 @@ async function flushPendingSupabaseOutboxes(source="повторная отпр�
  }
 }
 
+window.addEventListener("online",()=>{
+ if(state.supabaseUserId)flushPendingSupabaseOutboxes("возврат сети");
+});
+
 function formatInvitationAge(timestamp){
  const elapsed=Math.max(0,Date.now()-Number(timestamp));
  if(elapsed<30000)return "только что";
