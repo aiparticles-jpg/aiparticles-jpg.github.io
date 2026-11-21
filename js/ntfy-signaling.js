@@ -1,7 +1,7 @@
 import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js?v=3";
 import { decryptContactRequestEnvelope } from "./contact-exchange.js?v=11";
 import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact, getNtfyCursor, saveNtfyCursor } from "./local-store.js?v=24";
-import { sendSupabaseMessage } from "./supabase-client.js?v=7";
+import { sendSupabaseMessage } from "./supabase-client.js?v=8";
 const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
