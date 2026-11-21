@@ -323,3 +323,30 @@ These are observed tests, not documentation-only claims. The browser tests opene
 6. **RESTful API** — works as a shared public CRUD sandbox, but its volatile/shared semantics make it experimental only.
 
 **Important boundary:** these results are from a single GitHub Actions network. The next validation stage must run the shortlisted MQTT/Nostr/storage tests from two genuinely independent clients or networks, then from the user's Android browsers and Turkish mobile/Wi-Fi connections. No result above proves that yet.
+
+
+## Stage D — two independent GitHub Actions runners (2026-11-22)
+
+The workflow now starts two separate matrix jobs (client A and client B) concurrently. Each runner has its own process and network stack. They rendezvous through public services; this is stronger than the single-runner loopback-style test, but it is still not a test from two Turkish phones or two mobile carriers.
+
+**Run:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44963664778
+
+| Mechanism | Client A | Client B | Result |
+|---|---|---|---|
+| MantleDB mailbox | Wrote a 24,576-byte random payload and 128 KiB AISense file metadata; received B's acknowledgement | Read MantleDB payload, verified SHA-256; downloaded AISense file and verified 131,072 bytes and SHA-256; wrote acknowledgement | **PASS both ways** |
+| AISense file handoff | Uploaded 128 KiB binary; published file ID + hash in MantleDB | Retrieved file ID from MantleDB, downloaded file from AISense, verified exact byte count and SHA-256 | **PASS cross-runner binary transfer** |
+| HiveMQ MQTT | Received 20 remote messages, each 1 KiB | Received 20 remote messages, each 1 KiB | **PASS both ways**, ~3.9–4.1 s |
+| Mosquitto MQTT | Received 20 remote messages, each 1 KiB | Received 20 remote messages, each 1 KiB | **PASS both ways**, ~3.8–4.3 s |
+| EMQX MQTT | Received 20 remote messages, each 1 KiB | Received 20 remote messages, each 1 KiB | **PASS both ways**, ~3.5–3.8 s |
+| Nostr nos.lol | Received 20 remote ephemeral events, each carrying 1 KiB | Received 20 remote ephemeral events, each carrying 1 KiB | **PASS both ways** |
+| Nostr Primal | Received 20 remote ephemeral events, each carrying 1 KiB | Received 20 remote ephemeral events, each carrying 1 KiB | **PASS both ways** |
+
+For MQTT, each client subscribed to the same run-specific topic, exchanged a retained READY marker, then sent 20 QoS 1 messages at approximately 25 messages/second. The test removed the retained marker after completion. For Nostr, each client subscribed to a run-specific d tag, exchanged signed ephemeral kind-20000 READY events, then sent 20 signed 1 KiB ephemeral events. The mailbox/file test used a unique MantleDB namespace and attempted to delete its three temporary entries after the acknowledgement; the AISense file is temporary and expires according to that service's policy.
+
+### Revised interpretation
+
+- EMQX's earlier 30/75 result under the larger concurrent single-runner test is not a sufficient reason to reject it: the independent-runner 20-message test passed in both directions. It remains less well characterized under longer/higher load.
+- **HiveMQ, Mosquitto and EMQX now all have cross-runner bidirectional evidence.**
+- **nos.lol and Primal now have cross-runner ephemeral event delivery evidence**, not merely a successful WebSocket handshake or subscription.
+- **MantleDB and AISense have cross-runner handoff evidence**, including exact binary integrity for the AISense object.
+- These are still short feasibility tests, not endurance, mobile carrier, browser battery/background, or production SLA tests.
