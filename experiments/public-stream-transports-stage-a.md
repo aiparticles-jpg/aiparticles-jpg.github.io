@@ -380,3 +380,49 @@ A fourth anonymous MQTT broker, **ConnectMQ**, was added from its operator's pub
 | AISense | 128 KiB binary object handoff | Cross-runner download/hash verification passed |
 
 This is a feasibility envelope from short tests on separate Actions runners, not a maximum capacity benchmark. Long-duration tests, congestion, reconnects, mobile backgrounding, and Turkish network paths remain untested.
+
+
+## Stage F — more anonymous file hosts, browser + cross-runner (2026-11-22)
+
+Six additional file hosts were tested from Chromium running on the deployed GitHub Pages origin. The three that passed were then tested between the two independent Actions runners.
+
+**Run:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44964097976  
+**Cross-runner file handoff run:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44964238898
+
+| Service | Browser upload/download | Two-runner handoff | Observed outcome |
+|---|---|---|---|
+| **TempFile.org** | 4 KiB upload; file-info lookup; binary download; byte-for-byte match; API DELETE returned 200 | 8 KiB uploaded by A, retrieved by B, SHA-256 verified | **PASS** — anonymous API, browser CORS works, 1/6/24/48-hour expiry. Official docs state 100 MB/file, 200 upload requests/hour/IP and no authentication. |
+| **WaifuVault** | 4 KiB upload returned 201; download 200; byte-for-byte match | 8 KiB uploaded by A, retrieved by B, SHA-256 verified | **PASS** — no authorization required. Official site describes a 100 MB upload and size-dependent retention (at least 30 days). Public link/token model; deletion should be verified. |
+| **beacon.host** | 4 KiB upload returned 201; download 200; byte-for-byte match; response expiry was 24 hours | 8 KiB uploaded by A, retrieved by B, SHA-256 verified | **PASS** — anonymous upload and direct browser download. No-account limit: 4 MB for one-call publish, 5 publishes/hour/IP, 24-hour expiry; larger objects use a presigned multi-call flow. Claim token controls deletion/claiming. |
+| **Filebin.net** | Browser fetch failed while running the upload/download test; the exact failing stage was not isolated | Not attempted | **FAIL / unresolved** — no usable browser read/write result from the VoiceLink origin. |
+| **Uguu** | Browser fetch failed at the upload request | Not attempted | **FAIL** — direct browser API use from this origin is blocked in this test. |
+| **Litterbox (Catbox)** | Request reached the service but returned HTTP 412 with body “Invalid uploader” | Not attempted | **BLOCKED** — not a CORS fetch failure; the service rejected the uploader. |
+| **Catbox permanent upload** | Not tested | Not attempted | Deliberately skipped: anonymous uploads are permanent and anonymous deletion is not available, so a probe would leave an unnecessary public file. |
+
+Official documentation:
+- TempFile.org API: https://tempfile.org/api
+- WaifuVault API and upload policy: https://waifuvault.moe/ and https://github.com/waifuvault/WaifuVault
+- beacon.host anonymous upload API and limits: https://beacon.host/file-upload-api
+- Filebin API: https://filebin.net/api
+- Uguu API: https://uguu.se/api
+- Litterbox API endpoint: https://litterbox.catbox.moe/resources/internals/api.php
+
+### Updated shortlist
+
+**Live streams / low-latency messages**
+1. HiveMQ and Mosquitto — clean cross-runner 1 KiB delivery at approximately 25 msg/s in the short tests.
+2. ConnectMQ — clean cross-runner delivery at its published 10 msg/s public limit.
+3. EMQX — clean at 10 msg/s across runners, but unreliable in the 25 msg/s tests.
+4. Nostr nos.lol — 20/20 cross-runner at approximately 5 events/s in the paced run; faster bursts sometimes lost events. Primal also passed paced tests, but one repeated run missed one event.
+
+**Shared state / mailbox**
+5. MantleDB — browser-proven JSON read/write and cross-runner 24 KiB message exchange. It is an open namespace, so it must not carry plaintext secrets.
+6. RESTful API — CRUD works from browser JavaScript but is a shared, volatile test database, not a production store.
+
+**Binary object handoff**
+7. AISense — browser-proven 256 KiB transfer between separate browser contexts and 128 KiB cross-runner transfer with exact hash.
+8. TempFile.org — browser and cross-runner verified; explicit TTL choices and deletion API.
+9. beacon.host — browser and cross-runner verified; anonymous 24-hour object/site capability, with a claim token.
+10. WaifuVault — browser and cross-runner verified; no auth, long size-based retention; verify deletion behaviour and current limits.
+
+All of these are public or capability-link services. For any VoiceLink use, the payload must be end-to-end encrypted, identifiers must be high entropy, and public topics/paths must not reveal stable contact identities. These tests establish feasibility only; they do not establish privacy, availability guarantees, mobile carrier reachability, or suitability for production.
