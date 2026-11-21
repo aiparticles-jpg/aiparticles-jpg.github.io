@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { randomBytes, createHash } from "node:crypto";
 import mqtt from "mqtt";
+import { generateSecretKey, finalizeEvent } from "nostr-tools/pure";
 import { chromium } from "playwright";
 const ORIGIN="https://aiparticles-jpg.github.io", results=[];
 const rnd=n=>randomBytes(n), sha=b=>createHash("sha256").update(b).digest("hex");
@@ -53,22 +54,24 @@ async function browserBatch(){
  });
  await isolated("Browser-AISenseStorage-2Contexts",async()=>{
   const upload=await page.evaluate(async()=>{
-   const data=crypto.getRandomValues(new Uint8Array(262144)),form=new FormData();
-   form.append("file",new Blob([data],{type:"application/octet-stream"}),"vl-256k.bin");
+   const data=new Uint8Array(262144);
+   for(let i=0;i<data.length;i+=65536)data.set(crypto.getRandomValues(new Uint8Array(65536)),i);
+   const form=new FormData();form.append("file",new Blob([data],{type:"application/octet-stream"}),"vl-256k.bin");
    const p=await fetch("https://aisenseapi.com/services/v1/storage",{method:"POST",body:form});
    const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
-   return {status:p.status,id:j?.storage_id,expected:await crypto.subtle.digest("SHA-256",data).then(x=>Array.from(new Uint8Array(x)).map(b=>b.toString(16).padStart(2,"0")).join(""))};
+   const expected=await crypto.subtle.digest("SHA-256",data);
+   return {status:p.status,id:j?.storage_id,expected:Array.from(new Uint8Array(expected)).map(x=>x.toString(16).padStart(2,"0")).join("")};
   });
-  if(upload.status!==200||!upload.id) return {pass:false,details:upload};
-  const page2=await browser.newPage();
-  await page2.goto(ORIGIN,{waitUntil:"domcontentloaded",timeout:30000});
-  const download=await page2.evaluate(async id=>{
+  if(upload.status!==200||!upload.id)return {pass:false,details:upload};
+  const page2=await browser.newPage();await page2.goto(ORIGIN,{waitUntil:"domcontentloaded",timeout:30000});
+  const d=await page2.evaluate(async id=>{
    const r=await fetch("https://aisenseapi.com/services/v1/storage/"+encodeURIComponent(id));
    const b=await r.arrayBuffer(),h=await crypto.subtle.digest("SHA-256",b);
    return {status:r.status,bytes:b.byteLength,hash:Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,"0")).join("")};
   },upload.id);
   await page2.close();
-  return {pass:download.status===200&&download.bytes===262144&&download.hash===upload.expected,details:{uploadStatus:upload.status,downloadStatus:download.status,bytes:download.bytes,hashMatch:download.hash===upload.expected}};
+  return {pass:d.status===200&&d.bytes===262144&&d.hash===upload.expected,
+   details:{uploadStatus:upload.status,downloadStatus:d.status,bytes:d.bytes,hashMatch:d.hash===upload.expected}};
  });
  await isolated("Browser-RESTfulAPI",async()=>{
   const x=await page.evaluate(async()=>{
@@ -122,13 +125,25 @@ async function mqttProbe(name,url){
 async function nostr(name,url){
  let s;
  try{
+  const sk=generateSecretKey();
+  const event=finalizeEvent({kind:20000,created_at:Math.floor(Date.now()/1000),tags:[],content:"vl-probe:"+rnd(12).toString("hex")},sk);
   s=new WebSocket(url);
-  const result=await new Promise((ok,no)=>{const t=setTimeout(()=>no(Error("timeout")),9000);
-   s.onopen=()=>s.send(JSON.stringify(["REQ","vl-probe",{"kinds":[20000],"limit":1}]));
-   s.onmessage=e=>{let x;try{x=JSON.parse(e.data)}catch{return}if(x[0]==="EOSE"){clearTimeout(t);ok("EOSE")}if(x[0]==="NOTICE"){clearTimeout(t);ok("NOTICE: "+x[1])}};
-   s.onerror=()=>{clearTimeout(t);no(Error("WebSocket error"))};s.onclose=e=>{clearTimeout(t);no(Error("closed "+e.code))}});
-  report("Nostr-"+name,"PASS",{endpoint:url,subscription:result});
- }catch(e){report("Nostr-"+name,"FAIL",{endpoint:url,error:String(e).slice(0,200)})}
+  const state=await new Promise((resolve,reject)=>{
+   const sub="vl"+rnd(6).toString("hex");let accepted=false,echoed=false,eose=false;
+   const timer=setTimeout(()=>reject(Error("timeout accepted="+accepted+" echoed="+echoed+" eose="+eose)),12000);
+   s.onopen=()=>s.send(JSON.stringify(["REQ",sub,{ids:[event.id]}]));
+   s.onmessage=e=>{
+    let x;try{x=JSON.parse(e.data)}catch{return}
+    if(x[0]==="EOSE"&&x[1]===sub&&!eose){eose=true;s.send(JSON.stringify(["EVENT",event]));}
+    if(x[0]==="OK"&&x[1]===event.id){accepted=x[2]===true;if(x[2]===false){clearTimeout(timer);reject(Error("relay rejected: "+x[3]))}}
+    if(x[0]==="EVENT"&&x[1]===sub&&x[2]?.id===event.id)echoed=true;
+    if(accepted&&echoed){clearTimeout(timer);resolve({accepted,echoed,eose,kind:event.kind})}
+   };
+   s.onerror=()=>{clearTimeout(timer);reject(Error("WebSocket error"))};
+   s.onclose=e=>{clearTimeout(timer);reject(Error("closed "+e.code+" "+e.reason))};
+  });
+  report("Nostr-"+name,"PASS",{endpoint:url,...state});
+ }catch(e){report("Nostr-"+name,"FAIL",{endpoint:url,error:String(e).slice(0,240)})}
  finally{try{s?.close()}catch{}}
 }
 await browserBatch();
