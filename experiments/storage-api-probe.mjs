@@ -90,6 +90,84 @@ async function browserBatch(){
   });
   return {pass:x.create===200&&x.read===200&&x.stored&&x.patch===200&&x.updated&&x.delete>=200&&x.delete<300,details:x};
  });
+ await isolated("Browser-TempFileOrg",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("files",new Blob([data],{type:"text/plain"}),"vl-probe.txt");form.append("expiryHours","1");
+   const p=await fetch("https://tempfile.org/api/upload/local",{method:"POST",body:form});
+   const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
+   if(!p.ok||!j?.files?.[0]?.id)return {upload:p.status,body:t.slice(0,140)};
+   const id=j.files[0].id,info=await fetch("https://tempfile.org/api/file/"+id),ij=await info.json();
+   const dl=await fetch("https://tempfile.org"+ij.file.downloadUrl),b=new Uint8Array(await dl.arrayBuffer());
+   const del=await fetch("https://tempfile.org/api/file/"+id,{method:"DELETE"});
+   return {upload:p.status,info:info.status,download:dl.status,bytes:b.length,same:b.length===data.length&&b.every((v,i)=>v===data[i]),delete:del.status};
+  });
+  return {pass:x.same===true,details:x};
+ });
+ await isolated("Browser-Filebin",async()=>{
+  const x=await page.evaluate(async()=>{
+   const bin="vl"+crypto.randomUUID().replaceAll("-","").slice(0,16),path="https://filebin.net/"+bin+"/probe.txt";
+   const data=crypto.getRandomValues(new Uint8Array(4096));
+   const p=await fetch(path,{method:"POST",headers:{"Content-Type":"text/plain"},body:data});
+   if(!p.ok)return {upload:p.status,body:(await p.text()).slice(0,120)};
+   const g=await fetch(path),b=new Uint8Array(await g.arrayBuffer());
+   const del=await fetch("https://filebin.net/"+bin,{method:"DELETE"});
+   return {upload:p.status,download:g.status,bytes:b.length,same:b.length===data.length&&b.every((v,i)=>v===data[i]),delete:del.status};
+  });
+  return {pass:x.same===true,details:x};
+ });
+ await isolated("Browser-Uguu",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("files[]",new Blob([data],{type:"text/plain"}),"vl-probe.txt");
+   const p=await fetch("https://uguu.se/upload",{method:"POST",body:form});
+   const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
+   const url=j?.files?.[0]?.url??j?.url??t.trim().split(/\s+/).find(x=>x.startsWith("https://"));
+   if(!p.ok||!url)return {upload:p.status,body:t.slice(0,140)};
+   const g=await fetch(url),b=new Uint8Array(await g.arrayBuffer());
+   return {upload:p.status,download:g.status,bytes:b.length,same:b.length===data.length&&b.every((v,i)=>v===data[i]),url};
+  });
+  return {pass:x.same===true,details:x};
+ });
+ await isolated("Browser-WaifuVault",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("file",new Blob([data],{type:"text/plain"}),"vl-probe.txt");
+   const p=await fetch("https://waifuvault.moe/rest",{method:"PUT",body:form});
+   const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
+   let url=j?.url??j?.fileUrl??j?.file?.url;
+   if(!url){const token=j?.token??j?.file?.token;if(token){const meta=await fetch("https://waifuvault.moe/rest/"+token);const m=await meta.json();url=m.url??m.fileUrl??m.file?.url}}
+   if(!p.ok||!url)return {upload:p.status,body:t.slice(0,180)};
+   const g=await fetch(url),b=new Uint8Array(await g.arrayBuffer());
+   return {upload:p.status,download:g.status,bytes:b.length,same:b.length===data.length&&b.every((v,i)=>v===data[i]),url};
+  });
+  return {pass:x.same===true,details:x};
+ });
+ await isolated("Browser-BeaconHost",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("file",new Blob([data],{type:"text/plain"}),"vl-probe.txt");
+   const p=await fetch("https://beacon.host/v1/publish",{method:"POST",body:form});
+   const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
+   if(!p.ok||!j?.fileUrl)return {upload:p.status,body:t.slice(0,160)};
+   const g=await fetch(j.fileUrl),b=new Uint8Array(await g.arrayBuffer());
+   return {upload:p.status,download:g.status,bytes:b.length,same:b.length===data.length&&b.every((v,i)=>v===data[i]),expiresAt:j.expiresAt};
+  });
+  return {pass:x.same===true,details:x};
+ });
+ await isolated("Browser-Litterbox",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("reqtype","fileupload");form.append("time","1h");
+   form.append("fileToUpload",new Blob([data],{type:"text/plain"}),"vl-probe.txt");
+   const p=await fetch("https://litterbox.catbox.moe/resources/internals/api.php",{method:"POST",body:form});
+   const url=(await p.text()).trim();
+   if(!p.ok||!url.startsWith("https://"))return {upload:p.status,body:url.slice(0,140)};
+   const g=await fetch(url),b=new Uint8Array(await g.arrayBuffer());
+   return {upload:p.status,download:g.status,bytes:b.length,same:b.length===data.length&&b.every((v,i)=>v===data[i]),url};
+  });
+  return {pass:x.same===true,details:x};
+ });
  await isolated("Browser-WebSocketEndpoints",async()=>{
   const checks=await page.evaluate(async()=>{
    const es=[["ConnectMQ","wss://broker.connectmq.com:8084/mqtt"],["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
