@@ -7,56 +7,64 @@ const rnd=n=>randomBytes(n), sha=b=>createHash("sha256").update(b).digest("hex")
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 function report(name,status,details={}){const x={name,status,...details};results.push(x);console.log(JSON.stringify(x))}
 async function browserBatch(){
- let browser;
+ let browser,page;
  try{
   browser=await chromium.launch({headless:true});
-  const page=await browser.newPage();
+  page=await browser.newPage();
   await page.goto(ORIGIN,{waitUntil:"domcontentloaded",timeout:30000});
-  const mantle=await page.evaluate(async()=>{
+  report("BrowserOrigin","PASS",{origin:await page.evaluate(()=>location.origin)});
+ }catch(e){report("BrowserOrigin","BLOCKED",{error:String(e).slice(0,250)});await browser?.close();return}
+ async function isolated(name,fn){
+  try{const x=await fn();report(name,x.pass?"PASS":"FAIL",x.details??x)}
+  catch(e){report(name,"FAIL",{error:String(e).slice(0,260)})}
+ }
+ await isolated("Browser-MantleDB",async()=>{
+  const x=await page.evaluate(async()=>{
    const ns="vl-browser-"+crypto.randomUUID().replaceAll("-","");
-   const url="https://mantledb.sh/v2/"+ns+"/probe";
+   const u="https://mantledb.sh/v2/"+ns+"/probe";
    const data=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(12000))));
-   const p=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data})});
-   const pt=await p.text();
-   const g=await fetch(url);const gt=await g.text();
-   return {post:p.status,postCors:p.headers.get("access-control-allow-origin"),get:g.status,
-    getCors:g.headers.get("access-control-allow-origin"),same:gt.includes(data),postBody:pt.slice(0,100)};
+   const p=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data})});
+   const pt=await p.text(),g=await fetch(u),gt=await g.text();
+   return {post:p.status,get:g.status,same:gt.includes(data),postBody:pt.slice(0,80)};
   });
-  report("Browser-MantleDB",mantle.post===200&&mantle.get===200&&mantle.same?"PASS":"FAIL",mantle);
-  const one=await page.evaluate(async()=>{
+  return {pass:x.post===200&&x.get===200&&x.same,details:x};
+ });
+ await isolated("Browser-OneJSONFile",async()=>{
+  const x=await page.evaluate(async()=>{
    const c=await fetch("https://onejsonfile.com/api/v1/anonymous",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
-   const ct=await c.text();let j;try{j=JSON.parse(ct)}catch{}
-   if(!c.ok||!j?.token)return {create:c.status,acao:c.headers.get("access-control-allow-origin"),body:ct.slice(0,120)};
+   const t=await c.text();let j;try{j=JSON.parse(t)}catch{}
+   if(!c.ok||!j?.token)return {create:c.status,body:t.slice(0,100)};
    const u="https://onejsonfile.com/api/v1/files/"+encodeURIComponent(j.token);
    const p=await fetch(u,{method:"PUT",headers:{"Content-Type":"application/json"},body:'{"browserProbe":true}'});
-   const g=await fetch(u);return {create:c.status,createCors:c.headers.get("access-control-allow-origin"),put:p.status,
-    putCors:p.headers.get("access-control-allow-origin"),get:g.status,getCors:g.headers.get("access-control-allow-origin"),body:await g.text()};
+   const g=await fetch(u);return {create:c.status,put:p.status,get:g.status,body:await g.text()};
   });
-  report("Browser-OneJSONFile",one.put===200&&one.get===200&&one.body.includes("browserProbe")?"PASS":"FAIL",one);
-  const q=await page.evaluate(async()=>{
-   const name="vl-"+crypto.randomUUID()+".bin";
-   const data=crypto.getRandomValues(new Uint8Array(4096));
+  return {pass:x.put===200&&x.get===200&&x.body.includes("browserProbe"),details:x};
+ });
+ await isolated("Browser-qurl",async()=>{
+  const x=await page.evaluate(async()=>{
+   const name="vl-"+crypto.randomUUID()+".bin",data=crypto.getRandomValues(new Uint8Array(4096));
    const p=await fetch("https://qurl.sh/"+name,{method:"PUT",headers:{"X-Format":"json","X-TTL":"1h","X-Downloads":"2"},body:data});
-   const pt=await p.text();let j;try{j=JSON.parse(pt)}catch{}
-   if(!p.ok||!j?.url)return {put:p.status,putCors:p.headers.get("access-control-allow-origin"),body:pt.slice(0,160)};
-   const g=await fetch(j.url+"?raw=true");const a=new Uint8Array(await g.arrayBuffer());
-   return {put:p.status,putCors:p.headers.get("access-control-allow-origin"),get:g.status,getCors:g.headers.get("access-control-allow-origin"),bytes:a.length,
-    same:a.length===data.length&&a.every((v,i)=>v===data[i])};
+   const t=await p.text();let j;try{j=JSON.parse(t)}catch{}
+   if(!p.ok||!j?.url)return {put:p.status,body:t.slice(0,140)};
+   const g=await fetch(j.url+"?raw=true"),a=new Uint8Array(await g.arrayBuffer());
+   return {put:p.status,get:g.status,bytes:a.length,same:a.length===data.length&&a.every((v,i)=>v===data[i])};
   });
-  report("Browser-qurl",q.same?"PASS":"FAIL",q);
-  const ws=await page.evaluate(async()=>{
-   const endpoints=[["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
+  return {pass:x.same===true,details:x};
+ });
+ await isolated("Browser-WebSocketEndpoints",async()=>{
+  const checks=await page.evaluate(async()=>{
+   const es=[["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
     ["Eclipse","wss://mqtt.eclipseprojects.io:443/mqtt"],["Mosquitto","wss://test.mosquitto.org:8081"]];
-   return await Promise.all(endpoints.map(([name,url])=>new Promise(resolve=>{
-    let s,t=setTimeout(()=>{try{s.close()}catch{};resolve({name,status:"TIMEOUT"})},9000);
+   return Promise.all(es.map(([name,url])=>new Promise(resolve=>{
+    let s;const t=setTimeout(()=>{try{s?.close()}catch{};resolve({name,status:"TIMEOUT"})},9000);
     try{s=new WebSocket(url,"mqtt");s.onopen=()=>{clearTimeout(t);s.close();resolve({name,status:"OPEN"})};
      s.onerror=()=>{clearTimeout(t);resolve({name,status:"ERROR"})}}
     catch(e){clearTimeout(t);resolve({name,status:"ERROR",error:String(e)})}
    })));
   });
-  for(const x of ws)report("Browser-WS-"+x.name,x.status==="OPEN"?"PASS":"FAIL",x);
- }catch(e){report("BrowserOrigin","BLOCKED",{error:String(e).slice(0,300)})}
- finally{await browser?.close()}
+  return {pass:checks.some(x=>x.status==="OPEN"),details:{checks}};
+ });
+ await browser.close();
 }
 async function mqttProbe(name,url){
  const id=rnd(8).toString("hex"),topic="vl-probe/"+id;let sub,pub;
