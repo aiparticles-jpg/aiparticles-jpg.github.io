@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=57";
+import { NtfySecureSignaling } from "./ntfy-signaling.js?v=58";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence } from "./local-store.js?v=24";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
