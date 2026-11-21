@@ -925,7 +925,12 @@ async function subscribeForUser(me){
    debug("Фоновая подписка активна для локальной анонимной идентичности. POST hello пока не отправлялся.");
    return true;
   }catch(error){
-   if(state.secure){setServiceStatus(els.ntfyStatus,"Недоступен");showError(error.message||String(error));setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");}
+   if(state.supabaseUserId){
+    setServiceStatus(els.ntfyStatus,"Supabase / ntfy fallback");
+    debug("ntfy недоступен; контакты с подтверждённой Supabase-связью смогут использовать Supabase: "+(error.message||String(error)));
+   }else if(state.secure){
+    setServiceStatus(els.ntfyStatus,"Недоступен");showError(error.message||String(error));setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");
+   }
    return false;
   }
  }
