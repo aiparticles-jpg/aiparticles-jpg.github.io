@@ -33,7 +33,7 @@ async function sharedStorage(){
   }
  }catch(e){log("CrossRunner-MantleDB-AISense","FAIL",{error:String(e).slice(0,220)})}
 }
-async function mqttCross(name,url){
+async function mqttCross(name,url,interval=40){
  const topic="vl/distributed/"+run+"/"+name.toLowerCase();let c;
  try{
   c=mqtt.connect(url,{clientId:"vl"+run+role+name.slice(0,2),clean:true,connectTimeout:12000,reconnectPeriod:0,protocolVersion:4});
@@ -44,7 +44,7 @@ async function mqttCross(name,url){
   const pub=(m,retain=false)=>new Promise((ok,no)=>c.publish(topic,JSON.stringify(m),{qos:1,retain},e=>e?no(e):ok()));
   await pub({run,from:role,type:"ready"},true);await poll(async()=>remoteReady?true:null,15000);
   const payload=rnd(1024).toString("base64"),start=Date.now();
-  for(let i=0;i<20;i++){await pub({run,from:role,type:"data",seq:i,payload});await wait(40)}
+  for(let i=0;i<20;i++){await pub({run,from:role,type:"data",seq:i,payload});await wait(interval)}
   await poll(async()=>got.size>=20?true:null,15000);
   log("CrossRunner-MQTT-"+name,"PASS",{remotePackets:got.size,packetBytes:1024,elapsedMs:Date.now()-start});
  }catch(e){log("CrossRunner-MQTT-"+name,"FAIL",{error:String(e).slice(0,200)})}
@@ -78,5 +78,5 @@ async function nostrCross(name,url){
  finally{try{ws?.close()}catch{}}
 }
 await sharedStorage();
-await Promise.all([mqttCross("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),mqttCross("Mosquitto","wss://test.mosquitto.org:8081"),mqttCross("EMQX","wss://broker.emqx.io:8084/mqtt")]);
+await Promise.all([mqttCross("ConnectMQ","wss://broker.connectmq.com:8084/mqtt",100),mqttCross("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),mqttCross("Mosquitto","wss://test.mosquitto.org:8081"),mqttCross("EMQX","wss://broker.emqx.io:8084/mqtt")]);
 await Promise.all([nostrCross("nos.lol","wss://nos.lol"),nostrCross("Primal","wss://relay.primal.net")]);

@@ -92,7 +92,7 @@ async function browserBatch(){
  });
  await isolated("Browser-WebSocketEndpoints",async()=>{
   const checks=await page.evaluate(async()=>{
-   const es=[["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
+   const es=[["ConnectMQ","wss://broker.connectmq.com:8084/mqtt"],["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
     ["Eclipse","wss://mqtt.eclipseprojects.io:443/mqtt"],["Mosquitto","wss://test.mosquitto.org:8081"]];
    return Promise.all(es.map(([name,url])=>new Promise(resolve=>{
     let s;const t=setTimeout(()=>{try{s?.close()}catch{};resolve({name,status:"TIMEOUT"})},9000);
@@ -105,7 +105,7 @@ async function browserBatch(){
  });
  await browser.close();
 }
-async function mqttProbe(name,url){
+async function mqttProbe(name,url,interval=40){
  const id=rnd(8).toString("hex"),topic="vl-probe/"+id;let sub,pub;
  try{
   const conn=c=>new Promise((ok,no)=>{const t=setTimeout(()=>no(Error("connect timeout")),12000);
@@ -116,7 +116,7 @@ async function mqttProbe(name,url){
   const payload=rnd(1024),h=sha(payload),count=75,got=new Set();let bad=false;
   sub.on("message",(_,b)=>{try{const x=JSON.parse(b.toString());if(x.h!==h)bad=true;got.add(x.i)}catch{bad=true}});
   const start=Date.now();
-  for(let i=0;i<count;i++){await new Promise((ok,no)=>pub.publish(topic,JSON.stringify({i,h,data:payload.toString("base64")}),e=>e?no(e):ok()));await wait(40)}
+  for(let i=0;i<count;i++){await new Promise((ok,no)=>pub.publish(topic,JSON.stringify({i,h,data:payload.toString("base64")}),e=>e?no(e):ok()));await wait(interval)}
   const until=Date.now()+8000;while(got.size<count&&Date.now()<until)await wait(100);
   report("MQTT-"+name,got.size===count&&!bad?"PASS":"PARTIAL",{sent:count,received:got.size,loss:count-got.size,packetBytes:1024,elapsedMs:Date.now()-start,endpoint:url});
  }catch(e){report("MQTT-"+name,"FAIL",{endpoint:url,error:String(e).slice(0,220)})}
@@ -149,6 +149,7 @@ async function nostr(name,url){
 await browserBatch();
 await Promise.all([
  mqttProbe("EMQX","wss://broker.emqx.io:8084/mqtt"),
+ mqttProbe("ConnectMQ","wss://broker.connectmq.com:8084/mqtt",100),
  mqttProbe("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),
  mqttProbe("Eclipse","wss://mqtt.eclipseprojects.io:443/mqtt"),
  mqttProbe("Mosquitto","wss://test.mosquitto.org:8081")
