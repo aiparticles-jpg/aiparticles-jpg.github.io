@@ -273,3 +273,53 @@ A website can be perfectly usable manually while being unusable from https://aip
 - JSON Blob overview and sign-in requirement: https://jsonblob.com/
 
 **Stage B conclusion:** The account-as-container idea is valid and materially expands the search space. NodeBB Community currently demonstrates the exact no-email username/password registration form, but its profile image limits are small and its API/CORS path is not a turnkey anonymous storage API. For large binary objects, generic file upload/attachment or a capability URL is a better target than an avatar. The best next experiment is a controlled NodeBB account handoff (including session behaviour and exact upload/download hash comparison), alongside the already identified Transloadit and anonymous file-store candidates.
+
+
+## Stage C — live browser validation (2026-11-22)
+
+These are observed tests, not documentation-only claims. The browser tests opened the deployed https://aiparticles-jpg.github.io/ page in Chromium and executed JavaScript fetch() / WebSocket from that exact origin. Transport probes ran from one GitHub Actions runner; they do **not** establish reachability from a Turkish mobile carrier or two physically separate networks.
+
+### Confirmed browser-capable candidates
+
+| Candidate | Actual test | Observed result | Current assessment |
+|---|---|---|---|
+| **AISense temporary storage API** — https://aisenseapi.com/services/v1/storage | Browser multipart/form-data upload of 256 KiB random binary; a second independent Chromium browser context fetched the object; SHA-256 compared | **PASS** — upload 200, download 200, 262,144 bytes, exact SHA-256 match | **Best newly verified anonymous file shuttle.** No account/API key according to service page; service says 24-hour expiry and 5,000 requests/IP/day. File ID is the handoff capability; public to anyone who has it. Verify maximum size, retention and rate limits in our own use. |
+| **MantleDB** — https://mantledb.sh/v2/{namespace}/{path} | Real browser fetch from GitHub Pages; POST 12 KB JSON containing random binary-as-base64; GET and exact content comparison | **PASS** — POST 200, GET 200, content identical | **Strongest simple shared JSON mailbox.** Unclaimed namespace is open read/write; free tier says 100 entries/namespace, 64 KB/entry, 10,000 requests/24h, no inactivity purge. No built-in TTL on free tier. Anyone who guesses/learns the namespace can read/write; use high-entropy names and E2E encryption. |
+| **HiveMQ public MQTT** — wss://broker.hivemq.com:8884/mqtt | Browser WebSocket handshake succeeded; two MQTT clients (publisher/subscriber) on separate client IDs, 75 × 1 KiB messages | **PASS** — 75/75 received, zero observed loss, ~3.1 s | **Promising no-account live message relay.** Public/shared broker, no SLA or privacy. Needs repeated longer tests, independent networks and Turkish mobile validation. |
+| **Eclipse Mosquitto test broker** — wss://test.mosquitto.org:8081 | Browser WebSocket handshake succeeded; MQTT pub/sub, 75 × 1 KiB | **PASS** — 75/75 received, zero observed loss, ~3.1 s | **Promising second no-account MQTT relay.** Public test infrastructure; verify policy, quotas, sustained load and availability before any production use. |
+| **Nostr relays** — wss://nos.lol, wss://relay.primal.net | WebSocket subscription plus signed ephemeral kind-20000 event publish; waited for relay OK acceptance and subscribed echo | **PASS** on both — accepted=true, echoed=true | **Promising small-message mailbox/relay.** No service account; client keypair signs messages. Relay-specific event-size, rate, auth, retention and anti-spam rules still need measuring. Ephemeral events are not durable inbox storage. |
+| **RESTful API** — https://api.restful-api.dev/objects | Browser POST create, GET from object ID, PATCH update, GET verification, DELETE | **PASS** — all operations returned 2xx; data was read back and update verified | **Functional public CRUD store, but weak production fit.** Shared public objects, no account/key and no demonstrated privacy/TTL guarantees. Treat as a disposable public mailbox only; do not store secrets. |
+
+### Browser-inaccessible or failed in this batch
+
+| Candidate | Browser observation | Interpretation |
+|---|---|---|
+| **OneJSONFile** | fetch() from the deployed VoiceLink origin failed with TypeError: Failed to fetch at anonymous-create request | Direct browser access is currently blocked. This matches the earlier OPTIONS response with no Access-Control-Allow-Origin; retain as server-side API only, not a GitHub Pages direct client. |
+| **qurl.sh** | Browser PUT upload failed with TypeError: Failed to fetch | Not directly usable from the current browser origin in this test. It remains a useful manual/CLI file shuttle, but not a direct VoiceLink API unless the service changes CORS policy. |
+| **EMQX public MQTT** — wss://broker.emqx.io:8084/mqtt | Browser WebSocket opened; MQTT test sent 75 × 1 KiB, received 30 | **PARTIAL** — 45/75 were not observed. The other brokers were tested concurrently, so repeat this endpoint in isolation before concluding the broker itself drops 60%. |
+| **Eclipse Projects MQTT** — wss://mqtt.eclipseprojects.io:443/mqtt | Browser WebSocket timed out; MQTT CONNECT did not receive CONNACK | Not usable in this test. |
+| **Nostr Damus relay** — wss://relay.damus.io | Browser WebSocket and subscription worked in an earlier run, but signed-event run later failed to establish WebSocket | Inconsistent; do not count as confirmed until repeated. |
+| **tmp0.cc API** | Official API documentation explicitly says it sends no CORS headers and cross-origin write requests are refused with 403 | **Not a direct browser API** from VoiceLink. Its browser UI also offers a separate WebRTC direct-file-transfer feature; that is a different architecture, not a general data mailbox. |
+
+### Evidence / run records
+
+- Batch browser test, initial: https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44963066600
+- Batch browser test, anonymous file + CRUD: https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44963182543
+- Batch browser test, cross-context binary and Nostr publish: https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44963459213
+- AISense service/API description: https://www.aisense.no/upload
+- MantleDB API, free-tier limits and open namespace model: https://mantledb.sh/
+- HiveMQ public broker endpoint: https://testmqtt.com/
+- EMQX public broker endpoint: https://www.emqx.com/en/mqtt/public-mqtt5-broker
+- tmp0.cc explicit CORS policy and API: https://tmp0.cc/
+- RESTful API public CRUD endpoint: https://restful-api.dev/
+
+### Current ranking after live tests
+
+1. **HiveMQ MQTT** — best observed live pub/sub stream so far (75/75).
+2. **Mosquitto MQTT** — equally clean observed pub/sub result (75/75).
+3. **Nostr (nos.lol, relay.primal.net)** — publish accepted and ephemeral event echoed; strongest decentralised message-relay option so far.
+4. **MantleDB** — browser-proven read/write shared JSON mailbox; good for rendezvous, state, and inbox-like signalling, not high-frequency stream.
+5. **AISense storage** — browser-proven anonymous binary file shuttle with exact cross-context hash match; useful for larger SDP/metadata/blob handoff, not low-latency streaming.
+6. **RESTful API** — works as a shared public CRUD sandbox, but its volatile/shared semantics make it experimental only.
+
+**Important boundary:** these results are from a single GitHub Actions network. The next validation stage must run the shortlisted MQTT/Nostr/storage tests from two genuinely independent clients or networks, then from the user's Android browsers and Turkish mobile/Wi-Fi connections. No result above proves that yet.
