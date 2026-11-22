@@ -447,6 +447,54 @@ async function browserBatch(){
       interpretation:"HTTP 400 with 'File size exceeds project limit' indicates per-file project cap; successful start means this declared size is accepted"
     }};
   });
+  await isolated("Uploadcare-Sequential-1KiB-Voice-Rate-Stream",async()=>{
+    const contextA=await browser.newContext(),contextB=await browser.newContext();
+    try{
+      const sender=await contextA.newPage(),receiver=await contextB.newPage();
+      await Promise.all([sender.goto(ORIGIN,{waitUntil:"domcontentloaded"}),receiver.goto(ORIGIN,{waitUntil:"domcontentloaded"})]);
+      const durationMs=30000,chunkBytes=1024,targetKbps=24;
+      const intervalMs=chunkBytes*8/ (targetKbps*1000)*1000;
+      const started=Date.now(),records=[];
+      let firstReadAt=null,readBytes=0,uploadBytes=0,uploadMs=0,downloadMs=0,errors=0;
+      for(let seq=0;Date.now()-started<durationMs;seq++){
+        const due=started+seq*intervalMs,wait=due-Date.now();
+        if(wait>0) await new Promise(r=>setTimeout(r,wait));
+        const up=await sender.evaluate(async({seq,chunkBytes})=>{
+          const bytes=crypto.getRandomValues(new Uint8Array(chunkBytes));
+          const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),x=>x.toString(16).padStart(2,"0")).join("");
+          const form=new FormData();form.append("UPLOADCARE_PUB_KEY","demopublickey");form.append("UPLOADCARE_STORE","0");
+          form.append("file",new Blob([bytes],{type:"application/octet-stream"}),"vl-audio-chunk-"+seq+".bin");
+          const t=performance.now(),r=await fetch("https://upload.uploadcare.com/base/",{method:"POST",body:form});
+          const body=await r.text();let j;try{j=JSON.parse(body)}catch{}
+          return {status:r.status,uuid:j?.file??null,digest,bytes:bytes.length,ms:performance.now()-t,body:body.slice(0,120)};
+        },{seq,chunkBytes});
+        uploadMs+=up.ms;
+        if(up.status!==200||!up.uuid){errors++;records.push({seq,uploadStatus:up.status,body:up.body});break}
+        uploadBytes+=up.bytes;
+        const down=await receiver.evaluate(async({uuid,expectedDigest})=>{
+          const t=performance.now(),r=await fetch("https://ucarecdn.com/"+uuid+"/",{cache:"no-store"});
+          const b=new Uint8Array(await r.arrayBuffer());
+          const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",b)),x=>x.toString(16).padStart(2,"0")).join("");
+          return {status:r.status,bytes:b.length,digest,ms:performance.now()-t,match:digest===expectedDigest};
+        },{uuid:up.uuid,expectedDigest:up.digest});
+        downloadMs+=down.ms;
+        if(down.status!==200||!down.match||down.bytes!==chunkBytes) errors++;
+        if(firstReadAt===null) firstReadAt=Date.now()-started;
+        readBytes+=down.bytes;
+        records.push({seq,uploadStatus:up.status,downloadStatus:down.status,bytes:down.bytes,match:down.match,uploadMs:Math.round(up.ms),downloadMs:Math.round(down.ms)});
+        if(errors) break;
+      }
+      const elapsedMs=Date.now()-started,measuredKbps=readBytes*8/elapsedMs;
+      return {pass:errors===0&&readBytes>0&&records.length>1,details:{
+        design:"Upload one small independent binary object, read it from a second browser context, then continue with the next object",
+        targetKbps,chunkBytes,intervalMs,durationMs,elapsedMs,chunks:records.length,uploadBytes,readBytes,
+        measuredKbps:Number(measuredKbps.toFixed(2)),firstReadAtMs:firstReadAt,
+        avgUploadMs:records.length?Math.round(uploadMs/records.length):null,
+        avgDownloadMs:records.length?Math.round(downloadMs/records.length):null,
+        errors,allHashesMatched:records.every(x=>x.match===true),sample:records.slice(0,3),last:records.slice(-1)[0]??null
+      }};
+    }finally{await Promise.all([contextA.close(),contextB.close()])}
+  });
   await isolated("Uploadcare-Two-Independent-Browser-Connections",async()=>{
      const contextA=await browser.newContext(),contextB=await browser.newContext();
      try{
