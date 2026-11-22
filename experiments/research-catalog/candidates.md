@@ -218,3 +218,8 @@ The Zoom Video SDK web docs advertise file transfer and provide a Chat SDK file 
 Zoom's raw-data processor API exposes live audio/video frames for processing, but this is distinct from its chat file attachment API. Do not treat raw media processor access as arbitrary binary messaging. Its general SDK advertises data streams and file transfer, so inspect those APIs independently.
 
 - Browser raw data: https://developers.zoom.us/docs/video-sdk/web/raw-data/
+
+
+## 6. Cloudflare Worker and public backend research
+
+A dedicated report now tracks public Cloudflare Worker endpoints, public keys, SFU/TURN services, file relays and self-deploy Worker projects: [cloudflare-workers.md](cloudflare-workers.md). Current strongest results: Mazupo public SFU DataChannels passed bidirectional binary early-read; Weblink public TURN passed forced relay audio RTP; CopyPaesto public Worker health passed and full file relay is under test.
