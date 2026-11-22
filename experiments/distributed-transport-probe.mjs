@@ -125,6 +125,55 @@ async function svixCross(){
   }
  }catch(e){log("CrossRunner-SvixPlay","FAIL",{error:String(e).slice(0,220)})}
 }
+async function writeAsCross(){
+ const base="https://mantledb.sh/v2/vlwrites"+run+"/";
+ try{
+  if(role==="A"){
+   const content="VL-WRITEAS-CROSS-"+run+"-"+rnd(8).toString("hex");
+   const p=await json("https://write.as/api/posts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({body:content,title:"VoiceLink cross-runner probe"})});
+   if(p.code!==201||!p.data?.id||!p.data?.token)throw Error("Write.as create response "+JSON.stringify(p).slice(0,150));
+   await json(base+"meta",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:p.data.id,token:p.data.token,content})});
+   const ack=await poll(async()=>{try{return await json(base+"ack")}catch{return null}});
+   const final=await json("https://write.as/api/posts/"+p.data.id);
+   const verified=final.data?.body===ack.updatedBody;
+   await fetch("https://write.as/api/posts/"+p.data.id+"?token="+encodeURIComponent(p.data.token),{method:"DELETE"});
+   if(!verified)throw Error("Write.as final content mismatch");
+   log("CrossRunner-WriteAs","PASS",{postId:p.data.id,updatedByPeer:true,deleted:true});
+  }else{
+   const meta=await poll(async()=>{try{return await json(base+"meta")}catch{return null}});
+   const g=await json("https://write.as/api/posts/"+meta.id);
+   if(g.data?.body!==meta.content)throw Error("Write.as initial body mismatch");
+   const updatedBody=meta.content+"-UPDATED-BY-B";
+   const u=await json("https://write.as/api/posts/"+meta.id,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:meta.token,body:updatedBody})});
+   if(u.data?.body!==updatedBody)throw Error("Write.as update failed");
+   await json(base+"ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ok:true,updatedBody})});
+   log("CrossRunner-WriteAs","PASS",{postId:meta.id,readByB:true,updatedByB:true});
+  }
+ }catch(e){log("CrossRunner-WriteAs","FAIL",{error:String(e).slice(0,220)})}
+}
+async function pasteGgCross(){
+ const base="https://mantledb.sh/v2/vlpastegg"+run+"/";
+ try{
+  if(role==="A"){
+   const value="VL-PASTEGG-CROSS-"+run+"-"+rnd(8).toString("hex");
+   const p=await json("https://api.paste.gg/v1/pastes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+    name:"VoiceLink probe",description:"temporary synthetic probe",visibility:"unlisted",expires:new Date(Date.now()+3600000).toISOString(),
+    files:[{name:"probe.txt",content:{format:"text",value}}]})});
+   if(p.status!=="success"||!p.result?.id||!p.result?.deletion_key)throw Error("Paste.gg create response "+JSON.stringify(p).slice(0,160));
+   await json(base+"meta",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:p.result.id,key:p.result.deletion_key,value})});
+   const ack=await poll(async()=>{try{return await json(base+"ack")}catch{return null}});
+   await fetch("https://api.paste.gg/v1/pastes/"+p.result.id,{method:"DELETE",headers:{"Authorization":"Key "+p.result.deletion_key}});
+   log("CrossRunner-PasteGG","PASS",{pasteId:p.result.id,peerAck:ack.ok===true,deleted:true});
+  }else{
+   const meta=await poll(async()=>{try{return await json(base+"meta")}catch{return null}});
+   const g=await json("https://api.paste.gg/v1/pastes/"+meta.id+"?full=true");
+   const found=(g.result?.files??[]).some(f=>f.content?.value===meta.value);
+   if(!found)throw Error("Paste.gg file content mismatch");
+   await json(base+"ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ok:true})});
+   log("CrossRunner-PasteGG","PASS",{pasteId:meta.id,bytes:meta.value.length});
+  }
+ }catch(e){log("CrossRunner-PasteGG","FAIL",{error:String(e).slice(0,220)})}
+}
 async function mqttCross(name,url,interval=40){
  const topic="vl/distributed/"+run+"/"+name.toLowerCase();let c;
  try{
@@ -173,5 +222,7 @@ await sharedStorage();
 await fileHandoff();
 await kappaHandoff();
 await svixCross();
+await writeAsCross();
+await pasteGgCross();
 await Promise.all([mqttCross("ConnectMQ","wss://broker.connectmq.com:8084/mqtt",100),mqttCross("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),mqttCross("Mosquitto","wss://test.mosquitto.org:8081"),mqttCross("EMQX","wss://broker.emqx.io:8084/mqtt",100)]);
 await Promise.all([nostrCross("nos.lol","wss://nos.lol"),nostrCross("Primal","wss://relay.primal.net")]);

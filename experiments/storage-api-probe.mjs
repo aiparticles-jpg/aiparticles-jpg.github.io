@@ -335,6 +335,87 @@ async function browserBatch(){
   });
   return {pass:x.read===200&&x.found,details:x};
  });
+ await isolated("Browser-KeyVal-POST",async()=>{
+  const x=await page.evaluate(async()=>{
+   const key="vlprobe-"+crypto.randomUUID().replaceAll("-","").slice(0,24),v1="A".repeat(120),v2="B".repeat(120);
+   const s=await fetch("https://api.keyval.org/set",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key,val:v1})});
+   const sj=await s.json();
+   const g=await fetch("https://api.keyval.org/get",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key})});
+   const gj=await g.json();
+   const u=await fetch("https://api.keyval.org/set",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key,val:v2})});
+   const uj=await u.json();
+   const h=await fetch("https://api.keyval.org/get",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key})});
+   const hj=await h.json();
+   return {set:s.status,setBody:sj,read:g.status,firstMatch:gj.val===v1,firstBody:gj,overwrite:u.status,overwriteBody:uj,secondMatch:hj.val===v2,secondBody:hj};
+  });
+  return {pass:x.firstMatch&&x.secondMatch,details:x};
+ });
+ await isolated("Browser-PasteGG",async()=>{
+  const x=await page.evaluate(async()=>{
+   const value="VL-PROBE-"+crypto.randomUUID()+"-"+"g".repeat(4096),expires=new Date(Date.now()+3600000).toISOString();
+   const body={name:"VoiceLink probe",description:"temporary synthetic probe",visibility:"unlisted",expires,
+    files:[{name:"probe.txt",content:{format:"text",value}}]};
+   const p=await fetch("https://api.paste.gg/v1/pastes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+   const pt=await p.text();let pj;try{pj=JSON.parse(pt)}catch{}
+   const r=pj?.result??{},id=r.id,delkey=r.deletion_key;
+   if(!p.ok||!id)return {create:p.status,body:pt.slice(0,180)};
+   const g=await fetch("https://api.paste.gg/v1/pastes/"+id+"?full=true"),gt=await g.text();
+   const match=gt.includes(value);
+   let del=null;if(delkey){const d=await fetch("https://api.paste.gg/v1/pastes/"+id,{method:"DELETE",headers:{"Authorization":"Key "+delkey}});del=d.status}
+   return {create:p.status,read:g.status,match,delete:del,expires:r.expires};
+  });
+  return {pass:x.create===201&&x.read===200&&x.match&&x.delete===204,details:x};
+ });
+ await isolated("Browser-PasteMyst-v3",async()=>{
+  const x=await page.evaluate(async()=>{
+   const value="VL-PROBE-"+crypto.randomUUID()+"-"+"m".repeat(2048);
+   const p=await fetch("https://paste.myst.rs/api/v3/pastes",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({title:"VoiceLink probe",expiresIn:"1h",anonymous:true,pasties:[{title:"probe.txt",content:value,language:"Text"}]})});
+   const pt=await p.text();let pj;try{pj=JSON.parse(pt)}catch{}
+   const id=pj?.id??pj?.data?.id;
+   if(!p.ok||!id)return {create:p.status,body:pt.slice(0,180)};
+   const g=await fetch("https://paste.myst.rs/api/v3/pastes/"+encodeURIComponent(id)),gj=await g.json();
+   const content=gj?.pasties?.[0]?.content??gj?.data?.pasties?.[0]?.content;
+   return {create:p.status,read:g.status,match:content===value,id,expiresIn:gj?.expiresIn??gj?.data?.expiresIn};
+  });
+  return {pass:x.create===201&&x.read===200&&x.match,details:x};
+ });
+ await isolated("Browser-WriteAs-AnonymousPost",async()=>{
+  const x=await page.evaluate(async()=>{
+   const body1="VL-PROBE-"+crypto.randomUUID()+"-"+"w".repeat(2048),body2=body1+"-UPDATED";
+   const p=await fetch("https://write.as/api/posts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({body:body1,title:"VoiceLink anonymous probe"})});
+   const pt=await p.text();let pj;try{pj=JSON.parse(pt)}catch{}
+   const d=pj?.data??{},id=d.id,token=d.token;
+   if(!p.ok||!id||!token)return {create:p.status,body:pt.slice(0,180)};
+   const g=await fetch("https://write.as/api/posts/"+id),gj=await g.json();
+   const u=await fetch("https://write.as/api/posts/"+id,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,body:body2})});
+   const uj=await u.json();
+   const h=await fetch("https://write.as/api/posts/"+id),hj=await h.json();
+   const del=await fetch("https://write.as/api/posts/"+id+"?token="+encodeURIComponent(token),{method:"DELETE"});
+   return {create:p.status,read:g.status,firstMatch:gj?.data?.body===body1,update:u.status,updated:uj?.data?.body===body2||uj?.data?.body===body2,secondMatch:hj?.data?.body===body2,delete:del.status,id};
+  });
+  return {pass:x.create===201&&x.read===200&&x.firstMatch&&x.update===200&&x.secondMatch&&x.delete===204,details:x};
+ });
+ await isolated("Browser-Telegraph-AnonymousAccount",async()=>{
+  const x=await page.evaluate(async()=>{
+   const form=o=>new URLSearchParams(Object.entries(o).map(([k,v])=>[k,typeof v==="string"?v:JSON.stringify(v)]));
+   const a=await fetch("https://api.telegra.ph/createAccount",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:form({short_name:"VL"+crypto.randomUUID().slice(0,8),author_name:"Anonymous"})});
+   const aj=await a.json(),token=aj?.result?.access_token;
+   if(!a.ok||!aj.ok||!token)return {account:a.status,body:aj};
+   const title="VL probe "+crypto.randomUUID(),text="VL-TELEGRAPH-"+crypto.randomUUID();
+   const content=[{tag:"p",children:[text]}];
+   const p=await fetch("https://api.telegra.ph/createPage",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+    body:form({access_token:token,title,content,return_content:true})});
+   const pj=await p.json(),path=pj?.result?.path;
+   if(!p.ok||!pj.ok||!path)return {account:a.status,create:p.status,body:pj};
+   const g=await fetch("https://api.telegra.ph/getPage",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+    body:form({path,return_content:true})});
+   const gj=await g.json(),flat=JSON.stringify(gj?.result?.content??[]);
+   const revoke=await fetch("https://api.telegra.ph/revokeAccessToken",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:form({access_token:token})});
+   return {account:a.status,create:p.status,read:g.status,found:flat.includes(text),revoke:revoke.status,pageCount:aj.result.page_count,path};
+  });
+  return {pass:x.create===200&&x.read===200&&x.found&&x.revoke===200,details:x};
+ });
  await isolated("Browser-WebSocketEndpoints",async()=>{
   const checks=await page.evaluate(async()=>{
    const es=[["ConnectMQ","wss://broker.connectmq.com:8084/mqtt"],["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
