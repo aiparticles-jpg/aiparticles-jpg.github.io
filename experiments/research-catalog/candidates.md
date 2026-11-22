@@ -223,3 +223,8 @@ Zoom's raw-data processor API exposes live audio/video frames for processing, bu
 ## 6. Cloudflare Worker and public backend research
 
 A dedicated report now tracks public Cloudflare Worker endpoints, public keys, SFU/TURN services, file relays and self-deploy Worker projects: [cloudflare-workers.md](cloudflare-workers.md). Current strongest results: Mazupo public SFU DataChannels passed bidirectional binary early-read; Weblink public TURN passed forced relay audio RTP; CopyPaesto public Worker health passed and full file relay is under test.
+
+
+## 7. Image-only upload APIs
+
+See [image-upload.md](image-upload.md) for Uploadcare, Cloudinary, Imgur, ImgBB, ImageKit and Cloudflare Images. Uploadcare's official demo public key passed browser PNG upload and CDN retrieval; its Free plan is image-only. No early-readable partial image object has been confirmed.

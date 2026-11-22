@@ -6,6 +6,7 @@ Started: 2026-11-22. Research only; this catalogue does not authorize changes to
 - [Evaluation criteria and evidence levels](criteria.md)
 - [Candidate register](candidates.md)
 - [Cloudflare Workers, public relays and SFU testbeds](cloudflare-workers.md)
+- [Image-only upload APIs and public client keys](image-upload.md)
 - [Candidate record template](candidate-template.md)
 - [Earlier public stream / relay research (Stage A)](../public-stream-transports-stage-a.md)
 

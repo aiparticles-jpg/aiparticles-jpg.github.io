@@ -8,7 +8,7 @@ The strongest current findings are:
 
 1. **Mazupo public Cloudflare SFU** — published device/viewer public keys issue 30-second access tokens. The public Worker accepted requests from the VoiceLink GitHub Pages origin. Two browser clients then exchanged binary DataChannel data in both directions through the SFU, with early receiver delivery confirmed.
 2. **Weblink public TURN credential endpoint** — a public Worker issues temporary Cloudflare TURN credentials. Forced relay-only WebRTC successfully carried both a DataChannel message and audio RTP. This is TURN relay, not SFU.
-3. **CopyPaesto** — a public Worker and public app implement a file-transfer fallback through WebSocket/ Durable Objects. The source documents streaming 512 KiB frames and receiver writes while the sender continues. Its public health endpoint is reachable from the VoiceLink GitHub Pages origin. Full live file-transfer test is pending.
+3. **CopyPaesto** — a public Worker and public app implement a file-transfer fallback through WebSocket/Durable Objects. A 40 MiB transfer with direct WebRTC deliberately disabled completed through the Worker relay; the receiver had already received 1.5 MiB while the sender had sent only 6.0 MiB. The public health endpoint also accepts the VoiceLink GitHub Pages origin.
 4. **Cloudflare Realtime SFU itself** — official service supports server-forwarded DataChannels, including binary payloads, and audio/video. Its free egress allowance is 1,000 GB/month shared with TURN. A small Worker backend is required for token minting and session/channel allocation; it does not need to be always running.
 
 ## 1. Public deployed services
@@ -31,9 +31,10 @@ The strongest current findings are:
 - No end-user registration was required for the test.
 - Public server is shared; room IDs must be random/unpredictable. The Worker source/config documents a token rate limit of 20 requests/minute/IP and room/device/viewer caps.
 
-**Observed browser test**
+**Observed browser tests**
 - Two independent browser pages joined one random room: device simulator and viewer.
-- Device used a generated test-pattern video; viewer received a 640×360 video track.
+- Device test-pattern video reached viewer at 640×360.
+- A separate fake-camera/microphone test received 7,591 bytes of inbound audio RTP (129 packets) and video frames at the viewer.
 - Reliable DataChannel opened in both directions.
 - Viewer took control, receiving the one-subscriber `canReply` permission.
 - Sent 256 KiB viewer→device and 256 KiB device→viewer, using 16 KiB binary fragments.
@@ -41,7 +42,8 @@ The strongest current findings are:
 - Receiver got the first 16 KiB while the sender had sent only 16 KiB of 256 KiB. The test deliberately waited for each chunk to arrive before sending the next.
 - **Verdict: E5 server-forwarded binary DataChannel + early-read, bidirectional.**
 
-Test run: https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/45023570612
+Binary DataChannel test: https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/45023570612
+Audio/video test: https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/45024687805
 
 **Capabilities and limitations**
 - This is a Cloudflare Realtime SFU path, not direct peer-to-peer.
@@ -98,10 +100,21 @@ This endpoint uses another project's Cloudflare account and quota. It is a valua
 - Turbo fallback uses TLS/WSS and exposes bulk file bytes to the Worker/any TLS-inspecting proxy. Clipboard content, filenames, signaling and transfer controls are encrypted in the browser; an older end-to-end encrypted chunk protocol remains in the code.
 - No file-type restriction was found; arbitrary files, including image MIME types, are in scope. No special image transcoding or preview pipeline was established.
 
-**Evidence**
+**Observed forced-relay file test**
+- Two independent Chromium processes used the public app at `https://albyaty.github.io/CopyPaesto/`.
+- The test forced all WebRTC peer connections to `iceTransportPolicy: "relay"` and replaced the app's TURN response with STUN-only configuration. Direct WebRTC therefore could not form a relay candidate; the app switched to its Worker WebSocket fallback.
+- A synthetic 40 MiB file completed at 100% on both clients.
+- Worker WebSocket binary counters matched exactly: 41,949,680 bytes sent and received (file payload plus framing).
+- During transfer, sender had sent 6,292,452 relay bytes while receiver had received 1,573,113 bytes. Both were far below the 40 MiB total: the receiver was already consuming the file before the sender finished.
+- Receiver used the app's memory fallback (the test disabled the native save picker), not a physical disk writer. The source code separately supports Chrome/Edge streaming to disk.
+- **Verdict: E5 for Worker WebSocket file relay and early-read; 40 MiB full transfer passed.**
+
+Test run: https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/45024687805
+
+**Evidence and origin caveat**
 - Source-level streaming architecture: E1.
-- Public Worker health/CORS reachability from VoiceLink origin: E3.
-- Full two-client Worker file relay with early-read: pending the current browser test.
+- Public Worker health/CORS reachability from VoiceLink origin `https://aiparticles-jpg.github.io`: E3. The Worker applies the same origin allowlist before all routes, including WebSocket upgrades.
+- Full file transfer was performed on the app's own origin `https://albyaty.github.io`; an end-to-end transfer initiated from the VoiceLink origin has not yet been run.
 - This is a complete app-specific protocol, not a generic public arbitrary-message API.
 
 ### 1.4 YSTP — public WebSocket file relay (not currently verified usable)
@@ -193,9 +206,9 @@ Official pricing: https://developers.cloudflare.com/realtime/sfu/platform/pricin
 
 | Service | Public backend | Server media | Binary relay | Early read | Browser-origin test |
 |---|---|---|---|---|---|
-| Mazupo CF-SFU | Yes, public keys | SFU video confirmed; audio documented, test pending | Yes, bidirectional DataChannel | **PASS** | Token API PASS; two-page DataChannel PASS |
+| Mazupo CF-SFU | Yes, public keys | **SFU audio/video PASS** | Yes, bidirectional DataChannel | **PASS** | Token API, audio/video and two-page DataChannel PASS |
 | Weblink TURN | Yes, open credential endpoint | **TURN audio RTP PASS** | DataChannel over TURN PASS | Live packets, no storage | CORS/preflight PASS |
-| CopyPaesto | Yes, app-specific Worker | No server media | Worker WebSocket file fallback in source | Source says streaming; live test pending | Health PASS |
+| CopyPaesto | Yes, app-specific Worker | No server media | Worker WebSocket file fallback | **PASS 40 MiB early-read** | Health from VoiceLink origin PASS; full transfer on app origin PASS |
 | YSTP | Public site found | No | Source supports binary WS | Source says streaming | WebSocket test FAIL |
 | P2PCF | Old public endpoint | No; signaling only | No server media | N/A | Browser fetch FAIL |
 | Cloudflare Meet | Public demo | SFU audio/video | No file transport established | N/A | Public demo available |
