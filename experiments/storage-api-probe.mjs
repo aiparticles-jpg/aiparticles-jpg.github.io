@@ -404,21 +404,39 @@ async function browserBatch(){
       return {pass:stats.audio.some(x=>x.bytesReceived>0)&&stats.video.some(x=>x.bytesReceived>0),roomLength:room.length,stats};
     }finally{await Promise.all([devicePage?.close().catch(()=>{}),viewerPage?.close().catch(()=>{})])}
   });
-  await isolated("Uploadcare-Demo-Public-Key-Browser-Image-Upload",async()=>{
-    const x=await page.evaluate(async()=>{
-      const encoded="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/t3cAAAAASUVORK5CYII=";
-      const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
-      const form=new FormData();form.append("UPLOADCARE_PUB_KEY","demopublickey");form.append("UPLOADCARE_STORE","0");
-      form.append("file",new Blob([bytes],{type:"image/png"}),"vl-probe.png");
-      const upload=await fetch("https://upload.uploadcare.com/base/",{method:"POST",body:form});
-      const body=await upload.text();let data;try{data=JSON.parse(body)}catch{data={raw:body}};
-      const uuid=data.file??null;
-      let cdnStatus=null,cdnBytes=0,cdnType=null;
-      if(uuid){const cdn=await fetch("https://ucarecdn.com/"+uuid+"/");cdnStatus=cdn.status;cdnBytes=(await cdn.arrayBuffer()).byteLength;cdnType=cdn.headers.get("content-type")}
-      return {httpStatus:upload.status,uuid,cdnStatus,cdnBytes,cdnType,response:data,sourceBytes:bytes.length};
-    });
-    return {pass:x.httpStatus===200&&!!x.uuid&&x.cdnStatus===200&&x.cdnBytes===x.sourceBytes,details:x};
-  });
+  await isolated("Uploadcare-Two-Independent-Browser-Connections",async()=>{
+     const contextA=await browser.newContext(),contextB=await browser.newContext();
+     try{
+       const sender=await contextA.newPage(),receiver=await contextB.newPage();
+       await Promise.all([sender.goto(ORIGIN,{waitUntil:"domcontentloaded"}),receiver.goto(ORIGIN,{waitUntil:"domcontentloaded"})]);
+       const uploaded=await sender.evaluate(async()=>{
+         const encoded="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/t3cAAAAASUVORK5CYII=";
+         const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
+         const form=new FormData();form.append("UPLOADCARE_PUB_KEY","demopublickey");form.append("UPLOADCARE_STORE","0");
+         form.append("file",new Blob([bytes],{type:"image/png"}),"vl-two-client-probe.png");
+         const response=await fetch("https://upload.uploadcare.com/base/",{method:"POST",body:form});
+         const body=await response.text();let json;try{json=JSON.parse(body)}catch{json={raw:body}};
+         return {status:response.status,uuid:json.file??null,sourceBytes:bytes.length,response:json};
+       });
+       if(uploaded.status!==200||!uploaded.uuid)throw Error("sender upload failed: "+JSON.stringify(uploaded).slice(0,180));
+       const received=await receiver.evaluate(async(uuid)=>{
+         const url="https://ucarecdn.com/"+uuid+"/";
+         const response=await fetch(url,{cache:"no-store"});
+         const bytes=new Uint8Array(await response.arrayBuffer());
+         let range=null;
+         try{const partial=await fetch(url,{headers:{Range:"bytes=0-15"},cache:"no-store"});
+           range={status:partial.status,contentRange:partial.headers.get("content-range"),bytes:(await partial.arrayBuffer()).byteLength};
+         }catch(e){range={error:String(e).slice(0,120)}}
+         const objectUrl=URL.createObjectURL(new Blob([bytes],{type:"image/png"}));
+         const image=new Image();image.src=objectUrl;let decoded=false;try{await image.decode();decoded=true}catch{}
+         URL.revokeObjectURL(objectUrl);
+         return {status:response.status,bytes:bytes.length,type:response.headers.get("content-type"),decoded,range};
+       },uploaded.uuid);
+       return {pass:uploaded.status===200&&received.status===200&&received.bytes===uploaded.sourceBytes&&received.decoded,
+         details:{senderContext:"isolated browser context A",receiverContext:"isolated browser context B",uploadStatus:uploaded.status,
+           uuid:uploaded.uuid,sourceBytes:uploaded.sourceBytes,receiver:received}};
+     }finally{await Promise.all([contextA.close(),contextB.close()])}
+   });
   await isolated("P2PCF-Public-Worker",async()=>{
     const x=await page.evaluate(async()=>{
       const r=await fetch("https://p2pcf.minddrop.workers.dev",{cache:"no-store"});
