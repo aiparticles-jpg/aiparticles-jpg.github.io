@@ -90,11 +90,14 @@ async function browserBatch(){
   }
   await workerProbe("CopyPaesto-Worker","https://copypaesto-relay.albyaty.workers.dev","/health",null);
   await workerProbe("Weblink-Worker","https://ws.webl.ink",null,"/turn-credentials");
-  await isolated("YSTP-Public-Worker-Streaming-File-Relay",async()=>{
-    const x=await page.evaluate(async()=>{
+  await isolated("YSTP-Public-Worker-Same-Origin-Streaming-File-Relay",async()=>{
+    const ystpPage=await browser.newPage();
+    await ystpPage.goto("https://ystp.dbk.wtf/");
+    const x=await ystpPage.evaluate(async()=>{
+      const wsBase=location.origin.replace(/^https:/,"wss:");
       const wait=ms=>new Promise(r=>setTimeout(r,ms));
       const timed=(promise,label,ms=25000)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(Error(label+" timeout")),ms))]);
-      const sender=new WebSocket("wss://ystp.dbk.wtf/send");
+      const sender=new WebSocket(wsBase+"/send");
       await timed(new Promise((resolve,reject)=>{sender.onopen=resolve;sender.onerror=()=>reject(Error("sender websocket error"))}),"sender open");
       const code=await timed(new Promise((resolve,reject)=>{sender.onmessage=e=>{try{const j=JSON.parse(e.data);if(j.code)resolve(j.code)}catch{}}}),"session code");
       await wait(250);
@@ -102,7 +105,7 @@ async function browserBatch(){
       const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))).map(x=>x.toString(16).padStart(2,"0")).join("");
       const expectedHash=await digest(payload);
       let sentBytes=0,senderDone=false,firstChunk=null,receivedBytes=0,metadata=null;
-      const receiver=new WebSocket("wss://ystp.dbk.wtf/receive/"+encodeURIComponent(code));
+      const receiver=new WebSocket(wsBase+"/receive/"+encodeURIComponent(code));
       receiver.binaryType="arraybuffer";
       await timed(new Promise((resolve,reject)=>{receiver.onopen=resolve;receiver.onerror=()=>reject(Error("receiver websocket error"))}),"receiver open");
       let resolveMeta,resolveFirst,resolveComplete;
@@ -122,6 +125,7 @@ async function browserBatch(){
       sender.send(JSON.stringify({name:"vl-stream-probe.bin",size}));
       await wait(100);
       const meta=await timed(metaPromise,"receiver metadata");
+      await wait(250);
       const senderReady=timed(new Promise((resolve,reject)=>{sender.onmessage=e=>{if(e.data==="LET_IT_RIP")resolve();else if(e.data==="ERROR")reject(Error("sender rejected"))}}),"sender approval");
       receiver.send("LET_IT_RIP");
       await senderReady;
@@ -141,6 +145,7 @@ async function browserBatch(){
       return {codeLength:code.length,metadataSize:meta.size,bytesSent:sentBytes,bytesReceived:receivedBytes,
         firstChunk,hashMatch:actualHash===expectedHash,chunkCount:chunks.length};
     });
+    await ystpPage.close();
     return {pass:x.metadataSize===1048576&&x.bytesSent===1048576&&x.bytesReceived===1048576&&
       x.firstChunk?.senderAlreadyFinished===false&&x.firstChunk?.senderBytesSent<1048576&&x.hashMatch,details:x};
   });
