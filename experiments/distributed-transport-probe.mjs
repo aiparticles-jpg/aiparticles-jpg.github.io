@@ -184,10 +184,13 @@ async function mqttCross(name,url,interval=40){
   await new Promise((ok,no)=>c.subscribe(topic,{qos:1},e=>e?no(e):ok()));
   const pub=(m,retain=false)=>new Promise((ok,no)=>c.publish(topic,JSON.stringify(m),{qos:1,retain},e=>e?no(e):ok()));
   await pub({run,from:role,type:"ready"},true);await poll(async()=>remoteReady?true:null,15000);
-  const payload=rnd(1024).toString("base64"),start=Date.now();
-  for(let i=0;i<20;i++){await pub({run,from:role,type:"data",seq:i,payload});await wait(interval)}
-  await poll(async()=>got.size>=20?true:null,15000);
-  log("CrossRunner-MQTT-"+name,"PASS",{remotePackets:got.size,packetBytes:1024,elapsedMs:Date.now()-start});
+  const profiles=[];let seq=0,previousReceived=0;
+  for(const rate of [16,24,40]){const packetBytes=Math.round(rate*1000/8/10),count=100,start=Date.now();let payloadBytes=0;
+    for(let i=0;i<count;i++){const payload=rnd(packetBytes).toString("base64");await pub({run,from:role,type:"data",seq:seq++,rate,bytes:packetBytes,payload});payloadBytes+=packetBytes;await wait(100)}
+    await poll(async()=>got.size>=seq?true:null,15000);const received=got.size-previousReceived;previousReceived=got.size;
+    profiles.push({targetKbps:rate,sentPackets:count,receivedPackets:received,payloadBytes,elapsedMs:Date.now()-start,
+      measuredPayloadKbps:payloadBytes*8/(Date.now()-start)*1000,pass:received===count});}
+  log("CrossRunner-MQTT-"+name,profiles.every(x=>x.pass)?"PASS":"PARTIAL",{profiles});
  }catch(e){log("CrossRunner-MQTT-"+name,"FAIL",{error:String(e).slice(0,200)})}
  finally{try{if(c?.connected){c.publish(topic,"",{qos:1,retain:true});c.end(true)}}catch{}}
 }

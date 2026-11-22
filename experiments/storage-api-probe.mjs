@@ -69,7 +69,8 @@ async function browserBatch(){
           async function sendRate(channel,stats,rate){stats.bytes=0;stats.packets=0;stats.bad=0;stats.lastSeq=-1;const packet=Math.round(rate*1000/8/10);let sent=0,count=0,maxBuffered=0;const until=performance.now()+10000;while(performance.now()<until){if(channel.bufferedAmount>128*1024)await new Promise(r=>setTimeout(r,10));const q=new Uint8Array(packet);new DataView(q.buffer).setUint32(0,count);q.fill((count*23+9)&255,4);channel.send(q);sent+=q.length;count++;maxBuffered=Math.max(maxBuffered,channel.bufferedAmount);await new Promise(r=>setTimeout(r,100))}await new Promise(r=>setTimeout(r,500));return {rateKbps:rate,sentBytes:sent,receivedBytes:stats.bytes,sentPackets:count,receivedPackets:stats.packets,sequenceErrors:stats.bad,maxBuffered,pass:sent===stats.bytes&&count===stats.packets&&stats.bad===0}}
           const rates=[];for(const rate of [16,24,40])rates.push(await sendRate(dc,rateStats,rate));
           const reverseStats={bytes:0,packets:0,bad:0,lastSeq:-1};
-          remoteDc.onmessage=ev=>{if(typeof ev.data==="string")return;const q=new Uint8Array(ev.data);const seq=new DataView(q.buffer,q.byteOffset,q.byteLength).getUint32(0);if(seq!==reverseStats.lastSeq+1)reverseStats.bad++;reverseStats.lastSeq=seq;reverseStats.bytes+=q.length;reverseStats.packets++};
+          dc.onmessage=ev=>{if(typeof ev.data==="string")return;const q=new Uint8Array(ev.data);const seq=new DataView(q.buffer,q.byteOffset,q.byteLength).getUint32(0);if(seq!==reverseStats.lastSeq+1)reverseStats.bad++;reverseStats.lastSeq=seq;reverseStats.bytes+=q.length;reverseStats.packets++};
+          remoteDc.onmessage=ev=>{};
           const reverse=await sendRate(remoteDc,reverseStats,24);
           const stats=await a.getStats();let pair;
           for(const s of stats.values())if(s.type==="transport"&&s.selectedCandidatePairId)pair=stats.get(s.selectedCandidatePairId);
