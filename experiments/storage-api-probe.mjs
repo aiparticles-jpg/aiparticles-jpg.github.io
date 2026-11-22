@@ -251,6 +251,117 @@ async function browserBatch(){
       await Promise.all([devicePage?.close().catch(()=>{}),viewerPage?.close().catch(()=>{})]);
     }
   });
+  await isolated("CopyPaesto-Public-Worker-Forced-WebSocket-File-Relay",async()=>{
+    let browser2,senderPage,receiverPage;
+    try{
+      browser2=await chromium.launch({headless:true,args:["--autoplay-policy=no-user-gesture-required"]});
+      senderPage=await browser.newPage();receiverPage=await browser2.newPage();
+      const instrumentSender=()=>{
+        window.__vlWsBinarySent=0;window.__vlWsBinaryReceived=0;window.__vlWsUrls=[];
+        const nativeSend=WebSocket.prototype.send;
+        WebSocket.prototype.send=function(data){
+          if(data instanceof ArrayBuffer){window.__vlWsBinarySent+=data.byteLength;const start=performance.now();while(performance.now()-start<5){}}
+          else if(ArrayBuffer.isView(data))window.__vlWsBinarySent+=data.byteLength;
+          return nativeSend.call(this,data);
+        };
+        const nativeAdd=WebSocket.prototype.addEventListener;
+        WebSocket.prototype.addEventListener=function(type,listener,options){
+          if(type!=="message")return nativeAdd.call(this,type,listener,options);
+          const wrapped=function(event){
+            if(event.data instanceof ArrayBuffer)window.__vlWsBinaryReceived+=event.data.byteLength;
+            else if(event.data instanceof Blob)window.__vlWsBinaryReceived+=event.data.size;
+            return listener.call(this,event);
+          };
+          return nativeAdd.call(this,type,wrapped,options);
+        };
+        const NativePC=window.RTCPeerConnection;
+        window.RTCPeerConnection=new Proxy(NativePC,{construct(target,args){
+          const config={...(args[0]||{}),iceTransportPolicy:"relay"};
+          return Reflect.construct(target,[config,...args.slice(1)]);
+        }});
+      };
+      const instrumentReceiver=()=>{
+        window.__vlWsBinarySent=0;window.__vlWsBinaryReceived=0;window.__vlWsUrls=[];
+        const nativeSend=WebSocket.prototype.send;
+        WebSocket.prototype.send=function(data){
+          if(data instanceof ArrayBuffer)window.__vlWsBinarySent+=data.byteLength;
+          else if(ArrayBuffer.isView(data))window.__vlWsBinarySent+=data.byteLength;
+          return nativeSend.call(this,data);
+        };
+        const nativeAdd=WebSocket.prototype.addEventListener;
+        WebSocket.prototype.addEventListener=function(type,listener,options){
+          if(type!=="message")return nativeAdd.call(this,type,listener,options);
+          const wrapped=function(event){
+            if(event.data instanceof ArrayBuffer)window.__vlWsBinaryReceived+=event.data.byteLength;
+            else if(event.data instanceof Blob)window.__vlWsBinaryReceived+=event.data.size;
+            return listener.call(this,event);
+          };
+          return nativeAdd.call(this,type,wrapped,options);
+        };
+        const NativePC=window.RTCPeerConnection;
+        window.RTCPeerConnection=new Proxy(NativePC,{construct(target,args){
+          const config={...(args[0]||{}),iceTransportPolicy:"relay"};
+          return Reflect.construct(target,[config,...args.slice(1)]);
+        }});
+      };
+      await senderPage.addInitScript(instrumentSender);await receiverPage.addInitScript(instrumentReceiver);
+      const forceStun=async route=>{
+        const headers={"access-control-allow-origin":"*","access-control-allow-methods":"POST, OPTIONS",
+          "access-control-allow-headers":"authorization, content-type"};
+        if(route.request().method()==="OPTIONS")return route.fulfill({status:204,headers});
+        return route.fulfill({status:200,headers:{...headers,"content-type":"application/json"},
+          body:JSON.stringify({iceServers:[{urls:"stun:stun.cloudflare.com:3478"}],relayAvailable:false})});
+      };
+      await senderPage.route("**/rooms/*/turn",forceStun);await receiverPage.route("**/rooms/*/turn",forceStun);
+      await Promise.all([senderPage.goto("https://albyaty.github.io/CopyPaesto/"),receiverPage.goto("https://albyaty.github.io/CopyPaesto/")]);
+      await senderPage.locator("#device-name").fill("VL probe sender");
+      await senderPage.getByRole("button",{name:/Show pairing code/}).click();
+      await senderPage.locator(".pairing-code-display").first().waitFor({state:"visible",timeout:15000});
+      const pairingCode=(await senderPage.locator(".pairing-code-display").first().innerText()).replace(/\D/g,"");
+      await receiverPage.getByRole("button",{name:/Join with a 5-digit code/}).click();
+      await receiverPage.locator("#pairing-code").fill(pairingCode);
+      await receiverPage.locator("#join-device-name").fill("VL probe receiver");
+      await receiverPage.getByRole("button",{name:/Request connection/}).click();
+      await senderPage.locator(".approve-button").waitFor({state:"visible",timeout:20000});
+      await senderPage.locator(".approve-button").click();
+      await Promise.all([
+        senderPage.locator(".workspace").waitFor({state:"visible",timeout:20000}),
+        receiverPage.locator(".workspace").waitFor({state:"visible",timeout:20000})
+      ]);
+      await senderPage.waitForFunction(()=>document.querySelector(".connection-badge")?.textContent.includes("2 devices"),null,{timeout:20000});
+      const fileSize=40*1024*1024;
+      const file=Buffer.alloc(fileSize,0x5a);
+      receiverPage.on("download",()=>{});
+      await senderPage.locator('input[type="file"]').setInputFiles({name:"vl-probe.bin",mimeType:"application/octet-stream",buffer:file});
+      const receiverRow=receiverPage.locator(".transfer-row").filter({hasText:"vl-probe.bin"});
+      await receiverRow.getByRole("button",{name:"Save"}).waitFor({state:"visible",timeout:20000});
+      await receiverRow.getByRole("button",{name:"Save"}).click();
+      const senderRow=senderPage.locator(".transfer-row").filter({hasText:"vl-probe.bin"});
+      await senderRow.waitFor({state:"visible",timeout:15000});
+      let early=null,peak={sent:0,received:0};
+      const deadline=Date.now()+60000;
+      while(Date.now()<deadline){
+        const [sent,received]=await Promise.all([
+          senderPage.evaluate(()=>window.__vlWsBinarySent??0),
+          receiverPage.evaluate(()=>window.__vlWsBinaryReceived??0)
+        ]);
+        peak={sent:Math.max(peak.sent,sent),received:Math.max(peak.received,received)};
+        if(received>0&&sent<fileSize){early={senderWsBytes:sent,receiverWsBytes:received};break}
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+      await receiverPage.waitForFunction(()=>[...document.querySelectorAll(".transfer-row")].some(row=>row.textContent.includes("vl-probe.bin")&&row.classList.contains("transfer-complete")),null,{timeout:90000}).catch(()=>{});
+      const final=await Promise.all([
+        senderPage.evaluate(()=>({binarySent:window.__vlWsBinarySent,rows:[...document.querySelectorAll(".transfer-row")].map(x=>x.innerText)})),
+        receiverPage.evaluate(()=>({binaryReceived:window.__vlWsBinaryReceived,rows:[...document.querySelectorAll(".transfer-row")].map(x=>x.innerText)}))
+      ]);
+      return {pass:!!early&&peak.received>0,origin:"https://albyaty.github.io",fileSize,
+        pairingCodeLength:pairingCode.length,early,peak,final,
+        relaySocketObserved:final[0].binarySent>0&&final[1].binaryReceived>0};
+    }finally{
+      await Promise.all([senderPage?.close().catch(()=>{}),receiverPage?.close().catch(()=>{})]);
+      await browser2?.close().catch(()=>{});
+    }
+  });
   await isolated("P2PCF-Public-Worker",async()=>{
     const x=await page.evaluate(async()=>{
       const r=await fetch("https://p2pcf.minddrop.workers.dev",{cache:"no-store"});
