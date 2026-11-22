@@ -243,10 +243,11 @@ async function browserBatch(){
         await receiverPage.evaluate(()=>{window.__vlRate={bytes:0,packets:0,bad:0,lastSeq:-1};
           const ch=[...(window.__vlChannels??[])].reverse().find(c=>c.label==="_reliable"&&c.readyState==="open");
           if(!ch)throw Error("receiver reliable DataChannel missing");
-          ch.addEventListener("message",ev=>{if(!(ev.data instanceof ArrayBuffer))return;const a=new Uint8Array(ev.data);
-            if(a.length<4){window.__vlRate.bad++;return}const seq=new DataView(a.buffer,a.byteOffset,a.byteLength).getUint32(0);
-            if(seq!==window.__vlRate.lastSeq+1)window.__vlRate.bad++;window.__vlRate.lastSeq=seq;
-            window.__vlRate.bytes+=a.length;window.__vlRate.packets++})});
+          if(!ch.__vlRateListener){ch.addEventListener("message",ev=>{if(!(ev.data instanceof ArrayBuffer))return;
+            const stats=window.__vlRate,a=new Uint8Array(ev.data);if(a.length<4){stats.bad++;return}
+            const seq=new DataView(a.buffer,a.byteOffset,a.byteLength).getUint32(0);
+            if(seq!==stats.lastSeq+1)stats.bad++;stats.lastSeq=seq;stats.bytes+=a.length;stats.packets++});
+            ch.__vlRateListener=true}});
         const sent=await senderPage.evaluate(async({rateKbps,durationMs})=>{
           const ch=[...(window.__vlChannels??[])].reverse().find(c=>c.label==="_reliable"&&c.readyState==="open");
           const packetBytes=Math.round(rateKbps*1000/8/10),interval=100;let bytes=0,packets=0,maxBuffered=0;
