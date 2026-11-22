@@ -87,7 +87,7 @@ async function browserBatch(){
       const sender=new WebSocket("wss://ystp.dbk.wtf/send");
       await timed(new Promise((resolve,reject)=>{sender.onopen=resolve;sender.onerror=()=>reject(Error("sender websocket error"))}),"sender open");
       const code=await timed(new Promise((resolve,reject)=>{sender.onmessage=e=>{try{const j=JSON.parse(e.data);if(j.code)resolve(j.code)}catch{}}}),"session code");
-      const size=1024*1024, payload=new Uint8Array(size);for(let i=0;i<size;i+=65536)payload.set(crypto.getRandomValues(new Uint8Array(Math.min(65536,size-i))),i);
+      await wait(250);\n      const size=1024*1024, payload=new Uint8Array(size);for(let i=0;i<size;i+=65536)payload.set(crypto.getRandomValues(new Uint8Array(Math.min(65536,size-i))),i);
       const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))).map(x=>x.toString(16).padStart(2,"0")).join("");
       const expectedHash=await digest(payload);
       let sentBytes=0,senderDone=false,firstChunk=null,receivedBytes=0,metadata=null;
@@ -136,8 +136,8 @@ async function browserBatch(){
   await isolated("Mazupo-Cloudflare-SFU-Public-Key-Tokens",async()=>{
     const x=await page.evaluate(async()=>{
       const base="https://api.mazupo.com/sfu";
-      const deviceKey="81f899b8fab5692b0faa76c3372b7ae6";
-      const viewerKey="ec0478c67e729b6f429eda1e97829af0";
+      const deviceKey="1L4-mUUztDWhzF_ORhPHb4xpQK2Y9bEgeif0pYn7PXI";
+      const viewerKey="-706d13ForZLHmv6FwARf9ZgEEfO78AattyxWhNoHFo";
       const room="vlprobe-"+crypto.randomUUID().replaceAll("-","").slice(0,18);
       const secret=crypto.randomUUID()+crypto.randomUUID();
       async function token(key,body){
