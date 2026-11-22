@@ -102,6 +102,29 @@ async function kappaHandoff(){
   }
  }catch(e){log("CrossRunner-Kappa-Segs","FAIL",{error:String(e).slice(0,220)})}
 }
+async function svixCross(){
+ const base="https://mantledb.sh/v2/vlsvix"+run+"/";
+ try{
+  if(role==="A"){
+   const tr=await json("https://api.play.svix.com/api/v1/token/generate/",{method:"POST"});
+   const token=typeof tr==="string"?tr:(tr.token??tr.id??tr.data?.token);
+   if(!token)throw Error("Svix token missing");
+   const marker="VL-SVIX-CROSS-"+run+"-"+rnd(8).toString("hex");
+   const sent=await fetch("https://api.play.svix.com/api/v1/in/"+encodeURIComponent(token)+"/",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({marker,from:"A",bytes:rnd(1024).toString("base64")})});
+   if(!sent.ok)throw Error("Svix send HTTP "+sent.status);
+   await json(base+"meta",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,marker})});
+   const ack=await poll(async()=>{try{return await json(base+"ack")}catch{return null}});
+   log("CrossRunner-SvixPlay","PASS",{sendStatus:sent.status,peerAck:ack.ok===true,historyEvent:ack.eventId});
+  }else{
+   const meta=await poll(async()=>{try{return await json(base+"meta")}catch{return null}});
+   const hist=await json("https://api.play.svix.com/api/v1/history/"+encodeURIComponent(meta.token)+"/");
+   const found=(hist.data??[]).find(e=>{try{return Buffer.from(e.body??"","base64").toString("utf8").includes(meta.marker)}catch{return false}});
+   if(!found)throw Error("Svix history did not contain marker; events="+(hist.data??[]).length);
+   await json(base+"ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ok:true,eventId:found.id})});
+   log("CrossRunner-SvixPlay","PASS",{eventId:found.id,method:found.method,bodyBytes:Buffer.from(found.body,"base64").length});
+  }
+ }catch(e){log("CrossRunner-SvixPlay","FAIL",{error:String(e).slice(0,220)})}
+}
 async function mqttCross(name,url,interval=40){
  const topic="vl/distributed/"+run+"/"+name.toLowerCase();let c;
  try{
@@ -149,5 +172,6 @@ async function nostrCross(name,url){
 await sharedStorage();
 await fileHandoff();
 await kappaHandoff();
+await svixCross();
 await Promise.all([mqttCross("ConnectMQ","wss://broker.connectmq.com:8084/mqtt",100),mqttCross("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),mqttCross("Mosquitto","wss://test.mosquitto.org:8081"),mqttCross("EMQX","wss://broker.emqx.io:8084/mqtt",100)]);
 await Promise.all([nostrCross("nos.lol","wss://nos.lol"),nostrCross("Primal","wss://relay.primal.net")]);

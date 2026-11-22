@@ -260,7 +260,7 @@ async function browserBatch(){
    const u=await fetch("https://api.keyval.org/set/"+encodeURIComponent(key)+"/"+v2);
    const h=await fetch("https://api.keyval.org/get/"+encodeURIComponent(key));
    const t2=(await h.text()).trim();
-   return {set:s.status,read:g.status,firstMatch:t1===v1,overwrite:u.status,secondMatch:t2===v2,limitTest:v2.length};
+   return {set:s.status,read:g.status,firstMatch:t1===v1,overwrite:u.status,secondMatch:t2===v2,firstBody:t1.slice(0,100),secondBody:t2.slice(0,100),setBody:(await s.text()).slice(0,100),keyLength:key.length};
   });
   return {pass:x.set===200&&x.read===200&&x.firstMatch&&x.overwrite===200&&x.secondMatch,details:x};
  });
@@ -313,8 +313,8 @@ async function browserBatch(){
    const marker="VL-PROBE-"+crypto.randomUUID();
    const p=await fetch("https://api.play.svix.com/api/v1/in/"+encodeURIComponent(token)+"/",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({marker,sequence:1})});
    const h=await fetch("https://api.play.svix.com/api/v1/history/"+encodeURIComponent(token)+"/");
-   const ht=await h.text();
-   return {tokenStatus:t.status,send:p.status,history:h.status,found:ht.includes(marker),historyBody:ht.slice(0,120)};
+   const ht=await h.text();let hj;try{hj=JSON.parse(ht)}catch{};const found=(hj?.data??[]).some(e=>{try{return atob(e.body??"").includes(marker)}catch{return false}});
+   return {tokenStatus:t.status,send:p.status,history:h.status,found,eventCount:hj?.data?.length,bodyEncoding:hj?.data?.[0]?.body?.slice(0,32)};
   });
   return {pass:x.send>=200&&x.send<300&&x.history===200&&x.found,details:x};
  });
