@@ -49,43 +49,38 @@ async function browserBatch(){
         const j=await r.json(),iceServers=j.iceServers??[];
         const config={iceServers,iceTransportPolicy:"relay"};
         const a=new RTCPeerConnection(config),b=new RTCPeerConnection(config);
-        const audioContext=new AudioContext();
-        const oscillator=audioContext.createOscillator();
-        const audioDestination=audioContext.createMediaStreamDestination();
-        oscillator.frequency.value=440;oscillator.connect(audioDestination);oscillator.start();
-        await audioContext.resume();
-        a.addTrack(audioDestination.stream.getAudioTracks()[0],audioDestination.stream);
-        let remoteAudioTrack=false,queuedA=[],queuedB=[];
+        let queuedA=[],queuedB=[];
         a.onicecandidate=e=>{if(e.candidate){if(b.remoteDescription)b.addIceCandidate(e.candidate).catch(()=>{});else queuedA.push(e.candidate)}};
         b.onicecandidate=e=>{if(e.candidate){if(a.remoteDescription)a.addIceCandidate(e.candidate).catch(()=>{});else queuedB.push(e.candidate)}};
-        b.ontrack=e=>{if(e.track.kind==="audio")remoteAudioTrack=true};
         const dc=a.createDataChannel("relay-probe");
-        let gotMessage=false;
+        let gotMessage=false,remoteDc=null,rateStats={bytes:0,packets:0,bad:0,lastSeq:-1};
         let resolveOpen,resolveMessage;
         const opened=new Promise((resolve,reject)=>{resolveOpen=resolve;setTimeout(()=>reject(Error("datachannel open timeout")),30000)});
         const received=new Promise((resolve,reject)=>{resolveMessage=resolve;setTimeout(()=>reject(Error("datachannel message timeout")),30000)});
         dc.onopen=()=>resolveOpen();
-        b.ondatachannel=e=>{e.channel.onmessage=ev=>{gotMessage=ev.data==="VL-TURN-RELAY-PROBE";resolveMessage()}};
+        b.ondatachannel=e=>{remoteDc=e.channel;e.channel.binaryType="arraybuffer";e.channel.onmessage=ev=>{if(typeof ev.data==="string"){gotMessage=ev.data==="VL-TURN-RELAY-PROBE";resolveMessage()}else{const q=new Uint8Array(ev.data);const seq=new DataView(q.buffer,q.byteOffset,q.byteLength).getUint32(0);if(seq!==rateStats.lastSeq+1)rateStats.bad++;rateStats.lastSeq=seq;rateStats.bytes+=q.length;rateStats.packets++}}};
         try{
           const offer=await a.createOffer();await a.setLocalDescription(offer);await b.setRemoteDescription(a.localDescription);
           for(const candidate of queuedA)await b.addIceCandidate(candidate);queuedA=[];
           const answer=await b.createAnswer();await b.setLocalDescription(answer);await a.setRemoteDescription(b.localDescription);
           for(const candidate of queuedB)await a.addIceCandidate(candidate);queuedB=[];
           await opened;dc.send("VL-TURN-RELAY-PROBE");await received;
-          await new Promise(resolve=>setTimeout(resolve,1500));
+          await new Promise(resolve=>setTimeout(resolve,500));
+          async function sendRate(channel,stats,rate){stats.bytes=0;stats.packets=0;stats.bad=0;stats.lastSeq=-1;const packet=Math.round(rate*1000/8/10);let sent=0,count=0,maxBuffered=0;const until=performance.now()+10000;while(performance.now()<until){if(channel.bufferedAmount>128*1024)await new Promise(r=>setTimeout(r,10));const q=new Uint8Array(packet);new DataView(q.buffer).setUint32(0,count);q.fill((count*23+9)&255,4);channel.send(q);sent+=q.length;count++;maxBuffered=Math.max(maxBuffered,channel.bufferedAmount);await new Promise(r=>setTimeout(r,100))}await new Promise(r=>setTimeout(r,500));return {rateKbps:rate,sentBytes:sent,receivedBytes:stats.bytes,sentPackets:count,receivedPackets:stats.packets,sequenceErrors:stats.bad,maxBuffered,pass:sent===stats.bytes&&count===stats.packets&&stats.bad===0}}
+          const rates=[];for(const rate of [16,24,40])rates.push(await sendRate(dc,rateStats,rate));
+          const reverseStats={bytes:0,packets:0,bad:0,lastSeq:-1};
+          remoteDc.onmessage=ev=>{if(typeof ev.data==="string")return;const q=new Uint8Array(ev.data);const seq=new DataView(q.buffer,q.byteOffset,q.byteLength).getUint32(0);if(seq!==reverseStats.lastSeq+1)reverseStats.bad++;reverseStats.lastSeq=seq;reverseStats.bytes+=q.length;reverseStats.packets++};
+          const reverse=await sendRate(remoteDc,reverseStats,24);
           const stats=await a.getStats();let pair;
           for(const s of stats.values())if(s.type==="transport"&&s.selectedCandidatePairId)pair=stats.get(s.selectedCandidatePairId);
           if(!pair)for(const s of stats.values())if(s.type==="candidate-pair"&&s.state==="succeeded"&&s.nominated)pair=s;
           const local=pair?stats.get(pair.localCandidateId):null,remote=pair?stats.get(pair.remoteCandidateId):null;
-          const remoteStats=await b.getStats();
-          const audioBytesReceived=[...remoteStats.values()].filter(s=>s.type==="inbound-rtp"&&(s.kind==="audio"||s.mediaType==="audio")).reduce((n,s)=>n+(s.bytesReceived??0),0);
-          return {httpStatus:r.status,iceServerCount:iceServers.length,messageReceived:gotMessage,
-            audioTrackReceived:remoteAudioTrack,audioBytesReceived,
+          return {httpStatus:r.status,iceServerCount:iceServers.length,messageReceived:gotMessage,rates,reverse,
             localCandidateType:local?.candidateType??null,remoteCandidateType:remote?.candidateType??null,
             protocol:local?.protocol??null,forcedRelay:local?.candidateType==="relay"&&remote?.candidateType==="relay"};
-        }finally{a.close();b.close();oscillator.stop();await audioContext.close()}
+        }finally{a.close();b.close()}
       },{base,turnPath});
-      return {pass:x.httpStatus===200&&x.messageReceived&&x.forcedRelay&&x.audioTrackReceived&&x.audioBytesReceived>0,details:x};
+      return {pass:x.httpStatus===200&&x.messageReceived&&x.forcedRelay&&x.rates?.every(r=>r.pass)&&x.reverse?.pass,details:x};
     });
   }
   await workerProbe("CopyPaesto-Worker","https://copypaesto-relay.albyaty.workers.dev","/health",null);
@@ -426,6 +421,32 @@ async function browserBatch(){
       });
       return {pass:stats.audio.some(x=>x.bytesReceived>0)&&stats.video.some(x=>x.bytesReceived>0),roomLength:room.length,stats};
     }finally{await Promise.all([devicePage?.close().catch(()=>{}),viewerPage?.close().catch(()=>{})])}
+  });
+  await isolated("Uploadcare-Multipart-Early-Read-Before-Complete",async()=>{
+    const ca=await browser.newContext(),cb=await browser.newContext();
+    try{const a=await ca.newPage(),b=await cb.newPage();await Promise.all([a.goto(ORIGIN),b.goto(ORIGIN)]);
+      const s=await a.evaluate(async()=>{const size=11*1024*1024,f=new FormData();
+        f.append("UPLOADCARE_PUB_KEY","demopublickey");f.append("UPLOADCARE_STORE","0");
+        f.append("filename","vl-multipart-probe.jpg");f.append("size",String(size));f.append("content_type","image/jpeg");
+        const r=await fetch("https://upload.uploadcare.com/multipart/start/",{method:"POST",body:f});
+        const t=await r.text();let j;try{j=JSON.parse(t)}catch{}return {status:r.status,uuid:j?.uuid,parts:j?.parts??[],size,body:t.slice(0,160)}});
+      if(s.status!==200||!s.uuid||s.parts.length<2)throw Error("multipart start: "+JSON.stringify(s).slice(0,200));
+      const cdn="https://ucarecdn.com/"+s.uuid+"/",early=[];
+      for(let i=0;i<s.parts.length;i++){const begin=i*5*1024*1024,end=Math.min(s.size,begin+5*1024*1024);
+        const p=await a.evaluate(async({url,begin,end})=>{const d=new Uint8Array(end-begin);
+          for(let k=0;k<d.length;k++)d[k]=(k*31+begin*7)&255;if(begin===0)d.set([255,216,255,224,0,16,74,70,73,70,0,1]);
+          const r=await fetch(url,{method:"PUT",headers:{"Content-Type":"application/octet-stream"},body:d});
+          return {status:r.status,bytes:d.length,body:(await r.text()).slice(0,80)}},{url:s.parts[i],begin,end});
+        if(p.status<200||p.status>=300)throw Error("part PUT: "+JSON.stringify(p));
+        const check=await b.evaluate(async u=>{try{const r=await fetch(u,{cache:"no-store"});const d=await r.arrayBuffer();return {status:r.status,bytes:d.byteLength}}catch(e){return {error:String(e).slice(0,120)}}},cdn);
+        early.push({partsUploaded:i+1,cdn:check});}
+      const complete=await a.evaluate(async uuid=>{const f=new FormData();f.append("UPLOADCARE_PUB_KEY","demopublickey");f.append("uuid",uuid);
+        const r=await fetch("https://upload.uploadcare.com/multipart/complete/",{method:"POST",body:f});const t=await r.text();let j;try{j=JSON.parse(t)}catch{}
+        return {status:r.status,isReady:j?.is_ready,body:t.slice(0,160)}},s.uuid);
+      const final=await b.evaluate(async u=>{const r=await fetch(u,{cache:"no-store"});const d=await r.arrayBuffer();return {status:r.status,bytes:d.byteLength}},cdn);
+      return {pass:complete.status===200&&final.status===200&&final.bytes===s.size,details:{uuid:s.uuid,size:s.size,parts:s.parts.length,early,complete,final,
+        earlyRead:early.some(x=>x.cdn.status===200&&x.cdn.bytes>0)}};
+    }finally{await Promise.all([ca.close(),cb.close()])}
   });
   await isolated("Uploadcare-Two-Independent-Browser-Connections",async()=>{
      const contextA=await browser.newContext(),contextB=await browser.newContext();
