@@ -10,7 +10,7 @@ function report(name,status,details={}){const x={name,status,...details};results
 async function browserBatch(){
  let browser,page;
  try{
-  browser=await chromium.launch({headless:true,args:["--autoplay-policy=no-user-gesture-required"]});
+  browser=await chromium.launch({headless:true,args:["--autoplay-policy=no-user-gesture-required","--use-fake-device-for-media-stream","--use-fake-ui-for-media-stream"]});
   page=await browser.newPage();
   await page.goto(ORIGIN,{waitUntil:"domcontentloaded",timeout:30000});
   report("BrowserOrigin","PASS",{origin:await page.evaluate(()=>location.origin)});
@@ -281,6 +281,7 @@ async function browserBatch(){
         }});
       };
       const instrumentReceiver=()=>{
+        try{Object.defineProperty(window,"showSaveFilePicker",{value:undefined,configurable:true})}catch{}
         window.__vlWsBinarySent=0;window.__vlWsBinaryReceived=0;window.__vlWsUrls=[];
         const nativeSend=WebSocket.prototype.send;
         WebSocket.prototype.send=function(data){
@@ -361,6 +362,62 @@ async function browserBatch(){
       await Promise.all([senderPage?.close().catch(()=>{}),receiverPage?.close().catch(()=>{})]);
       await browser2?.close().catch(()=>{});
     }
+  });
+  await isolated("Mazupo-Public-SFU-Audio-RTP",async()=>{
+    let devicePage,viewerPage;
+    try{
+      const room="vl-audio-"+Date.now().toString(36);
+      const deviceId="vl-audio-device-"+Date.now().toString(36);
+      const deviceKey="1L4-mUUztDWhzF_ORhPHb4xpQK2Y9bEgeif0pYn7PXI";
+      const viewerKey="-706d13ForZLHmv6FwARf9ZgEEfO78AattyxWhNoHFo";
+      const capture=()=>{window.__vlPCs=[];const Native=window.RTCPeerConnection;
+        window.RTCPeerConnection=new Proxy(Native,{construct(target,args){const pc=Reflect.construct(target,args);window.__vlPCs.push(pc);return pc}})};
+      devicePage=await browser.newPage();viewerPage=await browser.newPage();
+      await devicePage.addInitScript(capture);await viewerPage.addInitScript(capture);
+      await Promise.all([devicePage.goto("https://api.mazupo.com/sfu/device"),viewerPage.goto("https://api.mazupo.com/sfu/")]);
+      await devicePage.locator("#api-url").fill("https://api.mazupo.com/sfu");
+      await devicePage.locator("#device-key").fill(deviceKey);
+      await devicePage.locator("#device-id").fill(deviceId);
+      await devicePage.locator("#rooms").fill(room);
+      await devicePage.locator("#source").selectOption("camera");
+      await devicePage.locator("#connect").click();
+      await devicePage.waitForFunction(()=>document.querySelector("#status")?.textContent.includes("Connected as"),null,{timeout:25000});
+      await viewerPage.locator("#api-url").fill("https://api.mazupo.com/sfu");
+      await viewerPage.locator("#viewer-key").fill(viewerKey);
+      await viewerPage.locator("#room").fill(room);
+      await viewerPage.locator("#join").click();
+      await viewerPage.locator("#tiles video").first().waitFor({state:"visible",timeout:25000});
+      await viewerPage.waitForFunction(()=>{const v=document.querySelector("#tiles video");return !!v&&v.videoWidth>0},null,{timeout:25000});
+      await new Promise(resolve=>setTimeout(resolve,2500));
+      const stats=await viewerPage.evaluate(async()=>{
+        const audio=[],video=[];
+        for(const pc of window.__vlPCs??[]){
+          const report=await pc.getStats();
+          for(const s of report.values()){
+            if(s.type==="inbound-rtp"&&(s.kind==="audio"||s.mediaType==="audio"))audio.push({bytesReceived:s.bytesReceived??0,packetsReceived:s.packetsReceived??0,kind:s.kind??s.mediaType});
+            if(s.type==="inbound-rtp"&&(s.kind==="video"||s.mediaType==="video"))video.push({bytesReceived:s.bytesReceived??0,framesDecoded:s.framesDecoded??0});
+          }
+        }
+        const v=document.querySelector("#tiles video");
+        return {pcCount:window.__vlPCs?.length??0,audio,video,videoElement:v?{width:v.videoWidth,height:v.videoHeight}:null};
+      });
+      return {pass:stats.audio.some(x=>x.bytesReceived>0)&&stats.video.some(x=>x.bytesReceived>0),roomLength:room.length,stats};
+    }finally{await Promise.all([devicePage?.close().catch(()=>{}),viewerPage?.close().catch(()=>{})])}
+  });
+  await isolated("Uploadcare-Demo-Public-Key-Browser-Image-Upload",async()=>{
+    const x=await page.evaluate(async()=>{
+      const encoded="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/t3cAAAAASUVORK5CYII=";
+      const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
+      const form=new FormData();form.append("UPLOADCARE_PUB_KEY","demopublickey");form.append("UPLOADCARE_STORE","0");
+      form.append("file",new Blob([bytes],{type:"image/png"}),"vl-probe.png");
+      const upload=await fetch("https://upload.uploadcare.com/base/",{method:"POST",body:form});
+      const body=await upload.text();let data;try{data=JSON.parse(body)}catch{data={raw:body}};
+      const uuid=data.file??null;
+      let cdnStatus=null,cdnBytes=0,cdnType=null;
+      if(uuid){const cdn=await fetch("https://ucarecdn.com/"+uuid+"/");cdnStatus=cdn.status;cdnBytes=(await cdn.arrayBuffer()).byteLength;cdnType=cdn.headers.get("content-type")}
+      return {httpStatus:upload.status,uuid,cdnStatus,cdnBytes,cdnType,response:data,sourceBytes:bytes.length};
+    });
+    return {pass:x.httpStatus===200&&!!x.uuid&&x.cdnStatus===200&&x.cdnBytes===x.sourceBytes,details:x};
   });
   await isolated("P2PCF-Public-Worker",async()=>{
     const x=await page.evaluate(async()=>{
