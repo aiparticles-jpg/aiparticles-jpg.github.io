@@ -462,3 +462,42 @@ For VoiceLink, these are candidates for exchanging larger one-off objects (for e
 - **kappa.lol and segs.lol:** repeated browser uploads/readbacks/deletes continued to pass, and their independent-runner exchange passed with 8 KiB files and verified SHA-256 on both receiving clients.
 
 No additional candidate is promoted to the working shortlist without a successful browser test from the actual GitHub Pages origin.
+
+## Stage I — anonymous mailboxes, publishing APIs, and paste services (2026-11-22)
+
+**Browser run:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44967180524  
+**Corrected Svix decoding + cross-runner:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44967180524  
+**Paste.gg / Telegraph / Write.as browser + two-runner batch:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44967427681  
+**Additional paste/file APIs:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44967650124
+
+### Newly confirmed browser-compatible mechanisms
+
+| Service | Browser result | Independent runner result | Notes |
+|---|---|---|---|
+| **Svix Play** | Generate token → POST event (204) → GET history (200) → decode stored base64 body and find exact marker | A generated a token and posted an event; B fetched history and found the exact event; A received an ack | **PASS.** Anonymous temporary HTTP mailbox. Event body was 1,445 bytes in the cross-runner test. |
+| **paste.gg** | Anonymous create 201 → retrieve full paste 200 → delete 204 | A created an unlisted paste; B fetched and verified content; A deleted it | **PASS.** No API key for anonymous creation. Up to 10 MiB total / 5 MiB per file; anonymous pastes expire within 7 days. |
+| **Telegra.ph** | Anonymous createAccount → createPage → getPage → revokeAccessToken; page content matched | Not separately tested between runners | **PASS (browser).** Different model: an anonymous account returns a reusable access_token, and pages belong to that account. The token can be revoked. The documented API has no page-delete method, so test pages remain public; not a good ephemeral mailbox without further design. |
+| **Write.as** | Browser fetch failed from GitHub Pages origin | Two independent runners created, read, updated each other's post using its per-post token, and deleted it | **Server-side API PASS; browser CORS FAIL.** Interesting transferable post capability, but not directly usable from a static browser client at our origin. |
+
+### Additional candidates rejected or not yet usable from the browser
+
+| Candidate | Observed result |
+|---|---|
+| **KeyVal** | Both URL-based and documented POST set operations returned HTTP 200 but JSON body -KEY-OR-VALUE-TOO-LONG-; subsequent GET returned -KEY-DOESNT-EXISTS-. Not a pass despite HTTP 200. |
+| **Pasters.io** | Browser fetch failed. |
+| **Pastebin.ai** | Browser fetch failed despite its docs claiming CORS headers. Not usable from our origin in this run. |
+| **rTS Paste Service (Linx)** | Browser fetch failed on the PUT upload request. |
+| **Webhook.site** | Browser fetch failed while creating the token; API cannot be treated as browser-compatible from our origin. |
+| **PasteMyst v3** | Browser fetch failed on anonymous create. |
+| **bpa.st / Pinnwand** | Browser fetch failed on anonymous paste creation. |
+| **pb.nekoid.cc** | Browser fetch failed on upload. Its published example CORS configuration does not include our GitHub Pages origin. |
+| **tmp0.cc** | The operator's own API write-up explicitly states that it sends no CORS headers and refuses requests from foreign web pages. Excluded from direct browser integration without a proxy. |
+
+### Current new shortlist additions
+
+1. **Svix Play** — a distinct mailbox/event-history mechanism; browser and cross-runner verified.
+2. **paste.gg** — anonymous multi-file paste/object container; browser and cross-runner verified, with working deletion.
+3. **Telegra.ph** — anonymous account/token plus persistent page objects; browser verified, but no documented page deletion.
+4. **Write.as** — anonymous post + per-post modification token; cross-runner verified, but direct browser CORS blocked.
+
+Important distinction: browser tests execute Chromium on a GitHub Actions runner while loading the actual https://aiparticles-jpg.github.io origin. They establish CORS behavior for that origin from that network, not reachability from a Turkish mobile carrier. Cross-runner tests use separate Actions jobs, not phones.
