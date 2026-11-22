@@ -424,31 +424,28 @@ async function browserBatch(){
       return {pass:stats.audio.some(x=>x.bytesReceived>0)&&stats.video.some(x=>x.bytesReceived>0),roomLength:room.length,stats};
     }finally{await Promise.all([devicePage?.close().catch(()=>{}),viewerPage?.close().catch(()=>{})])}
   });
-  await isolated("Uploadcare-Multipart-Early-Read-Before-Complete",async()=>{
-    const ca=await browser.newContext(),cb=await browser.newContext();
-    try{const a=await ca.newPage(),b=await cb.newPage();await Promise.all([a.goto(ORIGIN),b.goto(ORIGIN)]);
-      const s=await a.evaluate(async()=>{const size=11*1024*1024,f=new FormData();
-        f.append("UPLOADCARE_PUB_KEY","demopublickey");f.append("UPLOADCARE_STORE","0");
-        f.append("filename","vl-multipart-probe.jpg");f.append("size",String(size));f.append("content_type","image/jpeg");
+  await isolated("Uploadcare-Multipart-Project-Size-Limit",async()=>{
+    const sizes=[10000001,10*1024*1024+1,11*1024*1024];
+    const checks=[];
+    for(const size of sizes){
+      const result=await page.evaluate(async size=>{
+        const f=new FormData();
+        f.append("UPLOADCARE_PUB_KEY","demopublickey");
+        f.append("UPLOADCARE_STORE","0");
+        f.append("filename","vl-limit-probe.jpg");
+        f.append("size",String(size));
+        f.append("content_type","image/jpeg");
         const r=await fetch("https://upload.uploadcare.com/multipart/start/",{method:"POST",body:f});
-        const t=await r.text();let j;try{j=JSON.parse(t)}catch{}return {status:r.status,uuid:j?.uuid,parts:j?.parts??[],size,body:t.slice(0,160)}});
-      if(s.status!==200||!s.uuid||s.parts.length<2)throw Error("multipart start: "+JSON.stringify(s).slice(0,200));
-      const cdn="https://ucarecdn.com/"+s.uuid+"/",early=[];
-      for(let i=0;i<s.parts.length;i++){const begin=i*5*1024*1024,end=Math.min(s.size,begin+5*1024*1024);
-        const p=await a.evaluate(async({url,begin,end})=>{const d=new Uint8Array(end-begin);
-          for(let k=0;k<d.length;k++)d[k]=(k*31+begin*7)&255;if(begin===0)d.set([255,216,255,224,0,16,74,70,73,70,0,1]);
-          const r=await fetch(url,{method:"PUT",headers:{"Content-Type":"application/octet-stream"},body:d});
-          return {status:r.status,bytes:d.length,body:(await r.text()).slice(0,80)}},{url:s.parts[i],begin,end});
-        if(p.status<200||p.status>=300)throw Error("part PUT: "+JSON.stringify(p));
-        const check=await b.evaluate(async u=>{try{const r=await fetch(u,{cache:"no-store"});const d=await r.arrayBuffer();return {status:r.status,bytes:d.byteLength}}catch(e){return {error:String(e).slice(0,120)}}},cdn);
-        early.push({partsUploaded:i+1,cdn:check});}
-      const complete=await a.evaluate(async uuid=>{const f=new FormData();f.append("UPLOADCARE_PUB_KEY","demopublickey");f.append("uuid",uuid);
-        const r=await fetch("https://upload.uploadcare.com/multipart/complete/",{method:"POST",body:f});const t=await r.text();let j;try{j=JSON.parse(t)}catch{}
-        return {status:r.status,isReady:j?.is_ready,body:t.slice(0,160)}},s.uuid);
-      const final=await b.evaluate(async u=>{const r=await fetch(u,{cache:"no-store"});const d=await r.arrayBuffer();return {status:r.status,bytes:d.byteLength}},cdn);
-      return {pass:complete.status===200&&final.status===200&&final.bytes===s.size,details:{uuid:s.uuid,size:s.size,parts:s.parts.length,early,complete,final,
-        earlyRead:early.some(x=>x.cdn.status===200&&x.cdn.bytes>0)}};
-    }finally{await Promise.all([ca.close(),cb.close()])}
+        const body=await r.text();let j;try{j=JSON.parse(body)}catch{}
+        return {size,status:r.status,uuid:j?.uuid??null,parts:j?.parts?.length??0,
+          errorCode:j?.error??j?.detail??null,body:body.slice(0,180)};
+      },size);
+      checks.push(result);
+    }
+    return {pass:checks.some(x=>x.status===200&&x.uuid&&x.parts>0),details:{
+      project:"Uploadcare demopublickey",checks,
+      interpretation:"HTTP 400 with 'File size exceeds project limit' indicates per-file project cap; successful start means this declared size is accepted"
+    }};
   });
   await isolated("Uploadcare-Two-Independent-Browser-Connections",async()=>{
      const contextA=await browser.newContext(),contextB=await browser.newContext();
