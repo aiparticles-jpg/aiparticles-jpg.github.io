@@ -514,6 +514,66 @@ async function browserBatch(){
       }};
     }finally{await Promise.all([contextA.close(),contextB.close()])}
   });
+  await isolated("Uploadcare-MIME-Type-Acceptance-Matrix",async()=>{
+    const contextA=await browser.newContext(),contextB=await browser.newContext();
+    try{
+      const sender=await contextA.newPage(),receiver=await contextB.newPage();
+      await Promise.all([sender.goto(ORIGIN,{waitUntil:"domcontentloaded"}),receiver.goto(ORIGIN,{waitUntil:"domcontentloaded"})]);
+      const candidates=await sender.evaluate(()=>{
+        const enc=new TextEncoder();
+        const concat=(...arrays)=>{const n=arrays.reduce((s,a)=>s+a.length,0),o=new Uint8Array(n);let p=0;for(const a of arrays){o.set(a,p);p+=a.length}return o};
+        const u16=n=>new Uint8Array([n&255,(n>>>8)&255]),u32=n=>new Uint8Array([n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]);
+        const crc32=a=>{let c=0xffffffff;for(const b of a){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0)}return (c^0xffffffff)>>>0};
+        const pcm=new Uint8Array(1024);for(let i=0;i<pcm.length;i++)pcm[i]=(i*73+19)&255;
+        const ascii=new Uint8Array(1024);for(let i=0;i<ascii.length;i++)ascii[i]=32+(i*37%95);
+        const wavHeader=new Uint8Array(44);wavHeader.set(enc.encode("RIFF"),0);wavHeader.set(u32(36+pcm.length),4);wavHeader.set(enc.encode("WAVEfmt "),8);wavHeader.set(u32(16),16);wavHeader.set(u16(1),20);wavHeader.set(u16(1),22);wavHeader.set(u32(8000),24);wavHeader.set(u32(16000),28);wavHeader.set(u16(2),32);wavHeader.set(u16(16),34);wavHeader.set(enc.encode("data"),36);wavHeader.set(u32(pcm.length),40);
+        const wav=concat(wavHeader,pcm);
+        const name=enc.encode("probe.bin"),crc=crc32(pcm);
+        const local=concat(u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(pcm.length),u32(pcm.length),u16(name.length),u16(0),name,pcm);
+        const central=concat(u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(pcm.length),u32(pcm.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(0),name);
+        const zip=concat(local,central,u32(0x06054b50),u16(0),u16(0),u16(1),u16(1),u32(central.length),u32(local.length),u16(0));
+        const payload=enc.encode("% VoiceLink binary transport probe\n");
+        const objects=["1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n","2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n","3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R >>\nendobj\n"];
+        const streamHead=enc.encode("4 0 obj\n<< /Length "+payload.length+" >>\nstream\n"),streamTail=enc.encode("\nendstream\nendobj\n");
+        const pdfParts=[enc.encode("%PDF-1.4\n")];let offset=pdfParts[0].length;const offsets=[0];
+        for(const o of objects){offsets.push(offset);const b=enc.encode(o);pdfParts.push(b);offset+=b.length}
+        offsets.push(offset);pdfParts.push(streamHead,payload,streamTail);offset+=streamHead.length+payload.length+streamTail.length;
+        let xref="xref\n0 5\n0000000000 65535 f \n";for(let i=1;i<5;i++)xref+=String(offsets[i]).padStart(10,"0")+" 00000 n \n";
+        const trailer=enc.encode(xref+"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n"+offset+"\n%%EOF\n");
+        const pdf=concat(...pdfParts,trailer);
+        return [
+          {name:"text/plain",filename:"probe.txt",type:"text/plain",bytes:Array.from(ascii)},
+          {name:"audio/wav",filename:"probe.wav",type:"audio/wav",bytes:Array.from(wav)},
+          {name:"application/zip",filename:"probe.zip",type:"application/zip",bytes:Array.from(zip)},
+          {name:"application/pdf",filename:"probe.pdf",type:"application/pdf",bytes:Array.from(pdf)},
+          {name:"application/octet-stream",filename:"probe.bin",type:"application/octet-stream",bytes:Array.from(pcm)}
+        ];
+      });
+      const checks=[];
+      for(const candidate of candidates){
+        const uploaded=await sender.evaluate(async c=>{
+          const bytes=new Uint8Array(c.bytes),digest=async a=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",a)),x=>x.toString(16).padStart(2,"0")).join("");
+          const expected=await digest(bytes),form=new FormData();
+          form.append("UPLOADCARE_PUB_KEY","demopublickey");form.append("UPLOADCARE_STORE","0");
+          form.append("file",new Blob([bytes],{type:c.type}),c.filename);
+          const r=await fetch("https://upload.uploadcare.com/base/",{method:"POST",body:form}),body=await r.text();let j;try{j=JSON.parse(body)}catch{}
+          return {status:r.status,uuid:j?.file??null,expected,bytes:bytes.length,body:body.slice(0,160)};
+        },candidate);
+        let downloaded=null;
+        if(uploaded.status===200&&uploaded.uuid){
+          downloaded=await receiver.evaluate(async x=>{
+            const r=await fetch("https://ucarecdn.com/"+x.uuid+"/",{cache:"no-store"}),bytes=new Uint8Array(await r.arrayBuffer());
+            const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),v=>v.toString(16).padStart(2,"0")).join("");
+            return {status:r.status,bytes:bytes.length,type:r.headers.get("content-type"),hashMatch:digest===x.expected};
+          },uploaded);
+        }
+        checks.push({mime:candidate.type,filename:candidate.filename,sourceBytes:uploaded.bytes,uploadStatus:uploaded.status,uuid:uploaded.uuid,
+          uploadError:uploaded.body,download:downloaded,pass:uploaded.status===200&&!!uploaded.uuid&&downloaded?.status===200&&downloaded.hashMatch&&downloaded.bytes===uploaded.bytes});
+      }
+      return {pass:checks.some(x=>x.pass),details:{project:"Uploadcare demopublickey",checks,
+        note:"text/plain uses valid printable ASCII; WAV is a valid PCM container with binary samples; ZIP is a valid stored archive containing binary samples; PDF is a minimal PDF. Exact uploaded file bytes are SHA-256 checked after download."}};
+    }finally{await Promise.all([contextA.close(),contextB.close()])}
+  });
   await isolated("Uploadcare-Two-Independent-Browser-Connections",async()=>{
      const contextA=await browser.newContext(),contextB=await browser.newContext();
      try{
