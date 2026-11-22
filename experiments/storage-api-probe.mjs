@@ -10,7 +10,7 @@ function report(name,status,details={}){const x={name,status,...details};results
 async function browserBatch(){
  let browser,page;
  try{
-  browser=await chromium.launch({headless:true});
+  browser=await chromium.launch({headless:true,args:["--autoplay-policy=no-user-gesture-required"]});
   page=await browser.newPage();
   await page.goto(ORIGIN,{waitUntil:"domcontentloaded",timeout:30000});
   report("BrowserOrigin","PASS",{origin:await page.evaluate(()=>location.origin)});
@@ -49,9 +49,16 @@ async function browserBatch(){
         const j=await r.json(),iceServers=j.iceServers??[];
         const config={iceServers,iceTransportPolicy:"relay"};
         const a=new RTCPeerConnection(config),b=new RTCPeerConnection(config);
-        let queuedA=[],queuedB=[];
+        const audioContext=new AudioContext();
+        const oscillator=audioContext.createOscillator();
+        const audioDestination=audioContext.createMediaStreamDestination();
+        oscillator.frequency.value=440;oscillator.connect(audioDestination);oscillator.start();
+        await audioContext.resume();
+        a.addTrack(audioDestination.stream.getAudioTracks()[0],audioDestination.stream);
+        let remoteAudioTrack=false,queuedA=[],queuedB=[];
         a.onicecandidate=e=>{if(e.candidate){if(b.remoteDescription)b.addIceCandidate(e.candidate).catch(()=>{});else queuedA.push(e.candidate)}};
         b.onicecandidate=e=>{if(e.candidate){if(a.remoteDescription)a.addIceCandidate(e.candidate).catch(()=>{});else queuedB.push(e.candidate)}};
+        b.ontrack=e=>{if(e.track.kind==="audio")remoteAudioTrack=true};
         const dc=a.createDataChannel("relay-probe");
         let gotMessage=false;
         let resolveOpen,resolveMessage;
@@ -65,17 +72,20 @@ async function browserBatch(){
           const answer=await b.createAnswer();await b.setLocalDescription(answer);await a.setRemoteDescription(b.localDescription);
           for(const candidate of queuedB)await a.addIceCandidate(candidate);queuedB=[];
           await opened;dc.send("VL-TURN-RELAY-PROBE");await received;
-          await new Promise(resolve=>setTimeout(resolve,300));
+          await new Promise(resolve=>setTimeout(resolve,1500));
           const stats=await a.getStats();let pair;
           for(const s of stats.values())if(s.type==="transport"&&s.selectedCandidatePairId)pair=stats.get(s.selectedCandidatePairId);
           if(!pair)for(const s of stats.values())if(s.type==="candidate-pair"&&s.state==="succeeded"&&s.nominated)pair=s;
           const local=pair?stats.get(pair.localCandidateId):null,remote=pair?stats.get(pair.remoteCandidateId):null;
+          const remoteStats=await b.getStats();
+          const audioBytesReceived=[...remoteStats.values()].filter(s=>s.type==="inbound-rtp"&&(s.kind==="audio"||s.mediaType==="audio")).reduce((n,s)=>n+(s.bytesReceived??0),0);
           return {httpStatus:r.status,iceServerCount:iceServers.length,messageReceived:gotMessage,
+            audioTrackReceived:remoteAudioTrack,audioBytesReceived,
             localCandidateType:local?.candidateType??null,remoteCandidateType:remote?.candidateType??null,
             protocol:local?.protocol??null,forcedRelay:local?.candidateType==="relay"&&remote?.candidateType==="relay"};
-        }finally{a.close();b.close()}
+        }finally{a.close();b.close();oscillator.stop();await audioContext.close()}
       },{base,turnPath});
-      return {pass:x.httpStatus===200&&x.messageReceived&&x.forcedRelay,details:x};
+      return {pass:x.httpStatus===200&&x.messageReceived&&x.forcedRelay&&x.audioTrackReceived&&x.audioBytesReceived>0,details:x};
     });
   }
   await workerProbe("CopyPaesto-Worker","https://copypaesto-relay.albyaty.workers.dev","/health",null);
