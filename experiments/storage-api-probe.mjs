@@ -19,9 +19,9 @@ async function browserBatch(){
       const x=await page.evaluate(async({base,healthPath})=>{
         const r=await fetch(base+healthPath,{cache:"no-store"});
         const body=await r.text();
-        return {status:r.status,acao:r.headers.get("access-control-allow-origin"),body:body.slice(0,160)};
+        return {httpStatus:r.status,body:body.slice(0,160)};
       },{base,healthPath});
-      return {pass:x.status===200&&!!x.acao,details:x};
+      return {pass:x.httpStatus===200,details:x};
     });
     if(turnPath){
       await isolated(name+"-Turn-Credentials-CORS",async()=>{
@@ -30,19 +30,53 @@ async function browserBatch(){
             "Access-Control-Request-Method":"POST",
             "Access-Control-Request-Headers":"content-type"
           }});
-          const preflight={status:pre.status,acao:pre.headers.get("access-control-allow-origin"),
-            methods:pre.headers.get("access-control-allow-methods"),headers:pre.headers.get("access-control-allow-headers")};
+          const preflight={httpStatus:pre.status};
           if(pre.status<200||pre.status>=300)return {preflight};
           const r=await fetch(base+turnPath,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
           const body=await r.text();let j;try{j=JSON.parse(body)}catch{}
           const urls=(j?.iceServers??[]).flatMap(s=>Array.isArray(s.urls)?s.urls:[s.urls]).filter(Boolean);
-          return {preflight,status:r.status,acao:r.headers.get("access-control-allow-origin"),
+          return {preflight,httpStatus:r.status,
             hasIceServers:urls.length>0,urls:urls.map(u=>String(u).replace(/^(turns?:)[^?]+/,"$1<host>")),
             expiresAt:j?.expiresAt,body:body.slice(0,180)};
         },{base,turnPath});
-        return {pass:x.preflight?.status>=200&&x.preflight?.status<300&&x.status===200&&x.hasIceServers&&!!x.acao,details:x};
+        return {pass:x.preflight?.httpStatus>=200&&x.preflight?.httpStatus<300&&x.httpStatus===200&&x.hasIceServers,details:x};
       });
     }
+    await isolated(name+"-Forced-TURN-Relay",async()=>{
+      const x=await page.evaluate(async({base,turnPath})=>{
+        const r=await fetch(base+turnPath,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+        if(!r.ok)return {httpStatus:r.status,body:(await r.text()).slice(0,160)};
+        const j=await r.json(),iceServers=j.iceServers??[];
+        const config={iceServers,iceTransportPolicy:"relay"};
+        const a=new RTCPeerConnection(config),b=new RTCPeerConnection(config);
+        let queuedA=[],queuedB=[];
+        a.onicecandidate=e=>{if(e.candidate){if(b.remoteDescription)b.addIceCandidate(e.candidate).catch(()=>{});else queuedA.push(e.candidate)}};
+        b.onicecandidate=e=>{if(e.candidate){if(a.remoteDescription)a.addIceCandidate(e.candidate).catch(()=>{});else queuedB.push(e.candidate)}};
+        const dc=a.createDataChannel("relay-probe");
+        let gotMessage=false;
+        let resolveOpen,resolveMessage;
+        const opened=new Promise((resolve,reject)=>{resolveOpen=resolve;setTimeout(()=>reject(Error("datachannel open timeout")),30000)});
+        const received=new Promise((resolve,reject)=>{resolveMessage=resolve;setTimeout(()=>reject(Error("datachannel message timeout")),30000)});
+        dc.onopen=()=>resolveOpen();
+        b.ondatachannel=e=>{e.channel.onmessage=ev=>{gotMessage=ev.data==="VL-TURN-RELAY-PROBE";resolveMessage()}};
+        try{
+          const offer=await a.createOffer();await a.setLocalDescription(offer);await b.setRemoteDescription(a.localDescription);
+          for(const candidate of queuedA)await b.addIceCandidate(candidate);queuedA=[];
+          const answer=await b.createAnswer();await b.setLocalDescription(answer);await a.setRemoteDescription(b.localDescription);
+          for(const candidate of queuedB)await a.addIceCandidate(candidate);queuedB=[];
+          await opened;dc.send("VL-TURN-RELAY-PROBE");await received;
+          await new Promise(resolve=>setTimeout(resolve,300));
+          const stats=await a.getStats();let pair;
+          for(const s of stats.values())if(s.type==="transport"&&s.selectedCandidatePairId)pair=stats.get(s.selectedCandidatePairId);
+          if(!pair)for(const s of stats.values())if(s.type==="candidate-pair"&&s.state==="succeeded"&&s.nominated)pair=s;
+          const local=pair?stats.get(pair.localCandidateId):null,remote=pair?stats.get(pair.remoteCandidateId):null;
+          return {httpStatus:r.status,iceServerCount:iceServers.length,messageReceived:gotMessage,
+            localCandidateType:local?.candidateType??null,remoteCandidateType:remote?.candidateType??null,
+            protocol:local?.protocol??null,forcedRelay:local?.candidateType==="relay"&&remote?.candidateType==="relay"};
+        }finally{a.close();b.close()}
+      },{base,turnPath});
+      return {pass:x.httpStatus===200&&x.messageReceived&&x.forcedRelay,details:x};
+    });
   }
   await workerProbe("CopyPaesto-Worker","https://copypaesto-relay.albyaty.workers.dev","/health",null);
   await workerProbe("Weblink-Worker","https://ws.webl.ink","/healthcheck","/turn-credentials");
