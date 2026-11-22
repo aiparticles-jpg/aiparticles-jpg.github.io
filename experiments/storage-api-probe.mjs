@@ -453,40 +453,59 @@ async function browserBatch(){
       const sender=await contextA.newPage(),receiver=await contextB.newPage();
       await Promise.all([sender.goto(ORIGIN,{waitUntil:"domcontentloaded"}),receiver.goto(ORIGIN,{waitUntil:"domcontentloaded"})]);
       const durationMs=30000,chunkBytes=1024,targetKbps=24;
-      const intervalMs=chunkBytes*8/ (targetKbps*1000)*1000;
+      const intervalMs=chunkBytes*8/(targetKbps*1000)*1000;
       const started=Date.now(),records=[];
       let firstReadAt=null,readBytes=0,uploadBytes=0,uploadMs=0,downloadMs=0,errors=0;
       for(let seq=0;Date.now()-started<durationMs;seq++){
-        const due=started+seq*intervalMs,wait=due-Date.now();
-        if(wait>0) await new Promise(r=>setTimeout(r,wait));
+        const due=started+seq*intervalMs,delay=due-Date.now();
+        if(delay>0) await new Promise(r=>setTimeout(r,delay));
         const up=await sender.evaluate(async({seq,chunkBytes})=>{
           const bytes=crypto.getRandomValues(new Uint8Array(chunkBytes));
-          const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),x=>x.toString(16).padStart(2,"0")).join("");
+          const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",value)),x=>x.toString(16).padStart(2,"0")).join("");
+          const expectedDigest=await digest(bytes);
+          // Encode the opaque payload losslessly into RGB channels of a valid PNG.
+          // Alpha is fixed at 255 so canvas premultiplication cannot change payload bytes.
+          const pixels=Math.ceil(chunkBytes/3),width=19,height=Math.ceil(pixels/width);
+          const rgba=new Uint8ClampedArray(width*height*4);
+          for(let i=0;i<pixels;i++){
+            const p=i*4,b=i*3;
+            rgba[p]=bytes[b]??0;rgba[p+1]=bytes[b+1]??0;rgba[p+2]=bytes[b+2]??0;rgba[p+3]=255;
+          }
+          const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;
+          const ctx=canvas.getContext("2d",{willReadFrequently:true});
+          ctx.putImageData(new ImageData(rgba,width,height),0,0);
+          const png=await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error("PNG encode failed")),"image/png"));
           const form=new FormData();form.append("UPLOADCARE_PUB_KEY","demopublickey");form.append("UPLOADCARE_STORE","0");
-          form.append("file",new Blob([bytes],{type:"application/octet-stream"}),"vl-audio-chunk-"+seq+".bin");
+          form.append("file",png,"vl-audio-chunk-"+seq+".png");
           const t=performance.now(),r=await fetch("https://upload.uploadcare.com/base/",{method:"POST",body:form});
           const body=await r.text();let j;try{j=JSON.parse(body)}catch{}
-          return {status:r.status,uuid:j?.file??null,digest,bytes:bytes.length,ms:performance.now()-t,body:body.slice(0,120)};
+          return {status:r.status,uuid:j?.file??null,expectedDigest,bytes:chunkBytes,pngBytes:png.size,ms:performance.now()-t,body:body.slice(0,120)};
         },{seq,chunkBytes});
         uploadMs+=up.ms;
         if(up.status!==200||!up.uuid){errors++;records.push({seq,uploadStatus:up.status,body:up.body});break}
         uploadBytes+=up.bytes;
-        const down=await receiver.evaluate(async({uuid,expectedDigest})=>{
+        const down=await receiver.evaluate(async({uuid,expectedDigest,chunkBytes})=>{
           const t=performance.now(),r=await fetch("https://ucarecdn.com/"+uuid+"/",{cache:"no-store"});
-          const b=new Uint8Array(await r.arrayBuffer());
-          const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",b)),x=>x.toString(16).padStart(2,"0")).join("");
-          return {status:r.status,bytes:b.length,digest,ms:performance.now()-t,match:digest===expectedDigest};
-        },{uuid:up.uuid,expectedDigest:up.digest});
+          const blob=await r.blob(),bitmap=await createImageBitmap(blob);
+          const canvas=document.createElement("canvas");canvas.width=bitmap.width;canvas.height=bitmap.height;
+          const ctx=canvas.getContext("2d",{willReadFrequently:true});ctx.drawImage(bitmap,0,0);
+          const rgba=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+          const bytes=new Uint8Array(chunkBytes);
+          for(let i=0;i<chunkBytes;i++){const pixel=Math.floor(i/3),channel=i%3;bytes[i]=rgba[pixel*4+channel]}
+          const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),x=>x.toString(16).padStart(2,"0")).join("");
+          bitmap.close();
+          return {status:r.status,bytes:bytes.length,digest,ms:performance.now()-t,match:digest===expectedDigest,mime:blob.type,pngBytes:blob.size};
+        },{uuid:up.uuid,expectedDigest:up.expectedDigest,chunkBytes});
         downloadMs+=down.ms;
         if(down.status!==200||!down.match||down.bytes!==chunkBytes) errors++;
         if(firstReadAt===null) firstReadAt=Date.now()-started;
         readBytes+=down.bytes;
-        records.push({seq,uploadStatus:up.status,downloadStatus:down.status,bytes:down.bytes,match:down.match,uploadMs:Math.round(up.ms),downloadMs:Math.round(down.ms)});
+        records.push({seq,uploadStatus:up.status,downloadStatus:down.status,bytes:down.bytes,match:down.match,mime:down.mime,pngBytes:down.pngBytes,uploadMs:Math.round(up.ms),downloadMs:Math.round(down.ms)});
         if(errors) break;
       }
       const elapsedMs=Date.now()-started,measuredKbps=readBytes*8/elapsedMs;
       return {pass:errors===0&&readBytes>0&&records.length>1,details:{
-        design:"Upload one small independent binary object, read it from a second browser context, then continue with the next object",
+        design:"Each 1KiB random binary payload is losslessly packed into RGB pixels of a valid PNG, uploaded as image/png, then decoded and SHA-256 checked in a second browser context before the next chunk",
         targetKbps,chunkBytes,intervalMs,durationMs,elapsedMs,chunks:records.length,uploadBytes,readBytes,
         measuredKbps:Number(measuredKbps.toFixed(2)),firstReadAtMs:firstReadAt,
         avgUploadMs:records.length?Math.round(uploadMs/records.length):null,
