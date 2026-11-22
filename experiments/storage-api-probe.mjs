@@ -80,6 +80,59 @@ async function browserBatch(){
   }
   await workerProbe("CopyPaesto-Worker","https://copypaesto-relay.albyaty.workers.dev","/health",null);
   await workerProbe("Weblink-Worker","https://ws.webl.ink","/healthcheck","/turn-credentials");
+  await isolated("YSTP-Public-Worker-Streaming-File-Relay",async()=>{
+    const x=await page.evaluate(async()=>{
+      const wait=ms=>new Promise(r=>setTimeout(r,ms));
+      const timed=(promise,label,ms=25000)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(Error(label+" timeout")),ms))]);
+      const sender=new WebSocket("wss://ystp.defo.works/send");
+      await timed(new Promise((resolve,reject)=>{sender.onopen=resolve;sender.onerror=()=>reject(Error("sender websocket error"))}),"sender open");
+      const code=await timed(new Promise((resolve,reject)=>{sender.onmessage=e=>{try{const j=JSON.parse(e.data);if(j.code)resolve(j.code)}catch{}}}),"session code");
+      const size=1024*1024, payload=crypto.getRandomValues(new Uint8Array(size));
+      const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))).map(x=>x.toString(16).padStart(2,"0")).join("");
+      const expectedHash=await digest(payload);
+      let sentBytes=0,senderDone=false,firstChunk=null,receivedBytes=0,metadata=null;
+      const receiver=new WebSocket("wss://ystp.defo.works/receive/"+encodeURIComponent(code));
+      receiver.binaryType="arraybuffer";
+      await timed(new Promise((resolve,reject)=>{receiver.onopen=resolve;receiver.onerror=()=>reject(Error("receiver websocket error"))}),"receiver open");
+      let resolveMeta,resolveFirst,resolveComplete;
+      const metaPromise=new Promise(resolve=>resolveMeta=resolve);
+      const firstPromise=new Promise(resolve=>resolveFirst=resolve);
+      const completePromise=new Promise(resolve=>resolveComplete=resolve);
+      const chunks=[];
+      receiver.onmessage=e=>{
+        if(typeof e.data==="string"){
+          if(!metadata){try{metadata=JSON.parse(e.data);resolveMeta(metadata)}catch{}}
+          else if(e.data==="EOF")resolveComplete();
+        }else{
+          const part=new Uint8Array(e.data);chunks.push(part);receivedBytes+=part.byteLength;
+          if(!firstChunk){firstChunk={receivedAtBytes:receivedBytes,senderBytesSent:sentBytes,senderAlreadyFinished:senderDone};resolveFirst(firstChunk)}
+        }
+      };
+      sender.send(JSON.stringify({name:"vl-stream-probe.bin",size}));
+      await wait(100);
+      const meta=await timed(metaPromise,"receiver metadata");
+      const senderReady=timed(new Promise((resolve,reject)=>{sender.onmessage=e=>{if(e.data==="LET_IT_RIP")resolve();else if(e.data==="ERROR")reject(Error("sender rejected"))}}),"sender approval");
+      receiver.send("LET_IT_RIP");
+      await senderReady;
+      const chunkSize=64*1024;
+      for(let offset=0;offset<size;offset+=chunkSize){
+        const part=payload.slice(offset,Math.min(size,offset+chunkSize));
+        sender.send(part.buffer);sentBytes+=part.byteLength;
+        await wait(80);
+      }
+      sender.send("EOF");senderDone=true;
+      await timed(completePromise,"receiver EOF");
+      await timed(firstPromise,"first chunk");
+      const received=new Uint8Array(receivedBytes);let offset=0;
+      for(const part of chunks){received.set(part,offset);offset+=part.byteLength}
+      const actualHash=await digest(received);
+      sender.close();receiver.close();
+      return {codeLength:code.length,metadataSize:meta.size,bytesSent:sentBytes,bytesReceived:receivedBytes,
+        firstChunk,hashMatch:actualHash===expectedHash,chunkCount:chunks.length};
+    });
+    return {pass:x.metadataSize===1048576&&x.bytesSent===1048576&&x.bytesReceived===1048576&&
+      x.firstChunk?.senderAlreadyFinished===false&&x.firstChunk?.senderBytesSent<1048576&&x.hashMatch,details:x};
+  });
   await isolated("P2PCF-Public-Worker",async()=>{
     const x=await page.evaluate(async()=>{
       const r=await fetch("https://p2pcf.minddrop.workers.dev",{cache:"no-store"});
