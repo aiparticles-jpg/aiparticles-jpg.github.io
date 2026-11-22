@@ -71,6 +71,37 @@ async function fileHandoff(){
   }
  }catch(e){log("CrossRunner-TempFile-Beacon-WaifuVault","FAIL",{error:String(e).slice(0,240)})}
 }
+async function kappaHandoff(){
+ const base="https://mantledb.sh/v2/vlgha"+run+"/";
+ try{
+  if(role==="A"){
+   const specs={};
+   for(const name of ["kappa","segs"]){
+    const host=name==="kappa"?"https://kappa.lol/api/upload":"https://segs.lol/api/upload";
+    const data=rnd(8192),form=new FormData();form.append("file",new Blob([data],{type:"text/plain"}),"vl-cross.txt");
+    const up=await json(host,{method:"POST",body:form});
+    specs[name]={url:up.link,delete:up.delete,bytes:data.length,sha256:sha(data)};
+   }
+   await json(base+"filemeta3",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(specs)});
+   const ack=await poll(async()=>{try{return await json(base+"ack3")}catch{return null}});
+   const deletes={};
+   for(const name of ["kappa","segs"]){const r=await fetch(specs[name].delete);deletes[name]=r.status}
+   log("CrossRunner-Kappa-Segs","PASS",{peerAck:ack.ok===true,verified:ack.verified,deletes});
+  }else{
+   const specs=await poll(async()=>{try{return await json(base+"filemeta3")}catch{return null}});
+   const verified={};
+   for(const name of ["kappa","segs"]){
+    const r=await fetch(specs[name].url,{signal:AbortSignal.timeout(15000)});
+    if(!r.ok)throw Error(name+" download HTTP "+r.status);
+    const b=Buffer.from(await r.arrayBuffer());
+    verified[name]={bytes:b.length,ok:b.length===specs[name].bytes&&sha(b)===specs[name].sha256};
+    if(!verified[name].ok)throw Error(name+" hash mismatch");
+   }
+   await json(base+"ack3",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ok:true,verified})});
+   log("CrossRunner-Kappa-Segs","PASS",{verified});
+  }
+ }catch(e){log("CrossRunner-Kappa-Segs","FAIL",{error:String(e).slice(0,220)})}
+}
 async function mqttCross(name,url,interval=40){
  const topic="vl/distributed/"+run+"/"+name.toLowerCase();let c;
  try{
@@ -117,5 +148,6 @@ async function nostrCross(name,url){
 }
 await sharedStorage();
 await fileHandoff();
+await kappaHandoff();
 await Promise.all([mqttCross("ConnectMQ","wss://broker.connectmq.com:8084/mqtt",100),mqttCross("HiveMQ","wss://broker.hivemq.com:8884/mqtt"),mqttCross("Mosquitto","wss://test.mosquitto.org:8081"),mqttCross("EMQX","wss://broker.emqx.io:8084/mqtt",100)]);
 await Promise.all([nostrCross("nos.lol","wss://nos.lol"),nostrCross("Primal","wss://relay.primal.net")]);
