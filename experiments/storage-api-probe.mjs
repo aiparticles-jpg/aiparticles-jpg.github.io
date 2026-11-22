@@ -244,9 +244,32 @@ async function browserBatch(){
       }
       const viewerToDevice=await transfer(viewerPage,devicePage);
       const deviceToViewer=await transfer(devicePage,viewerPage);
+      async function sustainedRate(senderPage,receiverPage,rateKbps,durationMs=30000){
+        await receiverPage.evaluate(()=>{window.__vlRate={bytes:0,packets:0,bad:0,lastSeq:-1};
+          const ch=[...(window.__vlChannels??[])].reverse().find(c=>c.label==="_reliable"&&c.readyState==="open");
+          if(!ch)throw Error("receiver reliable DataChannel missing");
+          ch.addEventListener("message",ev=>{if(!(ev.data instanceof ArrayBuffer))return;const a=new Uint8Array(ev.data);
+            if(a.length<4){window.__vlRate.bad++;return}const seq=new DataView(a.buffer,a.byteOffset,a.byteLength).getUint32(0);
+            if(seq!==window.__vlRate.lastSeq+1)window.__vlRate.bad++;window.__vlRate.lastSeq=seq;
+            window.__vlRate.bytes+=a.length;window.__vlRate.packets++})});
+        const sent=await senderPage.evaluate(async({rateKbps,durationMs})=>{
+          const ch=[...(window.__vlChannels??[])].reverse().find(c=>c.label==="_reliable"&&c.readyState==="open");
+          const packetBytes=Math.round(rateKbps*1000/8/10),interval=100;let bytes=0,packets=0,maxBuffered=0;
+          const end=performance.now()+durationMs;while(performance.now()<end){
+            if(ch.bufferedAmount>128*1024)await new Promise(r=>setTimeout(r,10));
+            const a=new Uint8Array(packetBytes);new DataView(a.buffer).setUint32(0,packets);a.fill((packets*29+11)&255,4);
+            ch.send(a.buffer);bytes+=a.length;packets++;maxBuffered=Math.max(maxBuffered,ch.bufferedAmount);
+            await new Promise(r=>setTimeout(r,interval))}return {bytes,packets,maxBuffered}}, {rateKbps,durationMs});
+        await new Promise(r=>setTimeout(r,1500));const received=await receiverPage.evaluate(()=>window.__vlRate);
+        return {targetKbps:rateKbps,durationMs,sentBytes:sent.bytes,receivedBytes:received.bytes,sentPackets:sent.packets,
+          receivedPackets:received.packets,sequenceErrors:received.bad,measuredKbps:sent.bytes*8/durationMs,maxBuffered:sent.maxBuffered,
+          pass:received.bytes===sent.bytes&&received.packets===sent.packets&&received.bad===0};}
+      const rate16=await sustainedRate(devicePage,viewerPage,16);
+      const rate24=await sustainedRate(devicePage,viewerPage,24);
+      const rate40=await sustainedRate(devicePage,viewerPage,40);
       const video=await viewerPage.evaluate(()=>{const v=document.querySelector("#tiles video");return v?{width:v.videoWidth,height:v.videoHeight}:null});
-      return {pass:viewerToDevice.pass&&deviceToViewer.pass&&!!video?.width,roomLength:room.length,
-        viewerToDevice,deviceToViewer,video};
+      return {pass:viewerToDevice.pass&&deviceToViewer.pass&&!!video?.width&&rate16.pass&&rate24.pass&&rate40.pass,roomLength:room.length,
+        viewerToDevice,deviceToViewer,bitrate:{rate16,rate24,rate40},video};
     }finally{
       await Promise.all([devicePage?.close().catch(()=>{}),viewerPage?.close().catch(()=>{})]);
     }
