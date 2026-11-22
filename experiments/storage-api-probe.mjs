@@ -416,6 +416,38 @@ async function browserBatch(){
   });
   return {pass:x.create===200&&x.read===200&&x.found&&x.revoke===200,details:x};
  });
+ await isolated("Browser-BpaSt-Pinnwand",async()=>{
+  const x=await page.evaluate(async()=>{
+   const value="VL-PROBE-"+crypto.randomUUID()+"-"+"p".repeat(2048);
+   const p=await fetch("https://bpa.st/api/v1/paste",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({expiry:"1day",files:[{name:"probe.txt",lexer:"text",content:value}]})});
+   const pt=await p.text();let pj;try{pj=JSON.parse(pt)}catch{}
+   const link=pj?.link??pj?.result?.link??pj?.paste_url;
+   const removal=pj?.removal??pj?.result?.removal??pj?.removal_url;
+   if(!p.ok||!link)return {create:p.status,body:pt.slice(0,180)};
+   const id=link.replace(/\/+$/,"").split("/").pop();
+   const g=await fetch("https://bpa.st/api/v1/paste/"+encodeURIComponent(id));
+   const gt=await g.text();
+   let del=null;if(removal){const d=await fetch(removal);del=d.status}
+   return {create:p.status,read:g.status,match:gt.includes(value),delete:del,link,body:gt.slice(0,100)};
+  });
+  return {pass:x.create===200&&x.read===200&&x.match,details:x};
+ });
+ await isolated("Browser-PB-Nekoid",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
+   form.append("u",new Blob([data],{type:"application/octet-stream"}),"vl-probe.bin");
+   form.append("expired_at",String(Date.now()+3600000));
+   const p=await fetch("https://pb.nekoid.cc/?json=1",{method:"POST",body:form});
+   const pt=await p.text();let pj;try{pj=JSON.parse(pt)}catch{}
+   const id=pj?.uuid;
+   if(!p.ok||!id)return {upload:p.status,body:pt.slice(0,180)};
+   const g=await fetch("https://pb.nekoid.cc/"+encodeURIComponent(id)+"/raw"),b=new Uint8Array(await g.arrayBuffer());
+   const d=await fetch("https://pb.nekoid.cc/"+encodeURIComponent(id),{method:"DELETE"});
+   return {upload:p.status,download:g.status,bytes:b.length,match:b.length===data.length&&b.every((v,i)=>v===data[i]),delete:d.status,expires:pj.expired};
+  });
+  return {pass:x.match===true&&x.delete>=200&&x.delete<300,details:x};
+ });
  await isolated("Browser-WebSocketEndpoints",async()=>{
   const checks=await page.evaluate(async()=>{
    const es=[["ConnectMQ","wss://broker.connectmq.com:8084/mqtt"],["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
