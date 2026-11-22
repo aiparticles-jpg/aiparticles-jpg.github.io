@@ -142,3 +142,51 @@ Cloudflare R2 and Amazon S3 both document multipart uploads as a staged operatio
 1. Sendbird Calls: determine if a web client can force TURN relay and inspect TURN credentials/endpoints; if not, simulate blocked P2P and verify automatic TURN fallback.
 2. Sendbird Chat: test two independent browser clients with a synthetic PNG, observe whether message/URL becomes available before upload completion. SDK upload progress alone is not evidence.
 3. Search image-specific APIs and chat SDKs for separately readable chunks, not only multipart upload.
+
+
+## 7. Additional server-media candidates — second discovery pass (2026-11-22)
+
+| Candidate | Server-side route | Free allowance / pricing | Access model / limitations | Priority |
+|---|---|---|---|---|
+| **Cloudflare Realtime SFU + TURN** | Official product is a managed SFU routing WebRTC audio, video and DataChannels between endpoints. Separate managed TURN service is available. | SFU + TURN share 1,000 GB/month free egress; beyond that $0.05/GB. TURN is free when used with SFU; standalone TURN is billed. | App Secret must remain on trusted backend. Browser talks WebRTC to SFU; backend handles signaling, authorization, session creation and publication discovery. Backend can be Workers, container or existing infrastructure; Workers are not mandatory. | **P0 research.** Very strong server-media + DataChannel candidate. Previous Cloudflare Workers/worker.dev reachability issue does not prove rtc.live.cloudflare.com media endpoints are inaccessible; test separately from Turkey. |
+| **Daily Video SDK** | Official security docs say calls default to SFU and developers can override to P2P. Older Daily engineering post says calls start P2P and switch to SFU above four participants; this source conflict/possible product evolution must be resolved. TURN fallback also documented. | 10,000 free participant minutes/month; after that $0.004/participant-minute for standard video/audio, audio-only discounted. | Owner project/API credentials; browser SDK. Room/token auth model needs review. | **P0/P1.** Very promising if current SDK can force SFU for a two-person call. Verify with SDK topology setting and media stats. |
+| **100ms** | Cloud conferencing platform with server-side SFU architecture described in its technical material; actual one-to-one topology and ability to force routing need verification. | Free: 10,000 conferencing minutes/month, 10,000 live-streaming minutes/month, smaller separate recording/encoding allowances. | Owner workspace, room/template setup and server API/token model. | **P1.** Strong free allowance; inspect whether two-person media always traverses SFU and whether browser clients can be anonymous behind app-issued tokens. |
+| **Twilio Video** | Official docs explicitly state all participant media tracks go through Twilio Cloud SFU; TURN relays client-to-SFU traffic if direct connection to the SFU is blocked. | $0.004 per participant-minute; unlimited TURN relay listed. Free trial credit, not an ongoing free quota. | Owner account/project and server-issued access tokens. | **P1 architecture benchmark; P3 cost for production.** Very clear server-media route and useful test candidate while trial credit exists. |
+| **Vonage Video API** | Two modes: Relayed (direct P2P, TURN fallback) and Routed (Vonage Media Router). Adaptive Media Routing may move one-to-one streams back to P2P when only one subscriber and no router-only features are active. | 100,000 free trial minutes for new customers (75,000 video sessions + 25,000 advanced features); trial, not a permanent monthly allowance. | Owner application; server creates session and generates client tokens. | **P1 research.** Server route exists, but 1:1 may adapt to P2P. Determine whether adaptive routing can be disabled or a supported router-only feature can guarantee media-server transit. |
+| **Zoom Video SDK** | Cloud-managed video/audio SDK; official product material describes cloud media routing, but current per-session media topology and exact SFU/relay guarantee are not yet established. | 10,000 free minutes/month reported in Zoom developer fact sheet; confirm current plan/account scope. | Owner Build account and SDK authentication/signature generation. | **P1 research.** Interesting because SDK also advertises chat, raw data streams and file transfer; inspect whether those data/file paths traverse Zoom servers and what browser APIs expose. |
+
+### Additional media sources
+- Cloudflare Realtime SFU overview: https://developers.cloudflare.com/realtime/sfu/
+- Cloudflare application architecture and backend boundary: https://developers.cloudflare.com/realtime/sfu/concepts/architecture/
+- Cloudflare SFU quickstart: https://developers.cloudflare.com/realtime/sfu/get-started/
+- Cloudflare Connection API: https://developers.cloudflare.com/realtime/sfu/api/
+- Cloudflare DataChannels: https://developers.cloudflare.com/realtime/sfu/features/datachannels/
+- Cloudflare TURN pricing and endpoints: https://developers.cloudflare.com/realtime/turn/
+- Cloudflare SFU/TURN pricing: https://developers.cloudflare.com/realtime/sfu/platform/pricing/
+- Cloudflare WebSocket media adapter: https://developers.cloudflare.com/realtime/sfu/features/media-transport-adapters/websocket-adapter/
+- Daily security / default topology claim: https://www.daily.co/security/secure-calls/
+- Daily topology article (older, describes P2P-first then SFU): https://www.daily.co/blog/how-our-new-european-call-server-region-can-benefit-call-performance/
+- Daily Video SDK pricing: https://www.daily.co/pricing/video-sdk/
+- 100ms pricing: https://www.100ms.live/pricing
+- 100ms architecture: https://www.100ms.live/docs/get-started/v2/get-started/concepts/basics
+- 100ms server-side WebRTC/SFU architecture: https://www.100ms.live/blog/webrtc-server-side
+- Twilio Video pricing: https://www.twilio.com/en-us/video/pricing
+- Twilio SFU architecture: https://www.twilio.com/docs/video/overview
+- Twilio network / TURN behaviour: https://www.twilio.com/docs/video/networking-considerations
+- Vonage media modes: https://developer.vonage.com/en/video/guides/smart-video
+- Vonage technical architecture and token boundary: https://developer.vonage.com/en/video/technical-details
+- Zoom Video SDK: https://developers.zoom.us/docs/video-sdk/
+- Zoom Video SDK pricing fact sheet: https://godevelopers.zoom.us/blog/video-sdk-fact-sheet/
+
+### Important Cloudflare Realtime distinction
+
+This is a different product from the previously tested Cloudflare Worker signaling endpoint. The media endpoints are Cloudflare Realtime SFU/TURN. The product requires a backend holding App Secret, but its documentation explicitly allows that backend to run on Workers, a container, or existing infrastructure. Therefore the prior failure of worker.dev from a Turkish mobile network should not automatically eliminate this candidate. The SFU's browser media path and TURN TLS/443 reachability still need independent testing from the actual target networks.
+
+### Updated research queue
+1. Cloudflare Realtime: validate app provisioning, backend API calls, browser WebRTC to SFU, DataChannels, TURN/TLS 443, pricing counters and reachability from Turkey.
+2. Daily: resolve P2P-first vs SFU-default documentation conflict and prove that a two-client call can be forced through SFU.
+3. 100ms: establish two-party media topology and whether server routing is guaranteed.
+4. Sendbird: test TURN fallback and whether relay-only can be forced.
+5. Vonage: determine if a one-to-one routed session can remain on Media Router under adaptive routing.
+6. Twilio: inspect free trial eligibility and test server-routed media; use as a control even if ongoing cost is unsuitable.
+7. Zoom: inspect data stream/file transfer, free minute allowance and actual media topology.
