@@ -15,7 +15,7 @@ async function browserBatch(){
   await page.goto(ORIGIN,{waitUntil:"domcontentloaded",timeout:30000});
   report("BrowserOrigin","PASS",{origin:await page.evaluate(()=>location.origin)});
   async function workerProbe(name,base,healthPath,turnPath){
-    await isolated(name+"-Health-CORS",async()=>{
+    if(healthPath) await isolated(name+"-Health-CORS",async()=>{
       const x=await page.evaluate(async({base,healthPath})=>{
         const r=await fetch(base+healthPath,{cache:"no-store"});
         const body=await r.text();
@@ -42,7 +42,7 @@ async function browserBatch(){
         return {pass:x.preflight?.httpStatus>=200&&x.preflight?.httpStatus<300&&x.httpStatus===200&&x.hasIceServers,details:x};
       });
     }
-    await isolated(name+"-Forced-TURN-Relay",async()=>{
+    if(turnPath) await isolated(name+"-Forced-TURN-Relay",async()=>{
       const x=await page.evaluate(async({base,turnPath})=>{
         const r=await fetch(base+turnPath,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
         if(!r.ok)return {httpStatus:r.status,body:(await r.text()).slice(0,160)};
@@ -79,19 +79,19 @@ async function browserBatch(){
     });
   }
   await workerProbe("CopyPaesto-Worker","https://copypaesto-relay.albyaty.workers.dev","/health",null);
-  await workerProbe("Weblink-Worker","https://ws.webl.ink","/healthcheck","/turn-credentials");
+  await workerProbe("Weblink-Worker","https://ws.webl.ink",null,"/turn-credentials");
   await isolated("YSTP-Public-Worker-Streaming-File-Relay",async()=>{
     const x=await page.evaluate(async()=>{
       const wait=ms=>new Promise(r=>setTimeout(r,ms));
       const timed=(promise,label,ms=25000)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(Error(label+" timeout")),ms))]);
-      const sender=new WebSocket("wss://ystp.defo.works/send");
+      const sender=new WebSocket("wss://ystp.dbk.wtf/send");
       await timed(new Promise((resolve,reject)=>{sender.onopen=resolve;sender.onerror=()=>reject(Error("sender websocket error"))}),"sender open");
       const code=await timed(new Promise((resolve,reject)=>{sender.onmessage=e=>{try{const j=JSON.parse(e.data);if(j.code)resolve(j.code)}catch{}}}),"session code");
       const size=1024*1024, payload=new Uint8Array(size);for(let i=0;i<size;i+=65536)payload.set(crypto.getRandomValues(new Uint8Array(Math.min(65536,size-i))),i);
       const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))).map(x=>x.toString(16).padStart(2,"0")).join("");
       const expectedHash=await digest(payload);
       let sentBytes=0,senderDone=false,firstChunk=null,receivedBytes=0,metadata=null;
-      const receiver=new WebSocket("wss://ystp.defo.works/receive/"+encodeURIComponent(code));
+      const receiver=new WebSocket("wss://ystp.dbk.wtf/receive/"+encodeURIComponent(code));
       receiver.binaryType="arraybuffer";
       await timed(new Promise((resolve,reject)=>{receiver.onopen=resolve;receiver.onerror=()=>reject(Error("receiver websocket error"))}),"receiver open");
       let resolveMeta,resolveFirst,resolveComplete;
@@ -132,6 +132,28 @@ async function browserBatch(){
     });
     return {pass:x.metadataSize===1048576&&x.bytesSent===1048576&&x.bytesReceived===1048576&&
       x.firstChunk?.senderAlreadyFinished===false&&x.firstChunk?.senderBytesSent<1048576&&x.hashMatch,details:x};
+  });
+  await isolated("Mazupo-Cloudflare-SFU-Public-Key-Tokens",async()=>{
+    const x=await page.evaluate(async()=>{
+      const base="https://api.mazupo.com/sfu";
+      const deviceKey="81f899b8fab5692b0faa76c3372b7ae6";
+      const viewerKey="ec0478c67e729b6f429eda1e97829af0";
+      const room="vlprobe-"+crypto.randomUUID().replaceAll("-","").slice(0,18);
+      const secret=crypto.randomUUID()+crypto.randomUUID();
+      async function token(key,body){
+        const r=await fetch(base+"/token",{method:"POST",headers:{
+          "Authorization":"Bearer "+key,"Content-Type":"application/json"
+        },body:JSON.stringify(body)});
+        const txt=await r.text();let j;try{j=JSON.parse(txt)}catch{}
+        return {httpStatus:r.status,tokenIssued:!!j?.token,expiresIn:j?.expires_in,
+          websocketOrigin:j?.url?new URL(j.url).origin:null,error:j?.error?.code??null,body:txt.slice(0,120)};
+      }
+      const device=await token(deviceKey,{device_id:room+"-dev",room_ids:[room],can_subscribe:false,secret});
+      const viewer=await token(viewerKey,{viewer_id:room+"-view",room_id:room,can_subscribe:true,secret});
+      return {device,viewer,roomLength:room.length};
+    });
+    return {pass:x.device.httpStatus===200&&x.viewer.httpStatus===200&&x.device.tokenIssued&&x.viewer.tokenIssued&&
+      x.device.expiresIn===30&&x.viewer.expiresIn===30,details:x};
   });
   await isolated("P2PCF-Public-Worker",async()=>{
     const x=await page.evaluate(async()=>{
