@@ -190,3 +190,31 @@ This is a different product from the previously tested Cloudflare Worker signali
 5. Vonage: determine if a one-to-one routed session can remain on Media Router under adaptive routing.
 6. Twilio: inspect free trial eligibility and test server-routed media; use as a control even if ongoing cost is unsuitable.
 7. Zoom: inspect data stream/file transfer, free minute allowance and actual media topology.
+
+
+## 8. DataChannels and chat-file APIs — additional findings (2026-11-22)
+
+### Cloudflare Realtime DataChannels are a genuine server-mediated data transport
+
+The official DataChannels guide describes a publisher creating a named DataChannel on the SFU and one or more subscribers attaching to it. The SFU forwards the publisher's messages to subscribers. Reliable ordered delivery is the default; publishers may also choose unordered and partially reliable delivery using max retransmits or a packet lifetime. This is not direct peer-to-peer DataChannel traffic: each endpoint's WebRTC connection terminates at the Cloudflare SFU, which forwards the channel data.
+
+The browser setup requires backend-created SFU channel allocations and the returned negotiated channel IDs. The App Secret stays on the backend. The docs do not yet establish a maximum application message size suitable for large files; WebRTC SCTP/browser message limits and buffering must be tested. There is no durable inbox/history implied by DataChannels.
+
+- Docs: https://developers.cloudflare.com/realtime/sfu/features/datachannels/
+- Limits: https://developers.cloudflare.com/realtime/sfu/platform/limits/
+- Pricing: https://developers.cloudflare.com/realtime/sfu/platform/pricing/
+- **Verdict:** **P0 for live server-relayed binary/text packets, E1**. Next test: small binary payload, increasing sizes, two browser clients, ordered delivery, reconnect and buffer pressure. For file transfer, chunk into sequenced messages and measure limits; do not assume the SFU persists data.
+
+### Zoom Video SDK file transfer is a separate chat-file path
+
+The Zoom Video SDK web docs advertise file transfer and provide a Chat SDK file send/download API. A receiver gets a file message event with metadata, but the file URL is encrypted and cannot be fetched directly; the SDK's downloadFile method is required. It emits download progress and returns a Blob only after the SDK download flow. This proves hosted file messaging and progress reporting, but does not prove that the receiver can read partial file bytes before the sender upload completes.
+
+- Web file-send/download docs: https://developers.zoom.us/docs/video-sdk/web/chat-send-files/
+- SDK overview: https://developers.zoom.us/docs/video-sdk/
+- **Verdict:** **E1 for file transfer; early-read UNKNOWN**. Worth inspecting as a self-owned test project if the free plan and browser support are acceptable.
+
+### Zoom raw data vs file messages
+
+Zoom's raw-data processor API exposes live audio/video frames for processing, but this is distinct from its chat file attachment API. Do not treat raw media processor access as arbitrary binary messaging. Its general SDK advertises data streams and file transfer, so inspect those APIs independently.
+
+- Browser raw data: https://developers.zoom.us/docs/video-sdk/web/raw-data/
