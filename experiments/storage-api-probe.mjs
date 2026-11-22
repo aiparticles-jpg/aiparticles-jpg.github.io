@@ -170,19 +170,19 @@ async function browserBatch(){
  });
  await isolated("Browser-Gofile-GuestAccount",async()=>{
   const x=await page.evaluate(async()=>{
-   const a=await fetch("https://api.gofile.is/accounts",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+   const a=await fetch("https://api.gofile.io/accounts",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
    const aj=await a.json();if(!a.ok||aj.status!=="ok")return {account:a.status,body:aj};
    const token=aj.data.token,accountId=aj.data.id;
-   const check=await fetch("https://api.gofile.is/accounts/getid",{headers:{Authorization:"Bearer "+token}});
+   const check=await fetch("https://api.gofile.io/accounts/getid",{headers:{Authorization:"Bearer "+token}});
    const cj=await check.json();
    const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
    form.append("file",new Blob([data],{type:"text/plain"}),"vl-probe.txt");
-   const up=await fetch("https://upload.gofile.is/uploadfile",{method:"POST",headers:{Authorization:"Bearer "+token},body:form});
+   const up=await fetch("https://upload.gofile.io/uploadfile",{method:"POST",headers:{Authorization:"Bearer "+token},body:form});
    const uj=await up.json();if(!up.ok||uj.status!=="ok")return {account:a.status,accountCheck:check.status,guestEmail:cj.data?.email,tier:cj.data?.tier,upload:up.status,body:uj};
    const id=uj.data.id,code=uj.data.code;
-   const dl=await fetch("https://gofile.is/dl/"+code,{headers:{Authorization:"Bearer "+token}});
+   const dl=await fetch("https://gofile.io/dl/"+code,{headers:{Authorization:"Bearer "+token}});
    const b=new Uint8Array(await dl.arrayBuffer());
-   const del=await fetch("https://api.gofile.is/contents",{method:"DELETE",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({contentsId:id})});
+   const del=await fetch("https://api.gofile.io/contents",{method:"DELETE",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({contentsId:id})});
    const dj=await del.json();
    return {account:a.status,accountCheck:check.status,guestEmail:cj.data?.email,tier:cj.data?.tier,
     upload:up.status,download:dl.status,contentType:dl.headers.get("content-type"),bytes:b.length,
