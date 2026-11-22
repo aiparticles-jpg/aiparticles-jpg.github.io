@@ -108,3 +108,37 @@ Preserve these outcomes; do not retest without a specific reason:
 7. Search for APIs where uploaded chunks are individually readable before final object assembly.
 8. Explore Laleo/Vocantly only in self-owned workspaces; capture client network requests and third-party media provider clues.
 9. Later test Android Chrome/Firefox and Turkish mobile networks separately from GitHub browser-runner evidence.
+
+
+## 6. Follow-up findings — image upload and actual call relay (2026-11-22)
+
+### Sendbird Calls: TURN is documented, but default is still P2P-first
+
+The Sendbird Calls relay-protocol documentation says the SDK first attempts direct P2P using STUN; if the firewall/NAT still prevents direct connectivity, it uses TURN to relay media between the two users. This is a genuine server-side fallback, but it is not evidence that all calls traverse Sendbird infrastructure or that clients can force relay-only mode. The page notes most WebRTC traffic uses STUN/direct connectivity. The published server-relayed price is therefore consistent with a metered TURN fallback, not necessarily an SFU.
+
+- Relay protocol reference (React Native Calls SDK; older doc, last updated 2022): https://sendbird.com/docs/calls/sdk/v1/react-native/ref/index.html
+- Pricing distinguishing P2P/server-relayed: https://sendbird.com/pricing/calls
+- **Updated verdict:** server TURN fallback confirmed at documentation level (E1); forced-relay capability and free trial coverage remain UNKNOWN. Do not count it as guaranteed relay until tested with P2P blocked/relay-only.
+
+### Sendbird Chat images/files: ordinary upload, not proven progressive delivery
+
+The JavaScript Chat SDK supports file messages, including image/* and video/*, and the documented default maximum file size is 25 MB per attachment. The SDK exposes upload progress callbacks and only then sends the file message using the returned URL. Thumbnail generation is supported for image/video attachments. These facts establish image/file attachment support and upload progress for the sender, but do not establish that the recipient can fetch the original bytes while the sender is still uploading. Treat as ordinary attachment delivery until a two-client early-read test proves otherwise.
+
+- Message types and 25 MB default: https://sendbird.com/docs/chat/sdk/v4/javascript/message/overview-message
+- Upload progress and returned file URL: https://sendbird.com/docs/chat/sdk/v4/javascript/message/sending-a-message/track-file-upload-progress-using-a-handler
+- Thumbnail generation: https://sendbird.com/docs/chat/sdk/v4/javascript/message/managing-a-message/generate-thumbnails-of-a-file-message
+- Platform API raw binary upload: https://sendbird.com/docs/chat/platform-api/v3/message/messaging-basics/send-a-message
+- **Updated verdict:** image/file upload E1; early-readable/streaming E0/UNKNOWN.
+
+### Object storage: multipart upload is not early-readable
+
+Cloudflare R2 and Amazon S3 both document multipart uploads as a staged operation: create upload, upload individual parts, then complete/assemble the object. The completed object becomes available as a normal object after completion. This is valuable for retry, resumability and parallel throughput, but it does not meet the receiver-starts-reading-before-sender-finishes requirement. A possible alternative architecture is to expose each committed chunk as a separate object/message, with sequence numbers and a final manifest; that is an application-level stream rather than a partially readable single object.
+
+- Cloudflare R2 multipart: https://developers.cloudflare.com/r2/objects/upload-objects/
+- Amazon S3 multipart: https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html
+
+### New test priority from this pass
+
+1. Sendbird Calls: determine if a web client can force TURN relay and inspect TURN credentials/endpoints; if not, simulate blocked P2P and verify automatic TURN fallback.
+2. Sendbird Chat: test two independent browser clients with a synthetic PNG, observe whether message/URL becomes available before upload completion. SDK upload progress alone is not evidence.
+3. Search image-specific APIs and chat SDKs for separately readable chunks, not only multipart upload.
