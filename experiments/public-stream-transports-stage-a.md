@@ -426,3 +426,28 @@ Official documentation:
 10. WaifuVault — browser and cross-runner verified; no auth, long size-based retention; verify deletion behaviour and current limits.
 
 All of these are public or capability-link services. For any VoiceLink use, the payload must be end-to-end encrypted, identifiers must be high entropy, and public topics/paths must not reveal stable contact identities. These tests establish feasibility only; they do not establish privacy, availability guarantees, mobile carrier reachability, or suitability for production.
+
+
+## Stage G — anonymous image/file API variants and guest-account APIs (2026-11-22)
+
+**Run:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44964397989  
+**Two-runner verification:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44964684703
+
+| Candidate | Browser test | Independent-runner test | Result |
+|---|---|---|---|
+| **kappa.lol** | POST /api/upload, GET returned file link, exact 4 KiB comparison, DELETE link returned 200 | A uploaded 8 KiB; B downloaded and verified SHA-256; A's delete URL returned 200 | **PASS** — anonymous upload, transferable file URL and delete capability; browser CORS works. |
+| **segs.lol** | Same API flow, exact 4 KiB comparison, delete returned 200 | A uploaded 8 KiB; B downloaded and verified SHA-256; delete returned 200 | **PASS** — same pattern as kappa.lol; likely sibling implementation, but separately verified. |
+| **Gofile guest account API** | Tried both gofile.is and gofile.io. The first account endpoint returned HTML instead of the documented JSON; the second attempt failed at the upload fetch | Not attempted | **NOT CONFIRMED** — the guest-account model is attractive (the docs describe a no-email guest account with a bearer token), but the upload flow is not yet proven browser-accessible from GitHub Pages. Do not treat it as usable. |
+| **tmpfiles.org** | Browser upload request failed with TypeError: Failed to fetch | Not attempted | **FAIL** — direct browser upload is blocked from this origin in this test. |
+
+Official references:
+- kappa.lol API and delete capability: https://fuckroskomnadzor.kappa.lol/uploaders
+- segs.lol API and delete capability: https://padla.kappa.lol/uploaders
+- Gofile guest accounts, API CORS and upload architecture: https://gofile.io/api and https://gofile.is/api/
+- tmpfiles.org API candidate reference: https://tmpfiles.org/
+
+### Newly confirmed file-transfer options
+
+kappa.lol and segs.lol now join AISense, TempFile.org, beacon.host and WaifuVault as **browser-tested and cross-runner-tested anonymous file handoff mechanisms**. Their useful distinguishing property is that each upload response includes a deletion capability, and the probe verified deletion returned HTTP 200 after the second runner had downloaded and hash-checked the file.
+
+For VoiceLink, these are candidates for exchanging larger one-off objects (for example, encrypted signalling envelopes or diagnostic bundles), not for frequent signalling packets. Their upload links and delete keys are bearer capabilities; keep them encrypted and short-lived where the service allows it.
