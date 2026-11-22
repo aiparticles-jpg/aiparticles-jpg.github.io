@@ -250,6 +250,91 @@ async function browserBatch(){
   });
   return {pass:x.same===true,details:x};
  });
+ await isolated("Browser-KeyVal",async()=>{
+  const x=await page.evaluate(async()=>{
+   const key="vlprobe-"+crypto.randomUUID().replaceAll("-","").slice(0,24);
+   const v1="A".repeat(240),v2="B".repeat(240);
+   const s=await fetch("https://api.keyval.org/set/"+encodeURIComponent(key)+"/"+v1);
+   const g=await fetch("https://api.keyval.org/get/"+encodeURIComponent(key));
+   const t1=(await g.text()).trim();
+   const u=await fetch("https://api.keyval.org/set/"+encodeURIComponent(key)+"/"+v2);
+   const h=await fetch("https://api.keyval.org/get/"+encodeURIComponent(key));
+   const t2=(await h.text()).trim();
+   return {set:s.status,read:g.status,firstMatch:t1===v1,overwrite:u.status,secondMatch:t2===v2,limitTest:v2.length};
+  });
+  return {pass:x.set===200&&x.read===200&&x.firstMatch&&x.overwrite===200&&x.secondMatch,details:x};
+ });
+ await isolated("Browser-PastersIO",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data="VL-PROBE-"+crypto.randomUUID()+"-"+ "x".repeat(4096);
+   const p=await fetch("https://pasters.io/?expires=1d",{method:"POST",headers:{"Content-Type":"text/plain"},body:data});
+   const url=(await p.text()).trim(),deleteUrl=p.headers.get("x-delete-url");
+   if(!p.ok||!url.startsWith("https://"))return {upload:p.status,body:url.slice(0,120),deleteHeader:!!deleteUrl};
+   const g=await fetch(url),body=await g.text();
+   let del=null;if(deleteUrl){const d=await fetch(deleteUrl,{method:"DELETE"});del=d.status}
+   return {upload:p.status,download:g.status,match:body===data,delete:del,deleteHeader:!!deleteUrl,expires:p.headers.get("x-paste-expires-in")};
+  });
+  return {pass:x.upload===201&&x.download===200&&x.match,details:x};
+ });
+ await isolated("Browser-PastebinAI",async()=>{
+  const x=await page.evaluate(async()=>{
+   const content="VL-PROBE-"+crypto.randomUUID()+"-"+"q".repeat(4096);
+   const p=await fetch("https://pastebin.ai/api/v1/pastes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content,visibility:"unlisted",expiration:"10m"})});
+   const pt=await p.text();let j;try{j=JSON.parse(pt)}catch{}
+   if(!p.ok||!j?.id)return {create:p.status,body:pt.slice(0,180)};
+   const g=await fetch("https://pastebin.ai/api/v1/pastes/"+encodeURIComponent(j.id));
+   const gt=await g.text();let gj;try{gj=JSON.parse(gt)}catch{}
+   const match=gt.includes(content);
+   let del=null;if(j.delete_token){const d=await fetch("https://pastebin.ai/api/v1/pastes/"+encodeURIComponent(j.id),{method:"DELETE",headers:{"X-Delete-Token":j.delete_token}});del=d.status}
+   return {create:p.status,read:g.status,match,delete:del,expiresAt:j.expires_at};
+  });
+  return {pass:x.create===201&&x.read===200&&x.match,details:x};
+ });
+ await isolated("Browser-rTS-Linx",async()=>{
+  const x=await page.evaluate(async()=>{
+   const data=crypto.getRandomValues(new Uint8Array(4096));
+   const p=await fetch("https://paste.rtech.support/upload/",{method:"PUT",headers:{
+    "Accept":"application/json","Linx-Randomize":"yes","Linx-Expiry":"3600"
+   },body:data});
+   const pt=await p.text();let j;try{j=JSON.parse(pt)}catch{}
+   if(!p.ok||!j?.url)return {upload:p.status,body:pt.slice(0,180)};
+   const g=await fetch(j.direct_url??j.url),b=new Uint8Array(await g.arrayBuffer());
+   let del=null;if(j.delete_key){const d=await fetch(j.url,{method:"DELETE",headers:{"Linx-Delete-Key":j.delete_key}});del=d.status}
+   return {upload:p.status,download:g.status,bytes:b.length,match:b.length===data.length&&b.every((v,i)=>v===data[i]),delete:del,expiry:j.expiry};
+  });
+  return {pass:x.match===true,details:x};
+ });
+ await isolated("Browser-SvixPlay-Mailbox",async()=>{
+  const x=await page.evaluate(async()=>{
+   const t=await fetch("https://api.play.svix.com/api/v1/token/generate/",{method:"POST"});
+   const tt=await t.text();let tj;try{tj=JSON.parse(tt)}catch{}
+   const token=typeof tj==="string"?tj:(tj?.token??tj?.id??tj?.data?.token);
+   if(!t.ok||!token)return {tokenStatus:t.status,body:tt.slice(0,160)};
+   const marker="VL-PROBE-"+crypto.randomUUID();
+   const p=await fetch("https://api.play.svix.com/api/v1/in/"+encodeURIComponent(token)+"/",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({marker,sequence:1})});
+   const h=await fetch("https://api.play.svix.com/api/v1/history/"+encodeURIComponent(token)+"/");
+   const ht=await h.text();
+   return {tokenStatus:t.status,send:p.status,history:h.status,found:ht.includes(marker),historyBody:ht.slice(0,120)};
+  });
+  return {pass:x.send>=200&&x.send<300&&x.history===200&&x.found,details:x};
+ });
+ await isolated("Browser-WebhookSite-Mailbox",async()=>{
+  const x=await page.evaluate(async()=>{
+   const t=await fetch("https://webhook.site/token",{method:"POST",headers:{"Accept":"application/json","Content-Type":"application/json"},body:"{}"});
+   const tt=await t.text();let tj;try{tj=JSON.parse(tt)}catch{}
+   const id=tj?.uuid??tj?.token??tj?.id;
+   if(!t.ok||!id)return {create:t.status,body:tt.slice(0,150)};
+   const marker="VL-PROBE-"+crypto.randomUUID();
+   let sendStatus=null,sendError=null;
+   try{const s=await fetch("https://webhook.site/"+id,{method:"POST",headers:{"Content-Type":"text/plain"},body:marker});sendStatus=s.status}
+   catch(e){sendError=String(e).slice(0,100)}
+   const g=await fetch("https://webhook.site/token/"+id+"/requests");
+   const gt=await g.text();
+   let del=null;try{const d=await fetch("https://webhook.site/token/"+id,{method:"DELETE",headers:{"Accept":"application/json"}});del=d.status}catch{}
+   return {create:t.status,send:sendStatus,sendError,read:g.status,found:gt.includes(marker),delete:del,body:gt.slice(0,120)};
+  });
+  return {pass:x.read===200&&x.found,details:x};
+ });
  await isolated("Browser-WebSocketEndpoints",async()=>{
   const checks=await page.evaluate(async()=>{
    const es=[["ConnectMQ","wss://broker.connectmq.com:8084/mqtt"],["EMQX","wss://broker.emqx.io:8084/mqtt"],["HiveMQ","wss://broker.hivemq.com:8884/mqtt"],
