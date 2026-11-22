@@ -14,6 +14,46 @@ async function browserBatch(){
   page=await browser.newPage();
   await page.goto(ORIGIN,{waitUntil:"domcontentloaded",timeout:30000});
   report("BrowserOrigin","PASS",{origin:await page.evaluate(()=>location.origin)});
+  async function workerProbe(name,base,healthPath,turnPath){
+    await isolated(name+"-Health-CORS",async()=>{
+      const x=await page.evaluate(async({base,healthPath})=>{
+        const r=await fetch(base+healthPath,{cache:"no-store"});
+        const body=await r.text();
+        return {status:r.status,acao:r.headers.get("access-control-allow-origin"),body:body.slice(0,160)};
+      },{base,healthPath});
+      return {pass:x.status===200&&!!x.acao,details:x};
+    });
+    if(turnPath){
+      await isolated(name+"-Turn-Credentials-CORS",async()=>{
+        const x=await page.evaluate(async({base,turnPath})=>{
+          const pre=await fetch(base+turnPath,{method:"OPTIONS",headers:{
+            "Access-Control-Request-Method":"POST",
+            "Access-Control-Request-Headers":"content-type"
+          }});
+          const preflight={status:pre.status,acao:pre.headers.get("access-control-allow-origin"),
+            methods:pre.headers.get("access-control-allow-methods"),headers:pre.headers.get("access-control-allow-headers")};
+          if(pre.status<200||pre.status>=300)return {preflight};
+          const r=await fetch(base+turnPath,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+          const body=await r.text();let j;try{j=JSON.parse(body)}catch{}
+          const urls=(j?.iceServers??[]).flatMap(s=>Array.isArray(s.urls)?s.urls:[s.urls]).filter(Boolean);
+          return {preflight,status:r.status,acao:r.headers.get("access-control-allow-origin"),
+            hasIceServers:urls.length>0,urls:urls.map(u=>String(u).replace(/^(turns?:)[^?]+/,"$1<host>")),
+            expiresAt:j?.expiresAt,body:body.slice(0,180)};
+        },{base,turnPath});
+        return {pass:x.preflight?.status>=200&&x.preflight?.status<300&&x.status===200&&x.hasIceServers&&!!x.acao,details:x};
+      });
+    }
+  }
+  await workerProbe("CopyPaesto-Worker","https://copypaesto-relay.albyaty.workers.dev","/health",null);
+  await workerProbe("Weblink-Worker","https://ws.webl.ink","/healthcheck","/turn-credentials");
+  await isolated("P2PCF-Public-Worker",async()=>{
+    const x=await page.evaluate(async()=>{
+      const r=await fetch("https://p2pcf.minddrop.workers.dev",{cache:"no-store"});
+      const body=await r.text();
+      return {status:r.status,acao:r.headers.get("access-control-allow-origin"),body:body.slice(0,180)};
+    });
+    return {pass:x.status===200&&!!x.acao,details:x};
+  });
  }catch(e){report("BrowserOrigin","BLOCKED",{error:String(e).slice(0,250)});await browser?.close();return}
  async function isolated(name,fn){
   try{const x=await fn();report(name,x.pass?"PASS":"FAIL",x.details??x)}
