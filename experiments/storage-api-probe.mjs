@@ -171,6 +171,86 @@ async function browserBatch(){
     return {pass:x.device.httpStatus===200&&x.viewer.httpStatus===200&&x.device.tokenIssued&&x.viewer.tokenIssued&&
       x.device.expiresIn===30&&x.viewer.expiresIn===30,details:x};
   });
+  await isolated("Mazupo-Public-SFU-Binary-DataChannel-Streaming",async()=>{
+    let devicePage,viewerPage;
+    try{
+      const room="vl-"+Date.now().toString(36);
+      const deviceId="vl-device-"+Date.now().toString(36);
+      const deviceKey="1L4-mUUztDWhzF_ORhPHb4xpQK2Y9bEgeif0pYn7PXI";
+      const viewerKey="-706d13ForZLHmv6FwARf9ZgEEfO78AattyxWhNoHFo";
+      const capture=()=>{window.__vlChannels=[];const original=RTCPeerConnection.prototype.createDataChannel;
+        RTCPeerConnection.prototype.createDataChannel=function(...args){const ch=original.apply(this,args);window.__vlChannels.push(ch);return ch}};
+      devicePage=await browser.newPage();viewerPage=await browser.newPage();
+      await devicePage.addInitScript(capture);await viewerPage.addInitScript(capture);
+      await Promise.all([devicePage.goto("https://api.mazupo.com/sfu/device"),viewerPage.goto("https://api.mazupo.com/sfu/")]);
+      await devicePage.locator("#api-url").fill("https://api.mazupo.com/sfu");
+      await devicePage.locator("#device-key").fill(deviceKey);
+      await devicePage.locator("#device-id").fill(deviceId);
+      await devicePage.locator("#rooms").fill(room);
+      await devicePage.locator("#source").selectOption("pattern");
+      await devicePage.locator("#ipc").check();
+      await devicePage.locator("#connect").click();
+      await devicePage.waitForFunction(()=>document.querySelector("#status")?.textContent.includes("Connected as"),null,{timeout:25000});
+      await viewerPage.locator("#api-url").fill("https://api.mazupo.com/sfu");
+      await viewerPage.locator("#viewer-key").fill(viewerKey);
+      await viewerPage.locator("#room").fill(room);
+      await viewerPage.locator("#ipc").check();
+      await viewerPage.locator("#join").click();
+      await viewerPage.locator('#tiles [data-action="take"]').first().waitFor({state:"visible",timeout:25000});
+      await Promise.all([
+        devicePage.waitForFunction(()=>window.__vlChannels?.some(c=>c.label==="_reliable"&&c.readyState==="open"),null,{timeout:25000}),
+        viewerPage.waitForFunction(()=>window.__vlChannels?.some(c=>c.label==="_reliable"&&c.readyState==="open"),null,{timeout:25000})
+      ]);
+      await viewerPage.locator('#tiles [data-action="take"]').first().click();
+      await viewerPage.waitForFunction(()=>[...document.querySelectorAll("#tiles .control")].some(e=>e.textContent.includes("You control this device")),null,{timeout:15000});
+      async function attachReceiver(page){
+        await page.evaluate(()=>{
+          window.__vlReceivedBytes=0;window.__vlSum=0;window.__vlFirst=null;window.__vlSentBytes=0;
+          const ch=[...(window.__vlChannels??[])].reverse().find(c=>c.label==="_reliable"&&c.readyState==="open");
+          if(!ch)throw Error("reliable DataChannel not open");
+          ch.addEventListener("message",event=>{
+            if(!(event.data instanceof ArrayBuffer))return;
+            const bytes=new Uint8Array(event.data);
+            if(!window.__vlFirst)window.__vlFirst={senderBytesAtFirst:window.__vlSentBytes,chunkBytes:bytes.length};
+            for(const byte of bytes)window.__vlSum=(window.__vlSum+byte)>>>0;
+            window.__vlReceivedBytes+=bytes.length;
+          });
+        });
+      }
+      async function transfer(senderPage,receiverPage){
+        const size=256*1024,chunkSize=16*1024;
+        let expectedSum=0;
+        const chunks=[];
+        for(let offset=0;offset<size;offset+=chunkSize){
+          const bytes=Buffer.alloc(chunkSize);
+          for(let i=0;i<chunkSize;i++){const value=((offset+i)*31+7)&255;bytes[i]=value;expectedSum=(expectedSum+value)>>>0}
+          chunks.push(bytes.toString("base64"));
+        }
+        await attachReceiver(receiverPage);
+        let sent=0;
+        for(const encoded of chunks){
+          sent+=chunkSize;
+          await receiverPage.evaluate(value=>{window.__vlSentBytes=value},sent);
+          await senderPage.evaluate(encoded=>{
+            const ch=[...(window.__vlChannels??[])].reverse().find(c=>c.label==="_reliable"&&c.readyState==="open");
+            if(!ch)throw Error("sender reliable DataChannel closed");
+            const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));ch.send(bytes.buffer);
+          },encoded);
+          await receiverPage.waitForFunction(expected=>window.__vlReceivedBytes>=expected,sent,{timeout:15000});
+        }
+        const result=await receiverPage.evaluate(()=>({bytes:window.__vlReceivedBytes,sum:window.__vlSum,first:window.__vlFirst}));
+        return {pass:result.bytes===size&&result.sum===expectedSum&&result.first?.senderBytesAtFirst<size,
+          sent:size,expectedSum,result};
+      }
+      const viewerToDevice=await transfer(viewerPage,devicePage);
+      const deviceToViewer=await transfer(devicePage,viewerPage);
+      const video=await viewerPage.evaluate(()=>{const v=document.querySelector("#tiles video");return v?{width:v.videoWidth,height:v.videoHeight}:null});
+      return {pass:viewerToDevice.pass&&deviceToViewer.pass&&!!video?.width,roomLength:room.length,
+        viewerToDevice,deviceToViewer,video};
+    }finally{
+      await Promise.all([devicePage?.close().catch(()=>{}),viewerPage?.close().catch(()=>{})]);
+    }
+  });
   await isolated("P2PCF-Public-Worker",async()=>{
     const x=await page.evaluate(async()=>{
       const r=await fetch("https://p2pcf.minddrop.workers.dev",{cache:"no-store"});
