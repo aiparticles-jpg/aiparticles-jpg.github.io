@@ -90,6 +90,26 @@ async function browserBatch(){
   });
   return {pass:x.create===200&&x.read===200&&x.stored&&x.patch===200&&x.updated&&x.delete>=200&&x.delete<300,details:x};
  });
+ await isolated("Browser-CrudCrud",async()=>{
+  const endpointPage=await browser.newPage();
+  await endpointPage.goto("https://crudcrud.com/",{waitUntil:"domcontentloaded",timeout:30000});
+  const text=await endpointPage.locator("body").innerText();
+  await endpointPage.close();
+  const base=text.match(/https:\/\/crudcrud\.com\/api\/[a-f0-9]{32}/i)?.[0];
+  if(!base)throw new Error("Could not extract generated anonymous endpoint");
+  const x=await page.evaluate(async base=>{
+   const resource=base+"/vlprobe",marker="vl-"+crypto.randomUUID();
+   const p=await fetch(resource,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({marker,stage:"created"})});
+   const pt=await p.text();let j;try{j=JSON.parse(pt)}catch{}
+   if(!p.ok||!j?._id)return {create:p.status,body:pt.slice(0,120)};
+   const id=j._id,u=resource+"/"+id,g=await fetch(resource),arr=await g.json();
+   const put=await fetch(u,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({marker,stage:"updated"})});
+   const v=await fetch(resource),rows=await v.json(),updated=rows.find(x=>x._id===id)?.stage==="updated";
+   const del=await fetch(u,{method:"DELETE"});
+   return {create:p.status,read:g.status,found:arr.some(x=>x._id===id),update:put.status,updated,delete:del.status};
+  },base);
+  return {pass:x.create===201&&x.read===200&&x.found&&x.update===200&&x.updated&&x.delete>=200&&x.delete<300,details:x};
+ });
  await isolated("Browser-TempFileOrg",async()=>{
   const x=await page.evaluate(async()=>{
    const data=crypto.getRandomValues(new Uint8Array(4096)),form=new FormData();
