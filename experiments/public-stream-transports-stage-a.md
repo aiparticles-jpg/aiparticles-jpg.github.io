@@ -451,3 +451,14 @@ Official references:
 kappa.lol and segs.lol now join AISense, TempFile.org, beacon.host and WaifuVault as **browser-tested and cross-runner-tested anonymous file handoff mechanisms**. Their useful distinguishing property is that each upload response includes a deletion capability, and the probe verified deletion returned HTTP 200 after the second runner had downloaded and hash-checked the file.
 
 For VoiceLink, these are candidates for exchanging larger one-off objects (for example, encrypted signalling envelopes or diagnostic bundles), not for frequent signalling packets. Their upload links and delete keys are bearer capabilities; keep them encrypted and short-lived where the service allows it.
+
+
+## Stage H — final additions to the first browser batch (2026-11-22)
+
+**Run:** https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/actions/runs/44964866504
+
+- **CrudCrud:** the browser runner could not resolve crudcrud.com (DNS error), so no endpoint was created and no CRUD operation was attempted. This is an environmental reachability failure, not a CORS verdict. The service's homepage describes per-visitor unique endpoints with POST/GET/PUT/DELETE, but it remains unverified from our deployment.
+- **Gofile:** the documented guest-account flow was tried on both gofile.is and gofile.io; the browser could not complete the upload request. No end-to-end browser file handoff was confirmed.
+- **kappa.lol and segs.lol:** repeated browser uploads/readbacks/deletes continued to pass, and their independent-runner exchange passed with 8 KiB files and verified SHA-256 on both receiving clients.
+
+No additional candidate is promoted to the working shortlist without a successful browser test from the actual GitHub Pages origin.
