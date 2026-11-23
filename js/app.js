@@ -1598,9 +1598,11 @@ async function processSupabaseInboxRecord(record,source){
  }
  const contact=await findContactBySupabaseUserId(record.sender_id);
  if(!contact){
-  debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");
-  await setSupabaseInboxCursor(state.supabaseUserId,recipientSeq);
-  return true;
+  // Never advance the durable recipient cursor for a record we cannot process.
+  // The contact may be saved later (for example, after invite acceptance); recovery
+  // must retry this exact row instead of permanently skipping it.
+  debug("Supabase inbox: отправитель "+record.sender_id+" пока не найден в локальных контактах; recipient_seq="+recipientSeq+" оставлен необработанным, курсор не изменён.");
+  return false;
  }
  const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
  if(!secrets.length)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
