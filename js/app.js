@@ -1589,7 +1589,14 @@ async function processSupabaseInboxRecord(record,source){
  const sequence=BigInt(message.seq);
  const current=await getSupabaseSequenceState(record.sender_id);
  const last=BigInt(current.incoming);
- if(sequence<=last)return;
+ if(sequence<=last){
+  const existingBuffer=supabaseInboxBuffers.get(record.sender_id);
+  if(existingBuffer){
+   existingBuffer.delete(message.seq);
+   if(!existingBuffer.size)supabaseInboxBuffers.delete(record.sender_id);
+  }
+  return;
+ }
 
  if(sequence>last+1n){
   let buffer=supabaseInboxBuffers.get(record.sender_id);
