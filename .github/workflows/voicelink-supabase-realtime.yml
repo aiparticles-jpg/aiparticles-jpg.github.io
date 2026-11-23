@@ -25,6 +25,9 @@ concurrency:
 
 jobs:
   realtime-integration:
+    # This workflow applies schema migrations to the production Supabase project.
+    # Never run it from feature branches before their compatible client is deployed.
+    if: github.ref == 'refs/heads/main'
     name: Private inbox Broadcast integration test
     runs-on: ubuntu-latest
     timeout-minutes: 8
