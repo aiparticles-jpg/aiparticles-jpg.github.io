@@ -1,5 +1,5 @@
 import { createInvitationId, encryptSupabaseMessage, decryptSupabaseMessage } from "./supabase-protocol.mjs?v=1";
-import { enqueueSupabaseOutboxMessage, listSupabaseOutboxMessages, saveSupabaseOutboxEnvelope, deleteSupabaseOutboxMessage } from "./local-store.js?v=25";
+import { enqueueSupabaseOutboxMessage, listSupabaseOutboxMessages, saveSupabaseOutboxEnvelope, deleteSupabaseOutboxMessage } from "./local-store.js?v=26";
 
 const SUPABASE_URL = "https://lcmccpecmtnqknthtijl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
@@ -221,21 +221,21 @@ export function subscribeSupabaseInbox(userId, onMessage, onStatus = () => {}) {
     .subscribe(status => onStatus(status));
 }
 
-export async function fetchSupabaseInbox(userId, afterMessageId = "0", pageSize = 500) {
+export async function fetchSupabaseInbox(userId, afterRecipientSeq = "0", pageSize = 500) {
   if (typeof userId !== "string" || !SUPABASE_UUID_RE.test(userId)) {
     throw new TypeError("A valid Supabase inbox identity is required.");
   }
-  const cursor = String(afterMessageId);
+  const cursor = String(afterRecipientSeq);
   if (!/^(0|[1-9][0-9]*)$/.test(cursor)) {
-    throw new TypeError("A valid global message_id cursor is required.");
+    throw new TypeError("A valid recipient_seq cursor is required.");
   }
   const safePageSize = Math.max(1, Math.min(1000, Math.trunc(Number(pageSize) || 500)));
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.from("messages")
-    .select("message_id,sender_id,recipient_id,payload,created_at")
+    .select("recipient_seq,sender_id,recipient_id,payload,created_at")
     .eq("recipient_id", userId.toLowerCase())
-    .gt("message_id", cursor)
-    .order("message_id", { ascending: true })
+    .gt("recipient_seq", cursor)
+    .order("recipient_seq", { ascending: true })
     .limit(safePageSize);
   if (error) throw new Error("Не удалось восстановить входящие сообщения Supabase: " + error.message);
   return Array.isArray(data) ? data : [];

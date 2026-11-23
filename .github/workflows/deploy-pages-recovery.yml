@@ -17,7 +17,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  schema-migration:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install migration dependencies
+        working-directory: backend
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Apply recipient sequence migration before deploying the client
+        working-directory: backend
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          test -n "$SUPABASE_URL" || (echo "Missing GitHub Actions secret: SUPABASE_URL" && exit 1)
+          test -n "$SUPABASE_DB_URL" || (echo "Missing GitHub Actions secret: SUPABASE_DB_URL" && exit 1)
+          node scripts/apply-supabase-recipient-sequence-migration.js
+
   build:
+    needs: schema-migration
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -839,26 +839,28 @@ export async function advanceSupabaseIncomingSequence(peerId, sequenceValue) {
 
 const SUPABASE_INBOX_CURSOR_RE = /^(0|[1-9][0-9]*)$/;
 
-/** Read the last durably scanned global message_id for this local inbox. */
+/** Read the last durably processed recipient_seq for this local inbox. */
 export async function getSupabaseInboxCursor(userId) {
   const peer = validateSupabasePeerId(userId);
   const tx = await openTransaction("meta", "readonly");
   const done = transactionDone(tx);
   const record = await requestValue(tx.objectStore("meta").get("supabase_inbox_cursor:" + peer));
   await done;
-  const value = String(record?.message_id ?? "0");
+  // Legacy message_id-only cursors intentionally restart at zero during the
+  // one-time transition; per-sender seq makes replayed rows idempotent.
+  const value = String(record?.recipient_seq ?? "0");
   if (!SUPABASE_INBOX_CURSOR_RE.test(value)) {
-    throw new Error("Stored Supabase inbox cursor is invalid.");
+    throw new Error("Stored Supabase recipient cursor is invalid.");
   }
   return value;
 }
 
-/** Persist a monotonically increasing inbox cursor after a row was processed. */
-export async function setSupabaseInboxCursor(userId, messageIdValue) {
+/** Persist a monotonically increasing recipient_seq after a row is processed. */
+export async function setSupabaseInboxCursor(userId, recipientSeqValue) {
   const peer = validateSupabasePeerId(userId);
-  const messageId = String(messageIdValue);
-  if (!SUPABASE_INBOX_CURSOR_RE.test(messageId)) {
-    throw new TypeError("A valid global Supabase message_id is required.");
+  const recipientSeq = String(recipientSeqValue);
+  if (!SUPABASE_INBOX_CURSOR_RE.test(recipientSeq)) {
+    throw new TypeError("A valid Supabase recipient_seq is required.");
   }
   const tx = await openTransaction("meta", "readwrite");
   const done = transactionDone(tx);
@@ -866,13 +868,15 @@ export async function setSupabaseInboxCursor(userId, messageIdValue) {
   const key = "supabase_inbox_cursor:" + peer;
   const request = store.get(key);
   request.onsuccess = () => {
-    const record = request.result || { key, message_id: "0" };
-    if (BigInt(messageId) > BigInt(String(record.message_id ?? "0"))) {
-      record.message_id = messageId;
+    const record = request.result || { key, recipient_seq: "0" };
+    const current = String(record.recipient_seq ?? "0");
+    if (BigInt(recipientSeq) > BigInt(current)) {
+      record.recipient_seq = recipientSeq;
+      delete record.message_id;
       record.updated_at = Date.now();
       store.put(record);
     }
   };
   await done;
-  return messageId;
+  return recipientSeq;
 }
