@@ -1668,10 +1668,12 @@ async function recoverSupabaseInbox(){
   while(true){
    const rows=await fetchSupabaseInbox(state.supabaseUserId,cursor,500);
    if(!rows.length)break;
+   let blocked=false;
    for(const row of rows){
     const processed=await enqueueSupabaseInboxRecord(row,"восстановление durable inbox");
     if(processed!==true){
      debug("Supabase inbox: durable cursor остановлен на message_id="+row.message_id+"; запись пока не обработана.");
+     blocked=true;
      break;
     }
     const nextCursor=String(row.message_id);
@@ -1680,7 +1682,7 @@ async function recoverSupabaseInbox(){
     cursor=nextCursor;
     total++;
    }
-   if(rows.length<500)break;
+   if(blocked||rows.length<500)break;
   }
   debug("Supabase inbox: проверено новых сохранённых записей: "+total+"; cursor="+cursor+".");
  }finally{supabaseRecoveryRunning=false}
