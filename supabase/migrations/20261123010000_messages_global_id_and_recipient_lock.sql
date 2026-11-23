@@ -2,13 +2,32 @@
 -- The encrypted per-direction seq remains the only delivery-gap/order signal.
 
 alter table public.messages
-  add column message_id bigint generated always as identity;
+  add column if not exists message_id bigint generated always as identity;
 
-alter table public.messages
-  add constraint messages_pkey primary key (message_id);
+do $message_id_pk$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.messages'::regclass
+      and contype = 'p'
+      and conkey = array[
+        (select attnum from pg_attribute
+         where attrelid = 'public.messages'::regclass and attname = 'message_id')
+      ]::smallint[]
+  ) then
+    if exists (
+      select 1 from pg_constraint
+      where conrelid = 'public.messages'::regclass and contype = 'p'
+    ) then
+      raise exception 'public.messages already has a different primary key';
+    end if;
+    alter table public.messages add constraint messages_pkey primary key (message_id);
+  end if;
+end;
+$message_id_pk$;
 
 -- Supports recipient-scoped keyset pagination without scanning old inbox rows.
-create index messages_recipient_message_id_idx
+create index if not exists messages_recipient_message_id_idx
   on public.messages (recipient_id, message_id);
 
 create or replace function public.submit_message(
