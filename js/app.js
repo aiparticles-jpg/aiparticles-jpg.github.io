@@ -1593,8 +1593,7 @@ async function processSupabaseInboxRecord(record,source){
  const currentRecipientSeq=BigInt(recipientSeq);
  if(currentRecipientSeq<=cursor)return true;
  if(currentRecipientSeq!==cursor+1n){
-  debug("Supabase inbox: пропуск recipient_seq (ожидается "+(cursor+1n)+", получено "+recipientSeq+"); запрошено восстановление.");
-  scheduleSupabaseInboxRecovery();
+  debug("Supabase inbox: пропуск recipient_seq (ожидается "+(cursor+1n)+", получено "+recipientSeq+"); требуется восстановление.");
   return false;
  }
  const contact=await findContactBySupabaseUserId(record.sender_id);

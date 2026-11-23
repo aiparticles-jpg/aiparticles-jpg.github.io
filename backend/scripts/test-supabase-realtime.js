@@ -332,6 +332,8 @@ async function main() {
       "Broadcast event does not contain the inserted inbox record.");
     assert(record.recipient_id === recipient.id && record.sender_id === sender.id,
       "Broadcast event was routed to the wrong sender or recipient.");
+    assert(BigInt(record.recipient_seq) === 1n,
+      "First private Broadcast row did not include recipient_seq=1.");
     assert(record.payload && record.payload.nonce === nonce,
       "Broadcast event payload does not match the inserted message.");
     assert(record.created_at && !Number.isNaN(Date.parse(record.created_at)) &&

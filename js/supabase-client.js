@@ -1,5 +1,5 @@
 import { createInvitationId, encryptSupabaseMessage, decryptSupabaseMessage } from "./supabase-protocol.mjs?v=1";
-import { enqueueSupabaseOutboxMessage, listSupabaseOutboxMessages, saveSupabaseOutboxEnvelope, deleteSupabaseOutboxMessage } from "./local-store.js?v=25";
+import { enqueueSupabaseOutboxMessage, listSupabaseOutboxMessages, saveSupabaseOutboxEnvelope, deleteSupabaseOutboxMessage } from "./local-store.js?v=26";
 
 const SUPABASE_URL = "https://lcmccpecmtnqknthtijl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
