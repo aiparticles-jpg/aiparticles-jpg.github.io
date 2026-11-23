@@ -5,6 +5,23 @@ This file is a continuity checkpoint for future ChatGPT sessions. Treat the repo
 Repository: https://github.com/aiparticles-jpg/aiparticles-jpg.github.io
 Main architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
+## Latest Supabase inbox architecture decision — 2026-11-23
+
+This section supersedes older checkpoint statements about timestamp-only or global-`message_id` inbox pagination.
+
+- Each recipient has an independent, strictly increasing `recipient_seq` across all senders.
+- Each inbox row stores `recipient_seq`; PostgreSQL allocates it using `recipient_counters(recipient_id, last_seq)`.
+- The counter upsert and message insert occur in the same transaction. The counter row lock serializes allocation and commit order for that recipient; different recipients remain independent.
+- The encrypted per-sender `seq` remains in place for sender-level ordering and duplicate detection. It is not replaced by `recipient_seq`.
+- The browser stores one durable inbox cursor per recipient in IndexedDB. The cursor value is now `recipient_seq`; legacy `message_id` cursor records are treated as zero so old rows are replayed safely through per-sender duplicate checks.
+- A Realtime row whose `recipient_seq` is exactly cursor + 1 is processed immediately and advances the local cursor. A successful Realtime event does not trigger a PostgreSQL history read.
+- PostgreSQL recovery is requested only on a detected recipient/sender sequence gap or when the private Realtime subscription becomes `SUBSCRIBED` (initial connect/reconnect). There is no periodic inbox poll.
+- Realtime and recovery processing share one serialized inbox queue. A pending recovery request is retained if another event arrives while recovery is already running.
+- The migration is staged for compatibility: `message_id` remains temporarily so already-open old clients can continue using it during rollout. The new client does not use it. A later cleanup migration may replace the legacy primary key with `(recipient_id, recipient_seq)` and drop `message_id` after rollout is verified.
+- Migration and deploy workflows are gated so feature-branch pushes cannot alter production Supabase. Pages recovery deployment waits for the additive recipient-sequence migration before publishing the new client.
+
+Implementation in progress: draft PR [#116](https://github.com/aiparticles-jpg/aiparticles-jpg.github.io/pull/116), branch `feature/recipient-sequence-inbox`. Browser/backend JavaScript syntax checks passed on the branch. Production Supabase migration and integration tests have not yet run; do not describe this as deployed.
+
 ## Working rules
 - Before changing code, inspect the current repository state.
 - Discuss and agree architecture before implementation.
