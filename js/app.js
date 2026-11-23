@@ -1,11 +1,11 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=58";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=25";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=26";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
-import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance, subscribeSupabaseInbox, fetchSupabaseInbox, decryptSupabaseInboxRecord, flushSupabaseOutbox } from "./supabase-client.js?v=9";
+import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance, subscribeSupabaseInbox, fetchSupabaseInbox, decryptSupabaseInboxRecord, flushSupabaseOutbox } from "./supabase-client.js?v=10";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -1561,19 +1561,25 @@ async function redeemSupabaseInvitationOnce(contact,source="импорт"){
 }
 let supabaseInboxChannel=null;
 let supabaseInboxQueue=Promise.resolve();
-const supabaseInboxBuffers=new Map();
 let supabaseRecoveryScheduled=false;
 let supabaseRecoveryRunning=false;
+let supabaseRecoveryRequested=false;
 
 function scheduleSupabaseInboxRecovery(){
+ if(!state.supabaseUserId)return;
+ supabaseRecoveryRequested=true;
  if(supabaseRecoveryScheduled||supabaseRecoveryRunning)return;
  supabaseRecoveryScheduled=true;
  Promise.resolve().then(async()=>{
   supabaseRecoveryScheduled=false;
-  try{await recoverSupabaseInbox()}
-  catch(error){
-   debug("Не удалось восстановить Supabase inbox: "+(error.message||String(error))+"; повтор через 5 секунд.");
-   setTimeout(scheduleSupabaseInboxRecovery,5000);
+  while(supabaseRecoveryRequested){
+   supabaseRecoveryRequested=false;
+   try{await recoverSupabaseInbox()}
+   catch(error){
+    debug("Не удалось восстановить Supabase inbox: "+(error.message||String(error))+"; повтор через 5 секунд.");
+    setTimeout(scheduleSupabaseInboxRecovery,5000);
+    break;
+   }
   }
  });
 }
@@ -1581,9 +1587,20 @@ function scheduleSupabaseInboxRecovery(){
 async function processSupabaseInboxRecord(record,source){
  if(!record||record.recipient_id!==state.supabaseUserId||typeof record.sender_id!=="string"||
     typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return false;
+ const recipientSeq=String(record.recipient_seq??"");
+ if(!/^[1-9][0-9]*$/.test(recipientSeq))return false;
+ const cursor=BigInt(await getSupabaseInboxCursor(state.supabaseUserId));
+ const currentRecipientSeq=BigInt(recipientSeq);
+ if(currentRecipientSeq<=cursor)return true;
+ if(currentRecipientSeq!==cursor+1n){
+  debug("Supabase inbox: пропуск recipient_seq (ожидается "+(cursor+1n)+", получено "+recipientSeq+"); запрошено восстановление.");
+  scheduleSupabaseInboxRecovery();
+  return false;
+ }
  const contact=await findContactBySupabaseUserId(record.sender_id);
  if(!contact){
   debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");
+  await setSupabaseInboxCursor(state.supabaseUserId,recipientSeq);
   return true;
  }
  const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
@@ -1593,21 +1610,14 @@ async function processSupabaseInboxRecord(record,source){
  const current=await getSupabaseSequenceState(record.sender_id);
  const last=BigInt(current.incoming);
  if(sequence<=last){
-  const existingBuffer=supabaseInboxBuffers.get(record.sender_id);
-  if(existingBuffer){
-   existingBuffer.delete(message.seq);
-   if(!existingBuffer.size)supabaseInboxBuffers.delete(record.sender_id);
-  }
+  await setSupabaseInboxCursor(state.supabaseUserId,recipientSeq);
   return true;
  }
 
  if(sequence>last+1n){
-  let buffer=supabaseInboxBuffers.get(record.sender_id);
-  if(!buffer){buffer=new Map();supabaseInboxBuffers.set(record.sender_id,buffer)}
-  if(buffer.size<1000)buffer.set(message.seq,record);
   scheduleSupabaseInboxRecovery();
-  debug("Supabase inbox: обнаружен пропуск последовательности от «"+contact.name+
-   "» (ожидается "+(last+1n)+", получено "+message.seq+"); запрошено восстановление.");
+  debug("Supabase inbox: пропуск seq отправителя «"+contact.name+
+   "» (ожидается "+(last+1n)+", получено "+message.seq+"); запись оставлена до восстановления.");
   return false;
  }
 
@@ -1640,15 +1650,7 @@ async function processSupabaseInboxRecord(record,source){
 
  const advanced=await advanceSupabaseIncomingSequence(record.sender_id,message.seq);
  if(advanced==="gap"){scheduleSupabaseInboxRecovery();return false}
- if(advanced==="advanced"){
-  const buffer=supabaseInboxBuffers.get(record.sender_id);
-  if(buffer){
-   const next=(BigInt(message.seq)+1n).toString();
-   const nextRecord=buffer.get(next);
-   if(nextRecord){buffer.delete(next);await processSupabaseInboxRecord(nextRecord,"буфер после восстановления")}
-   if(!buffer.size)supabaseInboxBuffers.delete(record.sender_id);
-  }
- }
+ await setSupabaseInboxCursor(state.supabaseUserId,recipientSeq);
  return true;
 }
 function enqueueSupabaseInboxRecord(record,source="Realtime"){
@@ -1672,19 +1674,16 @@ async function recoverSupabaseInbox(){
    for(const row of rows){
     const processed=await enqueueSupabaseInboxRecord(row,"восстановление durable inbox");
     if(processed!==true){
-     debug("Supabase inbox: durable cursor остановлен на message_id="+row.message_id+"; запись пока не обработана.");
+     debug("Supabase inbox: recipient cursor остановлен на recipient_seq="+row.recipient_seq+"; запись пока не обработана.");
      blocked=true;
      break;
     }
-    const nextCursor=String(row.message_id);
-    if(!/^[1-9][0-9]*$/.test(nextCursor))throw new Error("Supabase вернул некорректный message_id.");
-    await setSupabaseInboxCursor(state.supabaseUserId,nextCursor);
-    cursor=nextCursor;
+    cursor=String(row.recipient_seq);
     total++;
    }
    if(blocked||rows.length<500)break;
   }
-  debug("Supabase inbox: проверено новых сохранённых записей: "+total+"; cursor="+cursor+".");
+  debug("Supabase inbox: проверено новых сохранённых записей: "+total+"; recipient_seq cursor="+cursor+".");
  }finally{supabaseRecoveryRunning=false}
 }
 
@@ -1693,7 +1692,9 @@ function startSupabaseInbox(){
  debug("Supabase Realtime: подключаем приватную подписку inbox:"+state.supabaseUserId+".");
  supabaseInboxChannel=subscribeSupabaseInbox(state.supabaseUserId,
   record=>{
-   enqueueSupabaseInboxRecord(record,"Realtime").then(()=>scheduleSupabaseInboxRecovery()).catch(()=>{});
+   enqueueSupabaseInboxRecord(record,"Realtime").then(processed=>{
+    if(processed!==true)scheduleSupabaseInboxRecovery();
+   }).catch(()=>{});
   },
   status=>{
    debug("Supabase Realtime status="+status+".");

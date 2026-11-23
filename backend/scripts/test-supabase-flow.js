@@ -118,7 +118,7 @@ async function rpc(baseUrl, key, user, name, args) {
 
 async function readMessage(baseUrl, key, user, senderId, nonce) {
   const query = new URLSearchParams({
-    select: "message_id,sender_id,recipient_id,payload,created_at",
+    select: "recipient_seq,sender_id,recipient_id,payload,created_at",
     sender_id: "eq." + senderId,
     "payload->>nonce": "eq." + nonce
   });
@@ -178,19 +178,15 @@ async function main() {
         exists (
           select 1 from information_schema.columns
           where table_schema='public' and table_name='messages'
-            and column_name='message_id' and data_type='bigint'
-            and is_identity='YES' and identity_generation='ALWAYS'
-        ) as has_message_id,
+            and column_name='recipient_seq' and data_type='bigint'
+            and is_nullable='NO'
+        ) as has_recipient_seq,
+        to_regclass('public.recipient_counters') is not null as has_recipient_counters,
+        to_regclass('public.messages_recipient_seq_uidx') is not null as has_recipient_sequence_index,
         exists (
-          select 1 from pg_constraint p
-          where p.conrelid='public.messages'::regclass
-            and p.contype='p'
-            and p.conkey = array[
-              (select attnum from pg_attribute
-               where attrelid='public.messages'::regclass and attname='message_id')
-            ]::smallint[]
-        ) as has_primary_key,
-        to_regclass('public.messages_recipient_message_id_idx') is not null as has_pagination_index,
+          select 1 from information_schema.columns
+          where table_schema='public' and table_name='messages' and column_name='message_id'
+        ) as has_legacy_message_id,
         pg_get_functiondef('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_definition,
         pg_get_function_result('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_result,
         (select relreplident = 'd' from pg_class where oid='public.messages'::regclass) as replica_identity_default,
@@ -201,20 +197,21 @@ async function main() {
             and tablename='messages'
         ) as removed_from_wal_publication
     `);
-    assert(schemaCheck.rows[0].has_message_id === true,
-      "messages.message_id must be BIGINT GENERATED ALWAYS AS IDENTITY.");
-    assert(schemaCheck.rows[0].has_primary_key === true,
-      "message_id must be the messages primary key.");
-    assert(schemaCheck.rows[0].has_pagination_index === true,
-      "Recipient/message_id keyset pagination index is missing.");
-    assert(schemaCheck.rows[0].submit_definition.toLowerCase().includes("for update") &&
+    assert(schemaCheck.rows[0].has_recipient_seq === true,
+      "messages.recipient_seq must be a non-null BIGINT.");
+    assert(schemaCheck.rows[0].has_recipient_counters === true &&
+      schemaCheck.rows[0].has_recipient_sequence_index === true,
+      "Recipient counters or the recipient_seq unique index are missing.");
+    assert(schemaCheck.rows[0].has_legacy_message_id === true,
+      "Legacy message_id must remain during the compatibility rollout.");
+    assert(schemaCheck.rows[0].submit_definition.toLowerCase().includes("recipient_counters") &&
       schemaCheck.rows[0].submit_definition.toLowerCase().includes("clock_timestamp()"),
-      "submit_message must lock the recipient before inserting and use clock_timestamp().");
+      "submit_message must allocate recipient_seq transactionally and use clock_timestamp().");
     assert(schemaCheck.rows[0].submit_result === "timestamp with time zone",
       "submit_message must continue returning created_at.");
     assert(schemaCheck.rows[0].replica_identity_default === true && schemaCheck.rows[0].removed_from_wal_publication === true,
       "messages outside the WAL publication must use the default replica identity.");
-    console.log("PASS: inbox has global message_id primary key, recipient pagination index, per-recipient serialization and created_at return.");
+    console.log("PASS: inbox has recipient_seq, transactional per-recipient counters and recipient_seq index.");
 
     const owner = await createAnonymousUser(config.url, config.publishableKey);
     createdUserIds.push(owner.id);
@@ -274,8 +271,9 @@ async function main() {
     const ownerInbox = await readMessage(config.url, config.publishableKey, owner, winner.id, nonce);
     assert(ownerInbox.length === 1, "Invitation owner cannot read the delivered inbox message.");
     assert(ownerInbox[0].sender_id === winner.id && ownerInbox[0].recipient_id === owner.id &&
+      BigInt(ownerInbox[0].recipient_seq) === 1n &&
       Date.parse(ownerInbox[0].created_at) === Date.parse(createdAt),
-      "Inbox message sender/recipient routing or created_at return value is incorrect.");
+      "First inbox message routing, recipient_seq=1, or created_at return value is incorrect.");
     console.log("PASS: recipient can read the message from their own inbox.");
 
     const winnerInbox = await readMessage(config.url, config.publishableKey, winner, winner.id, nonce);
@@ -287,6 +285,24 @@ async function main() {
     await assertDirectInsertDenied(config.url, config.publishableKey, winner, owner.id);
     console.log("PASS: authenticated clients cannot INSERT directly into messages.");
 
+    const concurrentNonces = [crypto.randomUUID(), crypto.randomUUID()];
+    const concurrentResults = await Promise.all(concurrentNonces.map(nonce =>
+      rpc(config.url, config.publishableKey, winner, "submit_message", {
+        p_payload: { type: "integration_test_concurrent", nonce },
+        p_recipient_id: owner.id,
+        p_invitation_id: null
+      })
+    ));
+    assert(concurrentResults.every(value => typeof value === "string" && !Number.isNaN(Date.parse(value))),
+      "Concurrent submit_message calls did not return valid created_at timestamps.");
+    const concurrentRows = (await Promise.all(concurrentNonces.map(nonce =>
+      readMessage(config.url, config.publishableKey, owner, winner.id, nonce)
+    ))).flat();
+    assert(concurrentRows.length === 2 &&
+      concurrentRows.map(row => BigInt(row.recipient_seq)).sort((a,b)=>a<b?-1:a>b?1:0).join(",") === "2,3",
+      "Concurrent inserts for one recipient did not receive consecutive recipient_seq values.");
+    console.log("PASS: concurrent messages for one recipient receive distinct consecutive recipient_seq values.");
+
     const followUpNonce = crypto.randomUUID();
     const followUpCreatedAt = await rpc(config.url, config.publishableKey, winner, "submit_message", {
       p_payload: { type: "integration_test_follow_up", nonce: followUpNonce },
@@ -297,8 +313,9 @@ async function main() {
       "Existing-contact submit_message did not return created_at.");
     const followUp = await readMessage(config.url, config.publishableKey, owner, winner.id, followUpNonce);
     assert(followUp.length === 1 && followUp[0].sender_id === winner.id &&
+      BigInt(followUp[0].recipient_seq) === 4n &&
       Date.parse(followUp[0].created_at) === Date.parse(followUpCreatedAt),
-      "Existing-contact message was not routed or its created_at return value was incorrect.");
+      "Existing-contact message was not routed or recipient_seq did not continue at 4.");
     console.log("PASS: existing linked contacts can submit messages through the RPC.");
 
     console.log("ALL SUPABASE INTEGRATION CHECKS PASSED.");
