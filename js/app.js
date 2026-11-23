@@ -1614,7 +1614,6 @@ async function processSupabaseInboxRecord(record,source){
  }
 
  if(sequence>last+1n){
-  scheduleSupabaseInboxRecovery();
   debug("Supabase inbox: пропуск seq отправителя «"+contact.name+
    "» (ожидается "+(last+1n)+", получено "+message.seq+"); запись оставлена до восстановления.");
   return false;
