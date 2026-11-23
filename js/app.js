@@ -1582,7 +1582,11 @@ async function processSupabaseInboxRecord(record,source){
  if(!record||record.recipient_id!==state.supabaseUserId||typeof record.sender_id!=="string"||
     typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return;
  const contact=await findContactBySupabaseUserId(record.sender_id);
- if(!contact){debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");return}
+ if(!contact){
+  debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");
+  if(source==="Realtime"&&record.message_id!==undefined)await setSupabaseInboxCursor(state.supabaseUserId,String(record.message_id));
+  return;
+ }
  const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
  if(!secrets.length)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
  const message=await decryptSupabaseInboxRecord(record,secrets);
@@ -1595,6 +1599,7 @@ async function processSupabaseInboxRecord(record,source){
    existingBuffer.delete(message.seq);
    if(!existingBuffer.size)supabaseInboxBuffers.delete(record.sender_id);
   }
+  if(source==="Realtime"&&record.message_id!==undefined)await setSupabaseInboxCursor(state.supabaseUserId,String(record.message_id));
   return;
  }
 
@@ -1645,6 +1650,9 @@ async function processSupabaseInboxRecord(record,source){
    if(nextRecord){buffer.delete(next);await processSupabaseInboxRecord(nextRecord,"буфер после восстановления")}
    if(!buffer.size)supabaseInboxBuffers.delete(record.sender_id);
   }
+ }
+ if(source!=="восстановление durable inbox"&&record.message_id!==undefined){
+  await setSupabaseInboxCursor(state.supabaseUserId,String(record.message_id));
  }
 }
 function enqueueSupabaseInboxRecord(record,source="Realtime"){
