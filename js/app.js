@@ -1647,7 +1647,7 @@ async function processSupabaseInboxRecord(record,source){
  }
 
  const advanced=await advanceSupabaseIncomingSequence(record.sender_id,message.seq);
- if(advanced==="gap"){scheduleSupabaseInboxRecovery();return false}
+ if(advanced==="gap")return false;
  await setSupabaseInboxCursor(state.supabaseUserId,recipientSeq);
  return true;
 }

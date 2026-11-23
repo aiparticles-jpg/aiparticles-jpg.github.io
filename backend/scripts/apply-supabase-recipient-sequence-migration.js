@@ -54,7 +54,22 @@ async function main() {
     await db.query("begin");
     try {
       await db.query("select pg_advisory_xact_lock(hashtext($1))", ["voicelink:20261123:recipient-sequence"]);
-      await db.query(sql);
+      const preflight = await db.query(`
+        select
+          exists (
+            select 1 from information_schema.columns
+            where table_schema='public' and table_name='messages'
+              and column_name='recipient_seq' and data_type='bigint' and is_nullable='NO'
+          ) as has_recipient_seq,
+          to_regclass('public.recipient_counters') is not null as has_counters,
+          to_regclass('public.messages_recipient_seq_uidx') is not null as has_unique_index,
+          pg_get_functiondef('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_definition
+      `);
+      const ready = preflight.rows[0].has_recipient_seq &&
+        preflight.rows[0].has_counters &&
+        preflight.rows[0].has_unique_index &&
+        preflight.rows[0].submit_definition.toLowerCase().includes("recipient_counters");
+      if (!ready) await db.query(sql);
 
       const verified = await db.query(`
         select

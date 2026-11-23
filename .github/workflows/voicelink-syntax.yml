@@ -10,6 +10,9 @@ on:
       - "js/supabase-client.js"
       - "js/ntfy-signaling.js"
       - "js/supabase-protocol.mjs"
+      - "backend/scripts/apply-supabase-recipient-sequence-migration.js"
+      - "backend/scripts/test-supabase-flow.js"
+      - "backend/scripts/test-supabase-realtime.js"
       - ".github/workflows/voicelink-syntax.yml"
   workflow_dispatch:
 
@@ -35,4 +38,8 @@ jobs:
           for file in js/app.js js/contact-exchange.js js/local-store.js js/supabase-client.js js/ntfy-signaling.js js/supabase-protocol.mjs; do
             echo "Checking $file"
             node --input-type=module --check < "$file"
+          done
+          for file in backend/scripts/apply-supabase-recipient-sequence-migration.js backend/scripts/test-supabase-flow.js backend/scripts/test-supabase-realtime.js; do
+            echo "Checking $file"
+            node --check "$file"
           done
