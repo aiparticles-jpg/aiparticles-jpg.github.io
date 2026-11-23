@@ -1580,12 +1580,11 @@ function scheduleSupabaseInboxRecovery(){
 
 async function processSupabaseInboxRecord(record,source){
  if(!record||record.recipient_id!==state.supabaseUserId||typeof record.sender_id!=="string"||
-    typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return;
+    typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return false;
  const contact=await findContactBySupabaseUserId(record.sender_id);
  if(!contact){
   debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");
-  if(source==="Realtime"&&record.message_id!==undefined)await setSupabaseInboxCursor(state.supabaseUserId,String(record.message_id));
-  return;
+  return true;
  }
  const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
  if(!secrets.length)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
@@ -1599,8 +1598,7 @@ async function processSupabaseInboxRecord(record,source){
    existingBuffer.delete(message.seq);
    if(!existingBuffer.size)supabaseInboxBuffers.delete(record.sender_id);
   }
-  if(source==="Realtime"&&record.message_id!==undefined)await setSupabaseInboxCursor(state.supabaseUserId,String(record.message_id));
-  return;
+  return true;
  }
 
  if(sequence>last+1n){
@@ -1610,7 +1608,7 @@ async function processSupabaseInboxRecord(record,source){
   scheduleSupabaseInboxRecovery();
   debug("Supabase inbox: обнаружен пропуск последовательности от «"+contact.name+
    "» (ожидается "+(last+1n)+", получено "+message.seq+"); запрошено восстановление.");
-  return;
+  return false;
  }
 
  if(message.type==="contact_accept"){
@@ -1627,7 +1625,7 @@ async function processSupabaseInboxRecord(record,source){
   const envelope=message.body?.envelope;
   if(!envelope||envelope.v!==3||envelope.type!==message.type||!envelope.payload){
    debug("Supabase inbox: некорректный внутренний конверт типа «"+message.type+"»; seq оставлен необработанным.");
-   return;
+   return false;
   }
   if(!state.secure||state.secure.closed||state.secure.me!==state.me){
    state.secure=createSecureSignaling(state.me,contact.user_id);
@@ -1637,11 +1635,11 @@ async function processSupabaseInboxRecord(record,source){
  }else{
   debug("Supabase inbox: неизвестный тип «"+message.type+"» от «"+contact.name+
    "»; seq="+message.seq+" оставлен необработанным.");
-  return;
+  return false;
  }
 
  const advanced=await advanceSupabaseIncomingSequence(record.sender_id,message.seq);
- if(advanced==="gap"){scheduleSupabaseInboxRecovery();return}
+ if(advanced==="gap"){scheduleSupabaseInboxRecovery();return false}
  if(advanced==="advanced"){
   const buffer=supabaseInboxBuffers.get(record.sender_id);
   if(buffer){
@@ -1651,9 +1649,7 @@ async function processSupabaseInboxRecord(record,source){
    if(!buffer.size)supabaseInboxBuffers.delete(record.sender_id);
   }
  }
- if(source!=="восстановление durable inbox"&&record.message_id!==undefined){
-  await setSupabaseInboxCursor(state.supabaseUserId,String(record.message_id));
- }
+ return true;
 }
 function enqueueSupabaseInboxRecord(record,source="Realtime"){
  const task=supabaseInboxQueue.then(()=>processSupabaseInboxRecord(record,source));
@@ -1673,7 +1669,11 @@ async function recoverSupabaseInbox(){
    const rows=await fetchSupabaseInbox(state.supabaseUserId,cursor,500);
    if(!rows.length)break;
    for(const row of rows){
-    await enqueueSupabaseInboxRecord(row,"восстановление durable inbox");
+    const processed=await enqueueSupabaseInboxRecord(row,"восстановление durable inbox");
+    if(processed!==true){
+     debug("Supabase inbox: durable cursor остановлен на message_id="+row.message_id+"; запись пока не обработана.");
+     break;
+    }
     const nextCursor=String(row.message_id);
     if(!/^[1-9][0-9]*$/.test(nextCursor))throw new Error("Supabase вернул некорректный message_id.");
     await setSupabaseInboxCursor(state.supabaseUserId,nextCursor);
@@ -1690,7 +1690,9 @@ function startSupabaseInbox(){
  if(!state.supabaseUserId||supabaseInboxChannel)return;
  debug("Supabase Realtime: подключаем приватную подписку inbox:"+state.supabaseUserId+".");
  supabaseInboxChannel=subscribeSupabaseInbox(state.supabaseUserId,
-  record=>enqueueSupabaseInboxRecord(record,"Realtime"),
+  record=>{
+   enqueueSupabaseInboxRecord(record,"Realtime").then(()=>scheduleSupabaseInboxRecovery()).catch(()=>{});
+  },
   status=>{
    debug("Supabase Realtime status="+status+".");
    if(status==="SUBSCRIBED")scheduleSupabaseInboxRecovery();
