@@ -1571,7 +1571,10 @@ function scheduleSupabaseInboxRecovery(){
  Promise.resolve().then(async()=>{
   supabaseRecoveryScheduled=false;
   try{await recoverSupabaseInbox()}
-  catch(error){debug("Не удалось восстановить Supabase inbox: "+(error.message||String(error)))}
+  catch(error){
+   debug("Не удалось восстановить Supabase inbox: "+(error.message||String(error))+"; повтор через 5 секунд.");
+   setTimeout(scheduleSupabaseInboxRecovery,5000);
+  }
  });
 }
 
