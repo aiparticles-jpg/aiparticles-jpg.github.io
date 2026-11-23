@@ -45,12 +45,12 @@ begin
 end;
 $recipient_seq_backfill$;
 
-insert into public.recipient_counters (recipient_id, last_seq)
+insert into public.recipient_counters as counters (recipient_id, last_seq)
 select recipient_id, coalesce(max(recipient_seq), 0)
 from public.messages
 group by recipient_id
 on conflict (recipient_id) do update
-set last_seq = greatest(public.recipient_counters.last_seq, excluded.last_seq);
+set last_seq = greatest(counters.last_seq, excluded.last_seq);
 
 alter table public.messages
   alter column recipient_seq set not null;
@@ -137,10 +137,10 @@ begin
   -- The counter row is the serialization lock for this recipient. The row
   -- update and message INSERT share this transaction, so seq N+1 cannot
   -- commit before seq N. Different recipients have independent counters.
-  insert into public.recipient_counters (recipient_id, last_seq)
+  insert into public.recipient_counters as counters (recipient_id, last_seq)
   values (v_recipient_id, 1)
   on conflict (recipient_id) do update
-    set last_seq = public.recipient_counters.last_seq + 1
+    set last_seq = counters.last_seq + 1
   returning last_seq into v_recipient_seq;
 
   insert into public.messages (recipient_seq, sender_id, recipient_id, payload, created_at)
