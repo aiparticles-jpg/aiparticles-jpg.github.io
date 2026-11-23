@@ -1,11 +1,12 @@
 import { createInvitationId, encryptSupabaseMessage, decryptSupabaseMessage } from "./supabase-protocol.mjs?v=1";
-import { enqueueSupabaseOutboxMessage, listSupabaseOutboxMessages, saveSupabaseOutboxEnvelope, deleteSupabaseOutboxMessage } from "./local-store.js?v=24";
+import { enqueueSupabaseOutboxMessage, listSupabaseOutboxMessages, saveSupabaseOutboxEnvelope, deleteSupabaseOutboxMessage } from "./local-store.js?v=25";
 
 const SUPABASE_URL = "https://lcmccpecmtnqknthtijl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_GEu1s4k6b44_2km0_9w1gw_3RuiN_S9";
 const STORAGE_KEY = "voicelink-supabase-auth-v1";
 
 let client;
+const outboxFlushFallbacks = new Map();
 
 export function getSupabaseClient() {
   if (client) return client;
@@ -99,7 +100,7 @@ export async function sendSupabaseMessage({ contact, type, body }) {
 }
 
 /** Flush pending messages in sequence order; uncertain sends retain identical ciphertext for retry. */
-export async function flushSupabaseOutbox({ contact, senderId = null }) {
+async function flushSupabaseOutboxUnlocked({ contact, senderId = null }) {
   if (!contact || typeof contact !== "object" ||
       typeof contact.supabase_user_id !== "string" ||
       typeof contact.invitation_secret !== "string") {
@@ -147,6 +148,27 @@ export async function flushSupabaseOutbox({ contact, senderId = null }) {
   return { sent, remaining: (await listSupabaseOutboxMessages(recipientId)).length };
 }
 
+
+/** Serialize all outbox flushes for one recipient across tabs. */
+export async function flushSupabaseOutbox(options) {
+  const recipientId = options?.contact?.supabase_user_id;
+  if (typeof recipientId !== "string" || !SUPABASE_UUID_RE.test(recipientId)) {
+    throw new TypeError("A valid Supabase recipient is required to flush its outbox.");
+  }
+  const key = recipientId.toLowerCase();
+  const run = () => flushSupabaseOutboxUnlocked(options);
+  if (globalThis.navigator?.locks?.request) {
+    return navigator.locks.request("voicelink-supabase-outbox:" + key, { mode: "exclusive" }, run);
+  }
+  const previous = outboxFlushFallbacks.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(run);
+  outboxFlushFallbacks.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (outboxFlushFallbacks.get(key) === current) outboxFlushFallbacks.delete(key);
+  }
+}
 export async function submitSupabaseInvitationAcceptance({ contact }) {
   if (!contact || typeof contact !== "object" ||
       typeof contact.supabase_user_id !== "string" ||
@@ -199,28 +221,24 @@ export function subscribeSupabaseInbox(userId, onMessage, onStatus = () => {}) {
     .subscribe(status => onStatus(status));
 }
 
-export async function fetchSupabaseInbox(userId, pageSize = 500) {
-  if (typeof userId !== "string" || !SUPABASE_UUID_RE.test(userId)) throw new TypeError("A valid Supabase inbox identity is required.");
+export async function fetchSupabaseInbox(userId, afterMessageId = "0", pageSize = 500) {
+  if (typeof userId !== "string" || !SUPABASE_UUID_RE.test(userId)) {
+    throw new TypeError("A valid Supabase inbox identity is required.");
+  }
+  const cursor = String(afterMessageId);
+  if (!/^(0|[1-9][0-9]*)$/.test(cursor)) {
+    throw new TypeError("A valid global message_id cursor is required.");
+  }
   const safePageSize = Math.max(1, Math.min(1000, Math.trunc(Number(pageSize) || 500)));
   const supabase = getSupabaseClient();
-  const rows = [];
-  // Read the complete durable inbox in bounded pages. Broadcast is already
-  // subscribed by the caller, so inserts concurrent with this scan are also
-  // delivered live; seq makes overlap/duplicate delivery harmless.
-  for (let offset = 0; ; offset += safePageSize) {
-    const { data, error } = await supabase.from("messages")
-      .select("sender_id,recipient_id,payload,created_at")
-      .eq("recipient_id", userId.toLowerCase())
-      .order("created_at", { ascending: true })
-      .order("sender_id", { ascending: true })
-      .order("payload", { ascending: true })
-      .range(offset, offset + safePageSize - 1);
-    if (error) throw new Error("Не удалось восстановить входящие сообщения Supabase: " + error.message);
-    const page = Array.isArray(data) ? data : [];
-    rows.push(...page);
-    if (page.length < safePageSize) break;
-  }
-  return rows;
+  const { data, error } = await supabase.from("messages")
+    .select("message_id,sender_id,recipient_id,payload,created_at")
+    .eq("recipient_id", userId.toLowerCase())
+    .gt("message_id", cursor)
+    .order("message_id", { ascending: true })
+    .limit(safePageSize);
+  if (error) throw new Error("Не удалось восстановить входящие сообщения Supabase: " + error.message);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function decryptSupabaseInboxRecord(record, sharedSecret) {

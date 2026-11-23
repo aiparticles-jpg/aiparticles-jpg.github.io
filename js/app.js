@@ -1,11 +1,11 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=58";
 import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
-import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence } from "./local-store.js?v=24";
+import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=25";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
-import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance, subscribeSupabaseInbox, fetchSupabaseInbox, decryptSupabaseInboxRecord, flushSupabaseOutbox } from "./supabase-client.js?v=8";
+import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance, subscribeSupabaseInbox, fetchSupabaseInbox, decryptSupabaseInboxRecord, flushSupabaseOutbox } from "./supabase-client.js?v=9";
 
 const $=id=>document.getElementById(id);
 const els={
@@ -1571,22 +1571,35 @@ function scheduleSupabaseInboxRecovery(){
  Promise.resolve().then(async()=>{
   supabaseRecoveryScheduled=false;
   try{await recoverSupabaseInbox()}
-  catch(error){debug("Не удалось восстановить Supabase inbox: "+(error.message||String(error)))}
+  catch(error){
+   debug("Не удалось восстановить Supabase inbox: "+(error.message||String(error))+"; повтор через 5 секунд.");
+   setTimeout(scheduleSupabaseInboxRecovery,5000);
+  }
  });
 }
 
 async function processSupabaseInboxRecord(record,source){
  if(!record||record.recipient_id!==state.supabaseUserId||typeof record.sender_id!=="string"||
-    typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return;
+    typeof record.created_at!=="string"||Number.isNaN(Date.parse(record.created_at)))return false;
  const contact=await findContactBySupabaseUserId(record.sender_id);
- if(!contact){debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");return}
+ if(!contact){
+  debug("Supabase inbox: сообщение от неизвестного контакта пропущено; локальная адресная книга не изменена.");
+  return true;
+ }
  const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
  if(!secrets.length)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
  const message=await decryptSupabaseInboxRecord(record,secrets);
  const sequence=BigInt(message.seq);
  const current=await getSupabaseSequenceState(record.sender_id);
  const last=BigInt(current.incoming);
- if(sequence<=last)return;
+ if(sequence<=last){
+  const existingBuffer=supabaseInboxBuffers.get(record.sender_id);
+  if(existingBuffer){
+   existingBuffer.delete(message.seq);
+   if(!existingBuffer.size)supabaseInboxBuffers.delete(record.sender_id);
+  }
+  return true;
+ }
 
  if(sequence>last+1n){
   let buffer=supabaseInboxBuffers.get(record.sender_id);
@@ -1595,7 +1608,7 @@ async function processSupabaseInboxRecord(record,source){
   scheduleSupabaseInboxRecovery();
   debug("Supabase inbox: обнаружен пропуск последовательности от «"+contact.name+
    "» (ожидается "+(last+1n)+", получено "+message.seq+"); запрошено восстановление.");
-  return;
+  return false;
  }
 
  if(message.type==="contact_accept"){
@@ -1612,7 +1625,7 @@ async function processSupabaseInboxRecord(record,source){
   const envelope=message.body?.envelope;
   if(!envelope||envelope.v!==3||envelope.type!==message.type||!envelope.payload){
    debug("Supabase inbox: некорректный внутренний конверт типа «"+message.type+"»; seq оставлен необработанным.");
-   return;
+   return false;
   }
   if(!state.secure||state.secure.closed||state.secure.me!==state.me){
    state.secure=createSecureSignaling(state.me,contact.user_id);
@@ -1622,11 +1635,11 @@ async function processSupabaseInboxRecord(record,source){
  }else{
   debug("Supabase inbox: неизвестный тип «"+message.type+"» от «"+contact.name+
    "»; seq="+message.seq+" оставлен необработанным.");
-  return;
+  return false;
  }
 
  const advanced=await advanceSupabaseIncomingSequence(record.sender_id,message.seq);
- if(advanced==="gap"){scheduleSupabaseInboxRecovery();return}
+ if(advanced==="gap"){scheduleSupabaseInboxRecovery();return false}
  if(advanced==="advanced"){
   const buffer=supabaseInboxBuffers.get(record.sender_id);
   if(buffer){
@@ -1636,21 +1649,42 @@ async function processSupabaseInboxRecord(record,source){
    if(!buffer.size)supabaseInboxBuffers.delete(record.sender_id);
   }
  }
+ return true;
 }
 function enqueueSupabaseInboxRecord(record,source="Realtime"){
- supabaseInboxQueue=supabaseInboxQueue.then(()=>processSupabaseInboxRecord(record,source))
-  .catch(error=>debug("Ошибка обработки Supabase inbox ("+source+"): "+(error.message||String(error))));
- return supabaseInboxQueue;
+ const task=supabaseInboxQueue.then(()=>processSupabaseInboxRecord(record,source));
+ supabaseInboxQueue=task.catch(error=>{
+  debug("Ошибка обработки Supabase inbox ("+source+"): "+(error.message||String(error)));
+ });
+ return task;
 }
 
 async function recoverSupabaseInbox(){
  if(!state.supabaseUserId||supabaseRecoveryRunning)return;
  supabaseRecoveryRunning=true;
+ let total=0;
  try{
-  const rows=await fetchSupabaseInbox(state.supabaseUserId,1000);
-  for(const row of rows)enqueueSupabaseInboxRecord(row,"восстановление durable inbox");
-  await supabaseInboxQueue;
-  debug("Supabase inbox: проверено сохранённых входящих сообщений: "+rows.length+".");
+  let cursor=await getSupabaseInboxCursor(state.supabaseUserId);
+  while(true){
+   const rows=await fetchSupabaseInbox(state.supabaseUserId,cursor,500);
+   if(!rows.length)break;
+   let blocked=false;
+   for(const row of rows){
+    const processed=await enqueueSupabaseInboxRecord(row,"восстановление durable inbox");
+    if(processed!==true){
+     debug("Supabase inbox: durable cursor остановлен на message_id="+row.message_id+"; запись пока не обработана.");
+     blocked=true;
+     break;
+    }
+    const nextCursor=String(row.message_id);
+    if(!/^[1-9][0-9]*$/.test(nextCursor))throw new Error("Supabase вернул некорректный message_id.");
+    await setSupabaseInboxCursor(state.supabaseUserId,nextCursor);
+    cursor=nextCursor;
+    total++;
+   }
+   if(blocked||rows.length<500)break;
+  }
+  debug("Supabase inbox: проверено новых сохранённых записей: "+total+"; cursor="+cursor+".");
  }finally{supabaseRecoveryRunning=false}
 }
 
@@ -1658,7 +1692,9 @@ function startSupabaseInbox(){
  if(!state.supabaseUserId||supabaseInboxChannel)return;
  debug("Supabase Realtime: подключаем приватную подписку inbox:"+state.supabaseUserId+".");
  supabaseInboxChannel=subscribeSupabaseInbox(state.supabaseUserId,
-  record=>enqueueSupabaseInboxRecord(record,"Realtime"),
+  record=>{
+   enqueueSupabaseInboxRecord(record,"Realtime").then(()=>scheduleSupabaseInboxRecovery()).catch(()=>{});
+  },
   status=>{
    debug("Supabase Realtime status="+status+".");
    if(status==="SUBSCRIBED")scheduleSupabaseInboxRecovery();

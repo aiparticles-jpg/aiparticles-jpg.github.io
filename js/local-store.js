@@ -835,3 +835,44 @@ export async function advanceSupabaseIncomingSequence(peerId, sequenceValue) {
   return result;
 }
 
+
+
+const SUPABASE_INBOX_CURSOR_RE = /^(0|[1-9][0-9]*)$/;
+
+/** Read the last durably scanned global message_id for this local inbox. */
+export async function getSupabaseInboxCursor(userId) {
+  const peer = validateSupabasePeerId(userId);
+  const tx = await openTransaction("meta", "readonly");
+  const done = transactionDone(tx);
+  const record = await requestValue(tx.objectStore("meta").get("supabase_inbox_cursor:" + peer));
+  await done;
+  const value = String(record?.message_id ?? "0");
+  if (!SUPABASE_INBOX_CURSOR_RE.test(value)) {
+    throw new Error("Stored Supabase inbox cursor is invalid.");
+  }
+  return value;
+}
+
+/** Persist a monotonically increasing inbox cursor after a row was processed. */
+export async function setSupabaseInboxCursor(userId, messageIdValue) {
+  const peer = validateSupabasePeerId(userId);
+  const messageId = String(messageIdValue);
+  if (!SUPABASE_INBOX_CURSOR_RE.test(messageId)) {
+    throw new TypeError("A valid global Supabase message_id is required.");
+  }
+  const tx = await openTransaction("meta", "readwrite");
+  const done = transactionDone(tx);
+  const store = tx.objectStore("meta");
+  const key = "supabase_inbox_cursor:" + peer;
+  const request = store.get(key);
+  request.onsuccess = () => {
+    const record = request.result || { key, message_id: "0" };
+    if (BigInt(messageId) > BigInt(String(record.message_id ?? "0"))) {
+      record.message_id = messageId;
+      record.updated_at = Date.now();
+      store.put(record);
+    }
+  };
+  await done;
+  return messageId;
+}

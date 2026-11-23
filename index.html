@@ -370,7 +370,7 @@
         document.getElementById("vl-startup-failure-details").textContent = String(details || "").slice(0, 1200);
         panel.hidden = false;
       };
-      const appScript = document.querySelector('script[type="module"][src*="/js/app.js"]');
+      const appScript = document.querySelector('script[type="module"][src*="/js/bootstrap.js"]');
       appScript?.addEventListener("error", () => showFailure(
         "Не удалось загрузить основной JavaScript-файл или один из его модулей.",
         "Проверьте интернет-соединение и повторите загрузку. Если ошибка повторится, сообщите об этом."
@@ -391,6 +391,6 @@
     })();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="./js/app.js?v=296"></script>
+  <script type="module" src="./js/bootstrap.js?v=1"></script>
 </body>
 </html>

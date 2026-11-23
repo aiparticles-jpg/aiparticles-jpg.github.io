@@ -118,7 +118,7 @@ async function rpc(baseUrl, key, user, name, args) {
 
 async function readMessage(baseUrl, key, user, senderId, nonce) {
   const query = new URLSearchParams({
-    select: "sender_id,recipient_id,payload,created_at",
+    select: "message_id,sender_id,recipient_id,payload,created_at",
     sender_id: "eq." + senderId,
     "payload->>nonce": "eq." + nonce
   });
@@ -177,12 +177,21 @@ async function main() {
       select
         exists (
           select 1 from information_schema.columns
-          where table_schema='public' and table_name='messages' and column_name='message_id'
+          where table_schema='public' and table_name='messages'
+            and column_name='message_id' and data_type='bigint'
+            and is_identity='YES' and identity_generation='ALWAYS'
         ) as has_message_id,
         exists (
-          select 1 from pg_constraint
-          where conrelid='public.messages'::regclass and contype='p'
+          select 1 from pg_constraint p
+          where p.conrelid='public.messages'::regclass
+            and p.contype='p'
+            and p.conkey = array[
+              (select attnum from pg_attribute
+               where attrelid='public.messages'::regclass and attname='message_id')
+            ]::smallint[]
         ) as has_primary_key,
+        to_regclass('public.messages_recipient_message_id_idx') is not null as has_pagination_index,
+        pg_get_functiondef('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_definition,
         pg_get_function_result('public.submit_message(jsonb,uuid,text)'::regprocedure) as submit_result,
         (select relreplident = 'd' from pg_class where oid='public.messages'::regclass) as replica_identity_default,
         not exists (
@@ -192,15 +201,20 @@ async function main() {
             and tablename='messages'
         ) as removed_from_wal_publication
     `);
-    assert(schemaCheck.rows[0].has_message_id === false,
-      "messages must not contain the redundant message_id column.");
-    assert(schemaCheck.rows[0].has_primary_key === false,
-      "messages must not have a synthetic primary key.");
+    assert(schemaCheck.rows[0].has_message_id === true,
+      "messages.message_id must be BIGINT GENERATED ALWAYS AS IDENTITY.");
+    assert(schemaCheck.rows[0].has_primary_key === true,
+      "message_id must be the messages primary key.");
+    assert(schemaCheck.rows[0].has_pagination_index === true,
+      "Recipient/message_id keyset pagination index is missing.");
+    assert(schemaCheck.rows[0].submit_definition.toLowerCase().includes("for update") &&
+      schemaCheck.rows[0].submit_definition.toLowerCase().includes("clock_timestamp()"),
+      "submit_message must lock the recipient before inserting and use clock_timestamp().");
     assert(schemaCheck.rows[0].submit_result === "timestamp with time zone",
-      "submit_message must return created_at, not a generated message ID.");
+      "submit_message must continue returning created_at.");
     assert(schemaCheck.rows[0].replica_identity_default === true && schemaCheck.rows[0].removed_from_wal_publication === true,
       "messages outside the WAL publication must use the default replica identity.");
-    console.log("PASS: inbox schema has no message ID or synthetic primary key; created_at is returned.");
+    console.log("PASS: inbox has global message_id primary key, recipient pagination index, per-recipient serialization and created_at return.");
 
     const owner = await createAnonymousUser(config.url, config.publishableKey);
     createdUserIds.push(owner.id);

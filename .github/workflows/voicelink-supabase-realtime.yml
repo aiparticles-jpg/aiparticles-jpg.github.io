@@ -10,6 +10,7 @@ on:
       - "js/supabase-protocol.mjs"
       - "backend/scripts/apply-supabase-realtime-migration.js"
       - "backend/scripts/apply-supabase-message-timestamp-migration.js"
+      - "backend/scripts/apply-supabase-global-message-id-migration.js"
       - "backend/package.json"
       - "supabase/migrations/**"
       - ".github/workflows/voicelink-supabase-realtime.yml"
@@ -52,7 +53,7 @@ jobs:
           test -n "$SUPABASE_DB_URL" || (echo "Missing GitHub Actions secret: SUPABASE_DB_URL" && exit 1)
           node scripts/test-supabase-envelope.mjs
           node scripts/apply-supabase-realtime-migration.js
-          node scripts/apply-supabase-message-timestamp-migration.js
+          node scripts/apply-supabase-global-message-id-migration.js
           node scripts/test-supabase-flow.js
           node scripts/test-supabase-realtime.js
 
