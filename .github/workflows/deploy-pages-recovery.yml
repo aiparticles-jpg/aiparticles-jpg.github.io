@@ -79,13 +79,13 @@ jobs:
               raise SystemExit("Could not find the application version marker in index.html")
 
           html, cache_count = re.subn(
-              r'(src="./js/app\.js\?v=)[^"]+',
+              r'(src="./js/(?:app|bootstrap)\.js\?v=)[^"]+',
               lambda match: match.group(1) + cache_version,
               html,
               count=1,
           )
           if cache_count != 1:
-              raise SystemExit("Could not find the app.js cache-busting URL in index.html")
+              raise SystemExit("Could not find the application entry-point cache-busting URL in index.html")
 
           path.write_text(html, encoding="utf-8")
           print(f"Application version: {version}")
