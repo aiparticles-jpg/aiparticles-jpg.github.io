@@ -82,9 +82,9 @@ async function main() {
       if (v.data_type !== "bigint" || v.is_identity !== "YES" ||
           v.identity_generation !== "ALWAYS" || !v.is_primary_key ||
           !v.has_pagination_index ||
-          !v.submit_definition.includes("FOR UPDATE") ||
+          !v.submit_definition.toLowerCase().includes("for update") ||
           !v.submit_definition.includes("clock_timestamp()")) {
-        throw new Error("Global message_id / recipient lock migration verification failed: " + JSON.stringify({data_type:v.data_type,is_identity:v.is_identity,identity_generation:v.identity_generation,is_primary_key:v.is_primary_key,has_pagination_index:v.has_pagination_index,has_for_update:v.submit_definition.includes("FOR UPDATE"),has_clock_timestamp:v.submit_definition.includes("clock_timestamp()")}));
+        throw new Error("Global message_id / recipient lock migration verification failed: " + JSON.stringify({data_type:v.data_type,is_identity:v.is_identity,identity_generation:v.identity_generation,is_primary_key:v.is_primary_key,has_pagination_index:v.has_pagination_index,has_for_update:v.submit_definition.toLowerCase().includes("for update"),has_clock_timestamp:v.submit_definition.includes("clock_timestamp()")}));
       }
       await db.query("commit");
       console.log("Verified: messages.message_id is BIGINT IDENTITY PRIMARY KEY; recipient/message_id index exists; submit_message locks recipient and uses clock_timestamp().");
