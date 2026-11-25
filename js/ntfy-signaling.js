@@ -426,7 +426,7 @@ async publish(to,msg){
   let verified=false;try{verified=await this.verifyPeerEnvelope(m.type,p,m.auth)}catch(error){this.onDebug(`[incoming] hello verification exception: ${error.message||String(error)}; peer=${p.from.slice(0,10)}; sid=${sid}; ntfyId=${eventId}.`);return;}
   if(!verified){this.onDebug(`[incoming] hello отклонён проверкой E2EE/приглашения; peer=${p.from.slice(0,10)}; sid=${sid}; invitation_id=${String(p.invitation_id||"нет").slice(0,12)}; ntfyId=${eventId}.`);return;}
   const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
-  if(!Number.isFinite(expiresAt)||Date.now()>expiresAt||typeof p.sid!=="string"){this.onDebug(`[incoming] hello аутентифицирован, но устарел/невалиден: now=${Date.now()}; expiresAt=${expiresAt}; sidValid=${typeof p.sid==="string"}; ntfyId=${eventId}.`);return;}
+  if(!Number.isFinite(expiresAt)||typeof p.sid!=="string"){this.onDebug(`[incoming] hello аутентифицирован, но невалиден: expiresAtFinite=${Number.isFinite(expiresAt)}; sidValid=${typeof p.sid==="string"}; ntfyId=${eventId}.`);return;}
   if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid){
    const reason=this.acceptedSids.has(p.sid)?"sid уже принят":this.cancelledSids.has(p.sid)?"sid отменён":"этот входящий sid уже установлен";
    this.onDebug(`[incoming] hello-дубликат проигнорирован: ${reason}; sid=${sid}; ntfyId=${eventId}.`);return;
@@ -436,7 +436,7 @@ async publish(to,msg){
   this.onPeerMessage(p.from);this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=true;this.incomingHello=p;
   const pending=this.pendingCancels.get(p.sid);
   if(pending){this.pendingCancels.delete(p.sid);this.onDebug(`[incoming] для hello уже ожидала отмена; применяем cancel; sid=${sid}.`);await this.processCancel(pending);if(this.cancelledSids.has(p.sid))return;}
-  this.onDebug(`[incoming] hello принят: peer=${p.from.slice(0,10)}; name=${this.peerName||"контакт"}; sid=${sid}; expiresIn=${Math.max(0,Math.round((expiresAt-Date.now())/1000))}s; ntfyId=${eventId}.`);
+  this.onDebug(`[incoming] hello принят: peer=${p.from.slice(0,10)}; name=${this.peerName||"контакт"}; sid=${sid}; локальный тайм-аут получателя=45s; ntfyId=${eventId}.`);
   this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer, sid:p.sid,expiresAt});
  }
  async inspectContactRequest(n,m){
