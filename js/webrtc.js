@@ -68,6 +68,33 @@ export class WebRtcAudio {
     this.statsInProgress = false;
   }
 
+  async getAudioCaptureDiagnostics(error) {
+    const fields = [
+      "name=" + (error?.name || "Error"),
+      "message=" + (error?.message || String(error)),
+      "constraint=" + (error?.constraint || "n/a"),
+      "secureContext=" + (window.isSecureContext ? "yes" : "no"),
+      "mediaDevices=" + (navigator.mediaDevices ? "yes" : "no"),
+      "getUserMedia=" + (typeof navigator.mediaDevices?.getUserMedia === "function" ? "yes" : "no"),
+      "visibility=" + (document.visibilityState || "n/a"),
+      "hasFocus=" + (typeof document.hasFocus === "function" ? document.hasFocus() : "n/a"),
+      "userActivation=" + (navigator.userActivation ? String(navigator.userActivation.isActive) : "unsupported")
+    ];
+    try {
+      const permission = await navigator.permissions?.query?.({ name: "microphone" });
+      fields.push("permission=" + (permission?.state || "unsupported"));
+    } catch (permissionError) {
+      fields.push("permission=unavailable(" + (permissionError?.name || "Error") + ")");
+    }
+    try {
+      const devices = await navigator.mediaDevices?.enumerateDevices?.();
+      if (devices) fields.push("audioInputs=" + devices.filter(device => device.kind === "audioinput").length);
+    } catch (devicesError) {
+      fields.push("audioInputs=unavailable(" + (devicesError?.name || "Error") + ")");
+    }
+    return fields.join("; ");
+  }
+
   async ensureMedia() {
     if (!this.localStream) {
       if (this.diagnosticPilot) {
@@ -95,10 +122,22 @@ export class WebRtcAudio {
         this.outgoingStream = this.localStream;
         this.onState("Симуляция микрофона: генерируется тестовый тон 997 Hz; физический микрофон не используется.");
       } else {
-        this.localStream = await navigator.mediaDevices.getUserMedia({
+        const constraints = {
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           video: false
-        });
+        };
+        this.onState("AUDIO_CAPTURE_REQUEST_START: mode=physical; secureContext=" +
+          (window.isSecureContext ? "yes" : "no") +
+          "; visibility=" + (document.visibilityState || "n/a") +
+          "; hasFocus=" + (typeof document.hasFocus === "function" ? document.hasFocus() : "n/a") +
+          "; userActivation=" + (navigator.userActivation ? String(navigator.userActivation.isActive) : "unsupported"));
+        try {
+          this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (error) {
+          this.onState("AUDIO_CAPTURE_REQUEST_FAILED: " + await this.getAudioCaptureDiagnostics(error));
+          throw error;
+        }
+        this.onState("AUDIO_CAPTURE_REQUEST_OK: audioTracks=" + this.localStream.getAudioTracks().length);
         this.onState("Физический микрофон: поток получен.");
       }
       if (this.audioDiagnostics && this.audioContext) {
@@ -508,7 +547,7 @@ export class WebRtcAudio {
       if (!monitor) return;
       this.remoteAnalyser = monitor.analyser;
       this.remoteAnalyserBuffer = new Float32Array(this.remoteAnalyser.frequencyBinCount);
-      this.onState("MIC SIMULATION: измерительная ветвь подключена к входящему MediaStreamTrack (до audio element).");
+      this.onState("AUDIO_DIAGNOSTICS: анализатор подключён к входящему аудиотреку (до audio element).");
     } catch (error) {
       this.onState("MIC SIMULATION: ошибка анализатора: " + error.message);
     }
@@ -876,7 +915,9 @@ export class WebRtcAudio {
         .then(() => this.onState("Собеседник ответил; микрофон включён."))
         .catch(error => {
           this.setMicEnabled(false);
-          this.onError(new Error("Собеседник принял звонок, но не удалось получить доступ к микрофону: " + (error.message || String(error))));
+          this.onError(new Error("Собеседник принял звонок, но не удалось получить доступ к микрофону [" +
+            (error?.name || "Error") + "]: " + (error?.message || String(error)) +
+            (error?.constraint ? "; constraint=" + error.constraint : "")));
         });
       return;
     }
