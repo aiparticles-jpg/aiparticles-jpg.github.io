@@ -1,28 +1,18 @@
 import { getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./local-identity.js?v=1";
 import { hasActiveInvitationGrant, getContact, updateContact } from "./local-store.js?v=24";
 import { sendSupabaseMessage } from "./supabase-client.js?v=8";
-const enc=new TextEncoder();
-const stable=o=>JSON.stringify(o);
 const bytes=b=>b instanceof Uint8Array?b:new Uint8Array(b);
 const b64u=b=>{let s="";for(const x of bytes(b))s+=String.fromCharCode(x);return btoa(s).replaceAll("+","-").replaceAll("/","_").replace(/=+$/g,"")};
 const un64=s=>{const x=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4));return Uint8Array.from(x,c=>c.charCodeAt(0))};
-const hex=b=>Array.from(bytes(b),x=>x.toString(16).padStart(2,"0")).join("");
-const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
 
 export class SupabaseSecureSignaling {
- constructor({me,peer,onSignal,onStatus,onReady,onError,onDebug,onIncoming,onContactRequest,onPeerMessage,onCancelIncoming,onDialing,onRejectOutgoing,onConversationEvent,onConversationDelivery,onConversationSent}) {
+ constructor({me,peer,onSignal,onStatus,onReady,onError,onDebug,onIncoming,onPeerMessage,onCancelIncoming,onDialing,onRejectOutgoing,onConversationEvent,onConversationDelivery,onConversationSent}) {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
-  this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;
-  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onContactRequest=onContactRequest||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});this.onConversationDelivery=onConversationDelivery||(()=>{});this.onConversationSent=onConversationSent||(()=>{});
-  this.es=null;this.sseReadyPromise=null;this.subscribePromise=null;this.active=false;this.identity=null;this.hello=null;this.helloEnvelope=null;this.readyNotified=false;this.answer=null;this.answerEnvelope=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.cursorBlocked=false;this.lastProcessedMessageId=null;this.preAnswerMessageCount=0;this.messageQueue=Promise.resolve();this.publishQueue=Promise.resolve();this.lastPublishStartAt=0;this.publishStartTimes=[];this.closed=false;this.rateLimited=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
+  
+  this.onSignal=onSignal;this.onStatus=onStatus||(()=>{});this.onReady=onReady||(()=>{});this.onError=onError||(()=>{});this.onDebug=onDebug||(()=>{});this.onIncoming=onIncoming||(()=>{});this.onPeerMessage=onPeerMessage||(()=>{});this.onCancelIncoming=onCancelIncoming||(()=>{});this.onDialing=onDialing||(()=>{});this.onRejectOutgoing=onRejectOutgoing||(()=>{});this.onConversationEvent=onConversationEvent||(()=>{});this.onConversationDelivery=onConversationDelivery||(()=>{});this.onConversationSent=onConversationSent||(()=>{});
+  this.active=false;this.identity=null;this.hello=null;this.helloEnvelope=null;this.readyNotified=false;this.answer=null;this.answerEnvelope=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.seen=new Set();this.preAnswerMessageCount=0;this.publishQueue=Promise.resolve();this.closed=false;this.helloAttempts=0;this.helloRetryTimer=null;this.answerAttempts=0;this.answerRetryTimer=null;this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;this.outgoingRequest=null;this.helloDirection=null;this.answeringIncoming=false;this.cancelledSids=new Set();this.pendingCancels=new Map();this.acceptedSids=new Set();
  }
  static validUserId(s){return isUserId(s)}
- async deriveEnvelopeKey(secret,from,to){
-  const raw=un64(secret);if(raw.length!==32)throw Error("Некорректный общий симметричный ключ.");
-  const material=await crypto.subtle.importKey("raw",raw,"HKDF",false,["deriveKey"]),pair=[from,to].sort().join("|"),salt=await digest(enc.encode("voicelink-envelope-pair-v3|"+pair));
-  return crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt,info:enc.encode("voicelink-envelope-v3|"+from+"|"+to)},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
- }
- envelopeAad(type,from,to,compression=null){return enc.encode(stable({v:3,type,from,to,...(compression?{compression}:{})}));}
  validDecryptedPayload(type,p){
   const uuid=v=>typeof v==="string"&&/^[0-9a-f-]{36}$/i.test(v);
   if(!p||p.from===undefined||p.to===undefined)return false;
@@ -35,364 +25,6 @@ export class SupabaseSecureSignaling {
   if(type==="rotation_response")return uuid(p.rotation_id)&&typeof p.encrypted_key==="string";
   if(type==="data")return uuid(p.sid)&&p.signal&&typeof p.signal==="object"&&!Array.isArray(p.signal);
   return false;
- }
- async verifyPeerEnvelope(type,payload,auth){
-  if(auth?.scheme!=="contact-aes-256-gcm"||typeof auth.iv!=="string"||typeof auth.ciphertext!=="string"){
-   this.onDebug(`[e2ee] ${type} отклонён: некорректная структура auth (scheme/iv/ciphertext).`);return false;
-  }
-  const peer=payload?.from;
-  if(!isUserId(peer)||peer===this.me||payload?.to!==this.me){
-   this.onDebug(`[e2ee] ${type} отклонён до расшифровки: from/to не соответствуют локальной идентичности.`);return false;
-  }
-  const cipherBytes=un64(auth.ciphertext).byteLength;
-  const contact=await getContact(peer);
-  if(!contact?.invitation_secret){
-   this.onDebug(`[e2ee] ${type} отклонён: для peer=${peer.slice(0,10)} нет сохранённого invitation_secret.`);return false;
-  }
-  const candidates=[{slot:"pending",secret:contact.pending_secret},{slot:"active",secret:contact.invitation_secret},{slot:"previous",secret:contact.previous_secret}].filter(x=>typeof x.secret==="string");
-  let decoded=null,used=null,decryptFailures=0,payloadFailures=0,plainBytes=null;
-  for(const candidate of candidates){try{
-   const key=await this.deriveEnvelopeKey(candidate.secret,peer,this.me);
-   const decrypted=await crypto.subtle.decrypt({name:"AES-GCM",iv:un64(auth.iv),additionalData:this.envelopeAad(type,peer,this.me,auth.compression||null)},key,un64(auth.ciphertext));
-    plainBytes=decrypted.byteLength;
-    if(auth.compression&&!(type==="data"&&auth.compression==="gzip"))throw Error("Unsupported envelope compression.");
-    const plain=auth.compression==="gzip"
-     ?await new Response(new Blob([decrypted]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()
-     :decrypted;
-    const value=JSON.parse(new TextDecoder().decode(plain));
-   if(!value||typeof value!=="object"||value.from!==peer||value.to!==this.me||!this.validDecryptedPayload(type,value)){payloadFailures++;continue;}
-   decoded=value;used=candidate;break;
-  }catch{decryptFailures++;}}
-  if(!decoded){
-   this.onDebug(`[e2ee] ${type} не расшифрован: ciphertext=${cipherBytes} B; ключей проверено=${candidates.length}; AES-GCM failures=${decryptFailures}; payload validation failures=${payloadFailures}.`);
-   return false;
-  }
-  if(type==="data")this.onDebug(`[e2ee] data расшифрован: ciphertext=${cipherBytes} B; decrypted=${plainBytes} B; compression=${auth.compression||"none"}; key-slot=${used.slot}; payload=valid.`);
-  Object.assign(payload,decoded);
-  const grant=await this.hasCallGrant(payload);
-  if(!grant.ok){
-   this.onDebug(`[reject] stage=CALL_GRANT; code=${grant.code}; type=${type}; peer=${peer.slice(0,10)}; sid=${String(payload.sid||"нет").slice(0,8)}; invitation_id=${String(payload.invitation_id||"нет").slice(0,12)}; details=${JSON.stringify(grant)}.`);return false;
-  }
-  this.onDebug(`[grant] code=GRANT_VALID; type=${type}; peer=${peer.slice(0,10)}; invitation_id=${grant.invitation_id}.`);
-  if(used.slot==="pending"){
-   await updateContact(peer,{invitation_secret:contact.pending_secret,pending_secret:null,pending_rotation_id:null,previous_secret:null,previous_secret_at:null,shared_secret_created_at:Date.now(),rotation_response_id:null,rotation_response_ciphertext:null});
-   this.onDebug("[e2ee] получено первое сообщение под новым ключом; старый ключ удалён");
-  }else if(used.slot==="active"&&contact.previous_secret){
-   await updateContact(peer,{previous_secret:null,previous_secret_at:null});
-   this.onDebug("[e2ee] собеседник перешёл на новый ключ; предыдущий ключ удалён");
-  }else if(used.slot==="previous")this.onDebug("[e2ee] принято сообщение под предыдущим ключом; оба ключа пока сохраняются");
-  await this.processIncomingKeyRotation(peer,payload,type);return true;
- }
-
- async publish(to,msg){
-  const task=async()=>{
-   const contact=await getContact(to);
-   if(!contact?.supabase_user_id||(!contact.supabase_invitation_redeemed_at&&!contact.supabase_contact_accepted_at))throw Error("У контакта нет подтверждённой Supabase-связи. Повторно добавьте его по новой ссылке-приглашению.");
-   if(!msg?.__supabaseBody||typeof msg.__supabaseBody!=="object")throw Error("Для сообщения отсутствует тело протокола Supabase v1.");
-   const result=await sendSupabaseMessage({contact,type:msg.type,body:msg.__supabaseBody});
-   this.onDebug("[Supabase v1] отправлено "+msg.type+" контакту «"+(contact.name||to.slice(0,10))+"»; seq="+result.sequence+".");
-  };
-  const result=this.publishQueue.then(task,task);this.publishQueue=result.catch(()=>{});return result;
- }
-  async beginKeyRotation(peer,contact){
-  if(contact.rotation_id&&contact.rotation_private_key)return contact;
-  if(contact.pending_secret||contact.previous_secret)return contact;
-  const pair=await crypto.subtle.generateKey({name:"RSA-OAEP",modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:"SHA-256"},true,["encrypt","decrypt"]);
-  const pub=await crypto.subtle.exportKey("spki",pair.publicKey),priv=await crypto.subtle.exportKey("pkcs8",pair.privateKey);
-  const privateKey=await crypto.subtle.importKey("pkcs8",priv,{name:"RSA-OAEP",hash:"SHA-256"},false,["decrypt"]);
-  new Uint8Array(priv).fill(0);
-  return updateContact(peer,{rotation_id:crypto.randomUUID(),rotation_public_key:b64u(pub),rotation_private_key:privateKey,rotation_started_at:Date.now()});
- }
- async authenticated(type,payload){
-   const peer=payload?.to;
-   let contact=await getContact(peer);
-   if(!contact?.invitation_secret)throw Error("Не найден общий ключ контакта. Попросите собеседника создать новую ссылку-приглашение.");
-   if(!contact.supabase_user_id||(!contact.supabase_invitation_redeemed_at&&!contact.supabase_contact_accepted_at))throw Error("У контакта нет подтверждённой Supabase-связи. Старый транспорт отключён.");
-   if(type!=="rotation_response"&&!contact.rotation_id&&!contact.pending_secret&&!contact.previous_secret&&Date.now()-(Number(contact.shared_secret_created_at)||Date.now())>=24*60*60*1000)contact=await this.beginKeyRotation(peer,contact)||contact;
-   const body={...payload,invitation_id:payload.invitation_id||contact.invitation_id};
-   if(type!=="rotation_response"&&contact.rotation_id&&contact.rotation_public_key)body.rotation_request={rotation_id:contact.rotation_id,public_key:contact.rotation_public_key};
-   const {from,to,...supabaseBody}=body;
-   return {v:1,type,__supabaseBody:supabaseBody};
-  }
-  async subscribe(){
-   if(this.closed)throw Error("Сигнализация закрыта.");
-   if(!crypto.subtle||!window.isSecureContext)throw Error("Для защищённого соединения нужен браузер с Web Crypto и HTTPS.");
-   const identity=await getCurrentSignalingIdentity();
-   if(identity.user_id!==this.me)throw Error("Локальная идентичность изменилась. Перезапустите приложение.");
-   this.identity=identity;
-   this.onStatus("Supabase inbox готов");
-   this.onDebug("[Supabase] локальная сигнализация готова; входящие события поступают через приватный Supabase inbox.");
-  }
-  async start(){
-  this.onDebug(`[SSE ${this.debugId}] start() вызван`);
-  if(!isUserId(this.me)||!isUserId(this.peer)||this.me===this.peer)throw Error("Выберите сохранённый контакт.");
-  const peerContact=await getPeerSignalingIdentity(this.peer);
-   this.peerName=peerContact.name;
-   this.peerInvitationId=peerContact.invitation_id;
-   const supabaseContact=await getContact(this.peer);
-   const useSupabase=!!(supabaseContact?.supabase_user_id&&(supabaseContact.supabase_invitation_redeemed_at||supabaseContact.supabase_contact_accepted_at));
-   if(!useSupabase)throw Error("У контакта нет подтверждённой Supabase-связи. Повторно добавьте его по новой ссылке-приглашению.");
-   this.identity=await getCurrentSignalingIdentity();
-   this.rateLimited=false;
-   this.onDebug("[signaling] контакт подтверждён в Supabase; используем только приватный Supabase inbox.");
-   // Finish any already queued background events before switching to active call mode.
-  await this.messageQueue;
-  this.active=true;
-  if(this.preAnswerMessageCount){this.onDebug(`[signaling] до активации проверено ${this.preAnswerMessageCount} входящих событий; отложенная очередь не используется`);this.preAnswerMessageCount=0;}
-  if(this.answeringIncoming&&this.helloDirection==="incoming"&&this.hello&&!this.answer){
-   const p=this.hello;
-   this.answer={sid:p.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{})};
-   this.answerEnvelope=null;
-   this.activateSession(p.sid);
-   this.onDebug("[signaling] принятое в фоне hello восстановлено; отправляем answer");
-   try{await this.sendAnswer()}catch(err){this.onError(err);if(err.retryable)this.scheduleAnswerRetry(5000)}
-  }
-  if(!this.answeringIncoming&&!this.hello){
-   try{await this.sendHello()}catch(err){this.onError(err);if(err.retryable)this.scheduleHelloRetry(5000)}
-  }
-  this.answeringIncoming=false;
- }
- setPeer(peer){
-  if(peer!==""&&(!isUserId(peer)||peer===this.me))throw Error("Выберите корректный локальный контакт.");
-  if(peer===this.peer)return;
-  this.resetSession();this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(this.me<peer?"A":"B"):null;
- }
- acceptIncoming(){
-  const sid=this.incomingSid;
-  if(sid){this.acceptedSids.add(sid);if(this.acceptedSids.size>100)this.acceptedSids.delete(this.acceptedSids.values().next().value)}
-  this.answeringIncoming=true;
-  if(this.incomingHello&&this.incomingHello.sid===sid){this.hello=this.incomingHello;this.helloDirection="incoming"}
-  this.incomingHello=null;
-  this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
- }
- dismissIncoming(){
-  if(this.incomingEventId)this.rememberSeen(this.incomingEventId);
-  this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.incomingHello=null;
- }
-
- async processIncomingKeyRotation(peer,payload,type){
-  const request=payload?.rotation_request;
-  if(request){
-   let contact=await getContact(peer);if(!contact)return;
-   if(contact.rotation_id&&contact.rotation_private_key){
-    if(this.me<peer)return;
-    await updateContact(peer,{rotation_id:null,rotation_public_key:null,rotation_private_key:null,rotation_started_at:null});
-    contact=await getContact(peer);
-   }
-   if(contact.pending_secret&&contact.pending_rotation_id!==request.rotation_id)return;
-   let encryptedKey=contact.rotation_response_id===request.rotation_id?contact.rotation_response_ciphertext:null;
-   if(typeof encryptedKey!=="string"){
-    try{
-     const publicKey=await crypto.subtle.importKey("spki",un64(request.public_key),{name:"RSA-OAEP",hash:"SHA-256"},false,["encrypt"]);
-     const next=crypto.getRandomValues(new Uint8Array(32));
-     encryptedKey=b64u(await crypto.subtle.encrypt({name:"RSA-OAEP"},publicKey,next));
-     await updateContact(peer,{pending_secret:b64u(next),pending_rotation_id:request.rotation_id,rotation_response_id:request.rotation_id,rotation_response_ciphertext:encryptedKey});
-     next.fill(0);
-    }catch(error){this.onDebug("[e2ee] запрос ротации отклонён: "+(error.message||String(error)));return;}
-   }
-   await this.publish(peer,await this.authenticated("rotation_response",{from:this.me,to:peer,rotation_id:request.rotation_id,encrypted_key:encryptedKey}));
-   this.onDebug("[e2ee] ответ с новым симметричным ключом отправлен под прежним ключом");
-  }
-  if(type==="rotation_response"){
-   const contact=await getContact(peer);
-   if(!contact?.rotation_private_key||contact.rotation_id!==payload.rotation_id)return;
-   try{
-    const raw=new Uint8Array(await crypto.subtle.decrypt({name:"RSA-OAEP"},contact.rotation_private_key,un64(payload.encrypted_key)));
-    if(raw.length!==32)throw Error("Некорректная длина нового ключа.");
-    const next=b64u(raw);raw.fill(0);
-    await updateContact(peer,{previous_secret:contact.invitation_secret,previous_secret_at:Date.now(),invitation_secret:next,shared_secret_created_at:Date.now(),rotation_id:null,rotation_public_key:null,rotation_private_key:null,rotation_started_at:null});
-    this.onDebug("[e2ee] новый ключ получен; исходящие сообщения переключены на него, старый ключ оставлен для приёма");
-   }catch(error){this.onDebug("[e2ee] не удалось обработать ответ ротации: "+(error.message||String(error)));}
-  }
- }
- async recordConversationEvent(type,payload,direction,createdAt=Date.now(),deliveryStatus="sent"){
-  const contactUserId=direction==="incoming"?payload.from:payload.to;
-  if(!isUserId(contactUserId))return;
-  const id=type==="text"?payload.message_id:String(payload.sid||"")+":"+type+":"+direction;
-  try{
-   await this.onConversationEvent({
-    id,contact_user_id:contactUserId,type,direction,
-    text:type==="text"?payload.text:"",
-    created_at:new Date(Number(createdAt)||Date.now()).toISOString(),
-    ...(type==="text"&&direction==="outgoing"?{delivery_status:deliveryStatus}:{})
-   });
-   return true;
-  }catch(error){this.onError(error);return false}
- }
- async inspectTextMessage(n,m,trustedSupabase=false){
-  const p=m?.payload;if((trustedSupabase?m?.v!==1:m?.v!==3)||m?.type!=="text"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
-  let valid=false;try{valid=trustedSupabase?await this.verifySupabasePayload("text",p):await this.verifyPeerEnvelope("text",p,m.auth)}catch{return;}
-  if(!valid)return;
-  const saved=await this.recordConversationEvent("text",p,"incoming",Number(p.created_at));
-  if(!saved){this.onDebug("[message] сообщение проверено, но не удалось сохранить локально; подтверждение доставки не отправлено.");return;}
-  try{
-   const receipt={message_id:p.message_id,from:this.me,to:p.from,created_at:Date.now()};
-   await this.publish(p.from,await this.authenticated("delivered",receipt));
-   this.onDebug("[message] отправлено зашифрованное подтверждение доставки.");
-  }catch(error){this.onDebug("[message] не удалось отправить подтверждение доставки: "+(error.message||String(error)));}
-  if(n?.id)this.rememberSeen(n.id);
-  this.onDebug("[signaling] получено, сохранено и подтверждено аутентифицированное сообщение AES-GCM");
- }
- async inspectDeliveryReceipt(n,m,trustedSupabase=false){
-  const p=m?.payload;
-  if((trustedSupabase?m?.v!==1:m?.v!==3)||m?.type!=="delivered"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
-  let valid=false;try{valid=trustedSupabase?await this.verifySupabasePayload("delivered",p):await this.verifyPeerEnvelope("delivered",p,m.auth)}catch(error){this.onDebug("[message] ошибка проверки подтверждения доставки: "+(error.message||String(error)));return;}
-  if(!valid)return;
-  try{
-   await this.onConversationDelivery({contact_user_id:p.from,message_id:p.message_id,delivered_at:new Date(Number(p.created_at)||Date.now()).toISOString()});
-   this.onDebug("[message] получено подтверждение доставки текстового сообщения.");
-  }catch(error){this.onDebug("[message] не удалось обновить статус доставки: "+(error.message||String(error)));}
-  if(n?.id)this.rememberSeen(n.id);
- }
- async sendText(to,text){
-  if(this.closed)throw Error("Защищённая подписка ещё не готова.");
-  if(!isUserId(to)||to===this.me)throw Error("Выберите сохранённый контакт.");
-  const body=String(text||"").trim();if(!body||body.length>2000)throw Error("Сообщение должно содержать от 1 до 2000 символов.");
-  const contact=await getContact(to);
-  if(!contact)throw Error("Выберите сохранённый контакт.");
-  const supabaseReady=!!(contact.supabase_user_id&&(contact.supabase_invitation_redeemed_at||contact.supabase_contact_accepted_at));
-  if(!this.identity&&supabaseReady)this.identity=await getCurrentSignalingIdentity();
-  if(!this.identity&&!supabaseReady)throw Error("Защищённая подписка ещё не готова.");
-  const createdAt=Date.now(),payload={message_id:crypto.randomUUID(),from:this.me,to,created_at:createdAt,text:body};
-  const saved=await this.recordConversationEvent("text",payload,"outgoing",createdAt,"sending");
-  if(!saved)throw Error("Не удалось сохранить сообщение на устройстве.");
-  await this.publish(to,await this.authenticated("text",payload));
-  try{await this.onConversationSent({contact_user_id:to,message_id:payload.message_id});}
-  catch(error){this.onError(error);this.onDebug("[message] сообщение отправлено, но локальный статус не удалось обновить: "+(error.message||String(error)));}
-  return payload;
- }
- async inspectIncoming(n,trustedSupabase=false){
-  const eventId=String(n?.id||"нет").slice(0,14);
-  if(!n?.message||!n?.id){this.onDebug(`[incoming] событие пропущено: нет message/id; supabaseMessageId=${eventId}.`);return;}
-  let m;try{m=JSON.parse(n.message)}catch(error){this.onDebug(`[incoming] событие пропущено: message не JSON; supabaseMessageId=${eventId}; error=${error.message||String(error)}.`);return;}
-  
-  if(m.type==="text"){await this.inspectTextMessage(n,m,trustedSupabase);return;}
-  if(m.type==="delivered"){await this.inspectDeliveryReceipt(n,m,trustedSupabase);return;}
-  if((trustedSupabase?m.v!==1:m.v!==3)||!m.payload){this.onDebug(`[incoming] ${m.type||"unknown"} пропущен: version=${m.v??"нет"}; payload=${!!m.payload}; supabaseMessageId=${eventId}.`);return;}
-  const p=m.payload;
-  if(!isUserId(p.from)||p.from===this.me||p.to!==this.me){this.onDebug(`[incoming] ${m.type} пропущен: адресация не для этого устройства; from=${String(p.from||"нет").slice(0,10)}; to=${String(p.to||"нет").slice(0,10)}; me=${this.me.slice(0,10)}; supabaseMessageId=${eventId}.`);return;}
-  if(m.type==="rotation_response"){let ok=false;try{ok=trustedSupabase?await this.verifySupabasePayload(m.type,p):await this.verifyPeerEnvelope(m.type,p,m.auth)}catch(error){this.onDebug(`[incoming] rotation_response verification error: ${error.message||String(error)}; supabaseMessageId=${eventId}.`)}if(ok&&n?.id)this.rememberSeen(n.id);return;}
-  if(m.type==="cancel"){
-   try{const contact=await getPeerSignalingIdentity(p.from);this.peer=p.from;this.peerName=contact.name;this.peerInvitationId=contact.invitation_id;this.role=this.me<p.from?"A":"B";await this.processCancel(m,trustedSupabase);if(n?.id)this.rememberSeen(n.id)}
-   catch(error){this.onDebug(`[incoming] cancel processing failed: ${error.message||String(error)}; peer=${p.from.slice(0,10)}; supabaseMessageId=${eventId}.`)}return;
-  }
-  if(m.type!=="hello"){this.onDebug(`[incoming] неизвестный тип ${m.type||"нет"} пропущен; supabaseMessageId=${eventId}.`);return;}
-  const receivedAt=performance.now();
-  const sid=String(p.sid||"нет").slice(0,8);
-  if(this.active||this.ready||(this.incomingSid&&this.incomingSid!==p.sid)||this.outgoingRequest||this.hello){
-   const reason=this.active?"уже активен звонок":this.ready?"secure-сессия уже ready":(this.incomingSid&&this.incomingSid!==p.sid)?"уже есть другой входящий sid":this.outgoingRequest?"есть исходящий запрос":"hello уже обрабатывается";
-   this.onDebug(`[incoming] hello проигнорирован: ${reason}; peer=${p.from.slice(0,10)}; sid=${sid}; supabaseMessageId=${eventId}.`);return;
-  }
-  let contact;try{contact=await getPeerSignalingIdentity(p.from)}catch(error){this.onDebug(`[incoming] hello не проверен: не удалось загрузить контакт; peer=${p.from.slice(0,10)}; error=${error.message||String(error)}; supabaseMessageId=${eventId}.`);return;}
-  this.peer=p.from;this.peerName=contact.name;this.peerInvitationId=contact.invitation_id;this.role=this.me<p.from?"A":"B";
-  let verified=false;try{verified=trustedSupabase?await this.verifySupabasePayload(m.type,p):await this.verifyPeerEnvelope(m.type,p,m.auth)}catch(error){this.onDebug(`[incoming] hello verification exception: ${error.message||String(error)}; peer=${p.from.slice(0,10)}; sid=${sid}; supabaseMessageId=${eventId}.`);return;}
-  if(!verified){this.onDebug(`[incoming] hello отклонён проверкой E2EE/приглашения; peer=${p.from.slice(0,10)}; sid=${sid}; invitation_id=${String(p.invitation_id||"нет").slice(0,12)}; supabaseMessageId=${eventId}.`);return;}
-  const expiresAt=Number(p.expiresAt||((Number(n.time)||0)*1000+45000));
-  if(!Number.isFinite(expiresAt)||typeof p.sid!=="string"){this.onDebug(`[incoming] hello аутентифицирован, но невалиден: expiresAtFinite=${Number.isFinite(expiresAt)}; sidValid=${typeof p.sid==="string"}; supabaseMessageId=${eventId}.`);return;}
-  if(this.acceptedSids.has(p.sid)||this.cancelledSids.has(p.sid)||this.incomingSid===p.sid){
-   const reason=this.acceptedSids.has(p.sid)?"sid уже принят":this.cancelledSids.has(p.sid)?"sid отменён":"этот входящий sid уже установлен";
-   this.onDebug(`[incoming] hello-дубликат проигнорирован: ${reason}; sid=${sid}; supabaseMessageId=${eventId}.`);return;
-  }
-  if(n?.id)this.rememberSeen(n.id);
-  await this.recordConversationEvent("hello",p,"incoming",Number(n.time)*1000||Date.now());
-  this.onPeerMessage(p.from);this.incomingSid=p.sid;this.incomingEventId=n.id;this.incomingIdentity=true;this.incomingHello=p;
-  const pending=this.pendingCancels.get(p.sid);
-  if(pending){this.pendingCancels.delete(p.sid);this.onDebug(`[incoming] для hello уже ожидала отмена; применяем cancel; sid=${sid}.`);await this.processCancel(pending);if(this.cancelledSids.has(p.sid))return;}
-  this.onDebug(`[incoming] hello принят: peer=${p.from.slice(0,10)}; name=${this.peerName||"контакт"}; sid=${sid}; локальный тайм-аут получателя=45s; supabaseMessageId=${eventId}.`);
-  this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer,sid:p.sid,expiresAt,receivedAt});
- }
- async processCancel(m,trustedSupabase=false){
-  const p=m?.payload;if((trustedSupabase?m?.v!==1:m?.v!==3)||!p||p.from!==this.peer||p.to!==this.me)return;
-  if(!(trustedSupabase?await this.verifySupabasePayload("cancel",p):await this.verifyPeerEnvelope("cancel",p,m.auth)))throw Error("Аутентификация отмены вызова или разрешение недействительны.");
-  if(!p.sid||this.acceptedSids.has(p.sid)||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
-  this.onPeerMessage(this.peer);
-  if(!this.incomingIdentity){this.pendingCancels.set(p.sid,m);if(this.pendingCancels.size>50)this.pendingCancels.delete(this.pendingCancels.keys().next().value);return;}
-  this.cancelledSids.add(p.sid);if(this.cancelledSids.size>100)this.cancelledSids.delete(this.cancelledSids.values().next().value);
-  if(this.incomingSid===p.sid&&!this.hello&&!this.ready){
-   this.onDebug("[signaling] получена аутентифицированная отмена входящего вызова до ответа");
-   this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.onCancelIncoming({peer:this.peerName||"контакт",sid:p.sid});
-  }
- }
- rememberSeen(id){
-  if(!id)return;
-  this.seen.add(id);
-  if(this.seen.size>600)this.seen.delete(this.seen.values().next().value);
- }
- resetSession(){
-  this.active=false;this.answeringIncoming=false;this.clearHelloRetry();this.clearAnswerRetry();this.dataAssemblies.clear();
-  this.hello=null;this.helloEnvelope=null;this.helloDirection=null;this.readyNotified=false;this.answer=null;this.answerEnvelope=null;this.lastAnswerAt=0;this.session=null;this.ready=false;this.incomingHello=null;
-  this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;this.outgoingRequest=null;this.pendingCancels.clear();this.acceptedSids.clear();this.rateLimited=false;this.helloAttempts=0;this.answerAttempts=0;
- }
- async rejectIncoming(){
-  const sid=this.incomingSid;
-  if(this.closed||!sid||!this.peer)return false;
-  const payload={sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),expiresAt:Date.now()+15000};
-  await this.publish(this.peer,await this.authenticated("reject",payload));
-  await this.recordConversationEvent("reject",payload,"outgoing",Date.now());
-  this.acceptedSids.add(sid);
-  this.onDebug("[signaling] аутентифицированный отказ от входящего вызова отправлен через Supabase");
-  this.incomingSid=null;this.incomingEventId=null;this.incomingIdentity=null;
-  return true;
- }
- async cancelCall(){
-  const request=this.outgoingRequest||this.hello;
-  if(this.closed||!request||!["A","B"].includes(this.role))return false;
-  const payload={sid:request.sid,from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),expiresAt:Date.now()+15000};
-  await this.publish(this.peer,await this.authenticated("cancel",payload));
-  this.outgoingRequest=null;
-  this.onDebug("[signaling] аутентифицированная отмена вызова отправлена через Supabase");
-  return true;
- }
- async sendHello(){
-  if(this.closed||this.ready||this.rateLimited||this.helloDirection==="incoming")return;
-  if(!this.hello){
-   this.hello={sid:crypto.randomUUID(),from:this.me,to:this.peer,...(this.peerInvitationId?{invitation_id:this.peerInvitationId}:{}),expiresAt:Date.now()+45000};
-   this.helloEnvelope=null;
-   this.helloDirection="outgoing";
-  }
-  this.helloAttempts++;
-  this.onDebug(`[signaling] hello attempt ${this.helloAttempts}/3`);
-  if(!this.helloEnvelope)this.helloEnvelope=await this.authenticated("hello",this.hello);
-  await this.publish(this.peer,this.helloEnvelope);
-  await this.recordConversationEvent("hello",this.hello,"outgoing",Date.now());
-  this.onStatus("Запрос отправлен. Ожидаем "+(this.peerName||"контакт")+"…");
-  if(!this.ready)this.onDialing({peer:this.peerName||"контакт",expiresAt:this.hello.expiresAt,callId:this.hello.sid});
- }
- scheduleHelloRetry(delay){
-  this.clearHelloRetry();
-  if(this.closed||this.ready||this.rateLimited||this.helloDirection!=="outgoing"||this.helloAttempts>=3)return;
-  this.helloRetryTimer=setTimeout(async()=>{
-   this.helloRetryTimer=null;
-   if(this.closed||this.ready||this.rateLimited)return;
-   try{await this.sendHello()}catch(err){
-    this.onError(err);
-    if(err.retryable)this.scheduleHelloRetry(this.helloAttempts===2?10000:5000);
-   }
-  },delay);
- }
- clearHelloRetry(){if(this.helloRetryTimer!==null){clearTimeout(this.helloRetryTimer);this.helloRetryTimer=null}}
- clearAnswerRetry(){if(this.answerRetryTimer!==null){clearTimeout(this.answerRetryTimer);this.answerRetryTimer=null}}
- async sendAnswer(){
-  if(this.closed||this.rateLimited||!this.answer)return;
-  this.answerAttempts++;
-  this.onDebug(`[signaling] answer POST attempt ${this.answerAttempts}/3`);
-  if(!this.answerEnvelope)this.answerEnvelope=await this.authenticated("answer",this.answer);
-  await this.publish(this.peer,this.answerEnvelope);
-  await this.recordConversationEvent("answer",this.answer,"outgoing",Date.now());
-  this.lastAnswerAt=Date.now();
-  this.clearAnswerRetry();
-  if(!this.readyNotified){this.readyNotified=true;this.onReady();}
- }
- scheduleAnswerRetry(delay){
-  this.clearAnswerRetry();
-  if(this.closed||this.rateLimited||!this.answer||this.answerAttempts>=3)return;
-  this.answerRetryTimer=setTimeout(async()=>{
-   this.answerRetryTimer=null;
-   try{await this.sendAnswer()}catch(err){
-    this.onError(err);
-    if(err.retryable)this.scheduleAnswerRetry(10000);
-   }
-  },delay);
  }
  async verifySupabasePayload(type,payload){
    const peer=payload?.from;
@@ -425,16 +57,16 @@ export class SupabaseSecureSignaling {
    try{
     // Chat and receipts are independent of whichever peer currently owns the
     // single active WebRTC session. Process them through the common v1 validator.
-    if(message.type==="text"||message.type==="delivered")await this.inspectIncoming(event,true);
-    else await this.handle(event,true);
+    if(message.type==="text"||message.type==="delivered")await this.inspectIncoming(event);
+    else await this.handle(event);
    }catch(error){this.seen.delete(eventId);throw error;}
   }
 
-async handle(event,trustedSupabase=false){
+async handle(event){
   if(!this.active){
    let q;try{q=JSON.parse(event.data)}catch{return;}
    if(!q.message||!q.id||this.seen.has(q.id))return;
-   await this.inspectIncoming(q,trustedSupabase);
+   await this.inspectIncoming(q);
    this.rememberSeen(q.id);
    this.preAnswerMessageCount++;
    return;
@@ -443,20 +75,20 @@ async handle(event,trustedSupabase=false){
   this.rememberSeen(n.id);
   let m;try{m=JSON.parse(n.message)}catch{return;}
   if(m.type==="data")this.onDebug("[signaling] Supabase v1 data envelope: v="+m.v+"; from="+String(m.payload?.from||"нет").slice(0,10)+"; expectedFrom="+this.peer.slice(0,10)+"; to="+String(m.payload?.to||"нет").slice(0,10)+"; expectedTo="+this.me.slice(0,10)+"; supabaseMessageId="+String(n.id).slice(0,12));
-  if(m.type==="text"){if((trustedSupabase?m.v===1:m.v===3)&&m.payload?.to===this.me)await this.inspectTextMessage(n,m,trustedSupabase);return;}
-  if(m.type==="delivered"){if((trustedSupabase?m.v===1:m.v===3)&&m.payload?.to===this.me)await this.inspectDeliveryReceipt(n,m,trustedSupabase);return;}
-  if((trustedSupabase?m.v!==1:m.v!==3)||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me){
+  if(m.type==="text"){if((trustedSupabase?m.v===1:m.v===3)&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
+  if(m.type==="delivered"){if((trustedSupabase?m.v===1:m.v===3)&&m.payload?.to===this.me)await this.inspectDeliveryReceipt(n,m);return;}
+  if(m.v!==1||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me){
    if(m.type==="data")this.onDebug("[signaling] data отклонено до AES-GCM: неверная версия, payload, from или to.");
    return;
   }
   const p=m.payload;
-  if(m.type==="cancel"){await this.processCancel(m,trustedSupabase);return;}
+  if(m.type==="cancel"){await this.processCancel(m);return;}
   if(!["rotation_response","reject","hello","answer","data"].includes(m.type))return;
   const sidShort=value=>typeof value==="string"?value.slice(0,8):"нет";
   if(m.type==="data"){
    this.onDebug("[signaling] получено data: sid="+sidShort(p.sid)+"; ready="+this.ready+"; session="+sidShort(this.session)+"; signal="+(p.signal?.type||"нет")+"; supabaseMessageId="+String(n.id).slice(0,12));
   }
-  const verified=trustedSupabase?await this.verifySupabasePayload(m.type,p):await this.verifyPeerEnvelope(m.type,p,m.auth);
+  const verified=await this.verifySupabasePayload(m.type,p);
   if(!verified){
    if(m.type==="data")this.onDebug("[signaling] data отклонено: AES-GCM/аутентификация или проверка отправителя не пройдена.");
    return;
