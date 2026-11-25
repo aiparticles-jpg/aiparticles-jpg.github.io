@@ -945,7 +945,7 @@ async function subscribeForUser(me){
  const subscription=createSecureSignaling(me,SupabaseSecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  state.secure=subscription;
  els.debugUrl.textContent="Supabase · "+state.supabaseUserId.slice(0,12)+"…";
- setStatus("Подключено к Supabase","Входящие сообщения поступают через защищённый Supabase inbox.","live");
+ setStatus("Локальная идентичность готова","Входящие сообщения принимаются через Supabase inbox.","live");
  await subscription.subscribe();
  return true;
 }
@@ -1024,19 +1024,15 @@ if("serviceWorker" in navigator){
   }
   if(event.data?.type==="VL_PUSH_EVENTS"){
    const pending=Array.isArray(event.data.events)?event.data.events:[];
-   debug("VoiceLink получил из Service Worker "+pending.length+" сохранённых push-событий; проверяем Supabase inbox.");
-   subscribeForUser(state.me).then(connected=>{
-    if(connected)event.source?.postMessage({type:"VL_CLEAR_PUSH_EVENTS"});
-   });
+   debug("VoiceLink получил из Service Worker "+pending.length+" сохранённых push-событий; запускаем восстановление Supabase inbox.");
+   scheduleSupabaseInboxRecovery();
+   event.source?.postMessage({type:"VL_CLEAR_PUSH_EVENTS"});
    return;
   }
   if(event.data?.type!=="VL_PUSH_RECEIVED")return;
   appendServiceWorkerLog("push_event_received",{source:"service_worker_message"});
-  debug("Service Worker получил фоновый push. Проверяем канал входящих сообщений.");
-  const subscription=state.secure;
-  if(subscription&&!subscription.closed&&(!subscription.es||subscription.es.readyState===EventSource.CLOSED)){
-   subscription.subscribe().then(()=>debug("Supabase inbox повторно проверен после фонового push.")).catch(error=>debug("Не удалось проверить Supabase inbox после фонового push: "+(error.message||String(error))));
-  }
+  debug("Service Worker получил фоновый push. Запускаем восстановление Supabase inbox.");
+  scheduleSupabaseInboxRecovery();
  });
 }
 async function onSecureReady(){
