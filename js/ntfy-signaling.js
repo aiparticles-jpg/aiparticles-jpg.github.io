@@ -416,6 +416,7 @@ async publish(to,msg){
    catch(error){this.onDebug(`[incoming] cancel processing failed: ${error.message||String(error)}; peer=${p.from.slice(0,10)}; ntfyId=${eventId}.`)}return;
   }
   if(m.type!=="hello"){this.onDebug(`[incoming] неизвестный тип ${m.type||"нет"} пропущен; ntfyId=${eventId}.`);return;}
+  const receivedAt=performance.now();
   const sid=String(p.sid||"нет").slice(0,8);
   if(this.active||this.ready||(this.incomingSid&&this.incomingSid!==p.sid)||this.outgoingRequest||this.hello){
    const reason=this.active?"уже активен звонок":this.ready?"secure-сессия уже ready":(this.incomingSid&&this.incomingSid!==p.sid)?"уже есть другой входящий sid":this.outgoingRequest?"есть исходящий запрос":"hello уже обрабатывается";
@@ -437,7 +438,7 @@ async publish(to,msg){
   const pending=this.pendingCancels.get(p.sid);
   if(pending){this.pendingCancels.delete(p.sid);this.onDebug(`[incoming] для hello уже ожидала отмена; применяем cancel; sid=${sid}.`);await this.processCancel(pending);if(this.cancelledSids.has(p.sid))return;}
   this.onDebug(`[incoming] hello принят: peer=${p.from.slice(0,10)}; name=${this.peerName||"контакт"}; sid=${sid}; локальный тайм-аут получателя=45s; ntfyId=${eventId}.`);
-  this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer, sid:p.sid,expiresAt});
+  this.onIncoming({peer:this.peerName||"контакт",peerId:this.peer,sid:p.sid,expiresAt,receivedAt});
  }
  async inspectContactRequest(n,m){
   const p=m?.payload;
