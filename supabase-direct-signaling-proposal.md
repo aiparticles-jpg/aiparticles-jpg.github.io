@@ -454,7 +454,7 @@ The production browser path now uses the same v1 outer envelope for every applic
 
 ### 17.3 Verification still required
 
-- GitHub Actions browser-module syntax check passed for the initial integration commit `62579983263ac4e1b4612df212cefedcc76f4c67` (run `45583657422`). Follow-up commits include dispatch and import-state fixes; verify the latest head's run before merging.
+- GitHub Actions browser-module syntax check and executable v1 envelope round-trip suite passed for the latest integration head `4a7915bf4c0c89f2e5b4ce367f1a58152dad7617` (run `45584446427`).
 - The isolated protocol test verifies encryption/decryption, routing AAD, tamper rejection, version rejection, uint64 bounds, and absence of top-level clear `from/to`. It does not exercise the complete browser contact bootstrap or two-device call flow.
 - No production Pages deployment or real two-device test has been performed for this integration yet.
 - Do not remove ntfy or merge/deploy this migration until the latest CI run passes and the two-device invitation → contact → call → chat → delivery-receipt flow has been tested.
