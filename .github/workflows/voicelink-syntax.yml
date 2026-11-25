@@ -45,4 +45,3 @@ jobs:
             node --check "$file"
           done
           node backend/scripts/test-supabase-envelope.mjs
-          done
