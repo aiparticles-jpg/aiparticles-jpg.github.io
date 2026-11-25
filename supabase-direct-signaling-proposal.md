@@ -431,3 +431,30 @@ Implemented in the production browser app while preserving the existing ntfy exc
 - GitHub Actions syntax check passed for commit `031e74cd779ac66a50b94e1df80cd5145cccc310` (run `44714979485`); GitHub Pages deployment also succeeded (run `44714979359`).
 
 This is a staged dual-write/first-contact bridge, not a completed ntfy replacement. Keep ntfy active until inbox processing and a real two-device call work over Supabase.
+
+
+## 17. Production v1 protocol integration — 2026-11-25
+
+The production browser path now uses the same v1 outer envelope for every application message sent to a Supabase-linked contact. The old v3 ciphertext is no longer nested inside a v1 message.
+
+### 17.1 Outgoing and incoming messages
+
+- `NtfySecureSignaling.authenticated()` selects the v1 plaintext body for contacts whose Supabase link is redeemed/accepted. The body contains application fields (including the invitation grant and call/session identifiers) but omits legacy `from` and `to` identifiers.
+- `sendSupabaseMessage()` allocates the per-recipient sequence in IndexedDB, encrypts `{type,seq,body}` with `encryptSupabaseMessage()`, and stores/retries the same ciphertext through the durable outbox.
+- The database row's authenticated `sender_id` and `recipient_id` supply routing context and AES-GCM AAD. The receiver maps `sender_id` back to its local contact ID only after v1 decryption.
+- All established-contact message types use this path: `hello`, `answer`, `cancel`, `reject`, WebRTC `data`, `text`, `delivered`, and `rotation_response`. Chat and delivery receipts are processed independently of the currently active WebRTC peer.
+- The first contact response is also a v1 encrypted `contact_accept` message. Its encrypted body carries the invitee's local contact ID and optional display name / OneSignal subscription. The inviter tries locally issued invitation secrets, identifies the matching invitation by authenticated decryption, consumes the local activation, and creates the contact record. No legacy v3 contact-request ciphertext is used for new contacts when Supabase redemption succeeds.
+- OneSignal remains a notification channel only; it does not carry signaling or chat message content.
+
+### 17.2 Compatibility boundary
+
+- Existing contacts without a redeemed Supabase link continue using the legacy ntfy/v3 path. If a new invitation has no Supabase route or one-time redemption fails, the app retains the legacy exchange as a compatibility fallback.
+- The ntfy subscription and handlers therefore remain necessary during migration. They must not be removed until legacy contacts have been migrated and a two-device call has passed over v1.
+- The v1 message handler adapts the decrypted body to existing call/chat business handlers in memory. No v3 envelope or legacy routing ID is placed inside the v1 encrypted payload.
+
+### 17.3 Verification still required
+
+- GitHub Actions browser-module syntax check passed for the initial integration commit `62579983263ac4e1b4612df212cefedcc76f4c67` (run `45583657422`). Follow-up commits include dispatch and import-state fixes; verify the latest head's run before merging.
+- The isolated protocol test verifies encryption/decryption, routing AAD, tamper rejection, version rejection, uint64 bounds, and absence of top-level clear `from/to`. It does not exercise the complete browser contact bootstrap or two-device call flow.
+- No production Pages deployment or real two-device test has been performed for this integration yet.
+- Do not remove ntfy or merge/deploy this migration until the latest CI run passes and the two-device invitation → contact → call → chat → delivery-receipt flow has been tested.
