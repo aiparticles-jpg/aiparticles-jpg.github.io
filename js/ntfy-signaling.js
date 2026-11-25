@@ -109,52 +109,15 @@ export class NtfySecureSignaling {
   }
  }
 async publish(to,msg){
-   const task=async()=>{
-    const contact=await getContact(to);
-    if(contact?.supabase_user_id&&(contact.supabase_invitation_redeemed_at||contact.supabase_contact_accepted_at)){
-     if(!msg.__supabaseBody||typeof msg.__supabaseBody!=="object")throw Error("Для Supabase-сообщения отсутствует plaintext body протокола v1.");
-     const result=await sendSupabaseMessage({contact,type:msg.type,body:msg.__supabaseBody});
-     this.onDebug("[Supabase v1] отправлено "+msg.type+" контакту «"+(contact.name||to.slice(0,10))+"»; seq="+result.sequence+".");
-     return;
-    }
-    if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
-    const maxMessageBytes=4096,originalBody=JSON.stringify(msg),originalBytes=enc.encode(originalBody).byteLength,messages=[];
-    if(msg.type==="data"&&originalBytes>maxMessageBytes){
-     if([...originalBody].some(ch=>ch.charCodeAt(0)>127))throw Error("Нельзя безопасно фрагментировать не-ASCII data envelope.");
-     const messageId=crypto.randomUUID(),template={v:3,type:"data_part",payload:{from:this.me,to,message_id:messageId,index:15,total:16,chunk:""}};
-     const wrapperBytes=enc.encode(JSON.stringify(template)).byteLength,chunkSize=maxMessageBytes-wrapperBytes,total=Math.ceil(originalBody.length/chunkSize);
-     if(chunkSize<1||total>16)throw Error("Зашифрованное data-сообщение слишком велико для ntfy.");
-     for(let index=0;index<total;index++){
-      const part={v:3,type:"data_part",payload:{from:this.me,to,message_id:messageId,index,total,chunk:originalBody.slice(index*chunkSize,(index+1)*chunkSize)}};
-      const partBytes=enc.encode(JSON.stringify(part)).byteLength;
-      if(partBytes>maxMessageBytes)throw Error(`ntfy body size ${partBytes} B exceeds ${maxMessageBytes} B.`);
-      messages.push(part);
-     }
-     this.onDebug(`[ntfy] envelope=${originalBytes} B; parts=${total}; chunkCapacity=${chunkSize} chars; wrapper=${wrapperBytes} B; maxBody=${maxMessageBytes} B.`);
-    }else messages.push(msg);
-    for(let i=0;i<messages.length;i++){
-     if(this.rateLimited)throw Error("ntfy ранее вернул HTTP 429; новые отправки остановлены.");
-     const current=messages[i],body=JSON.stringify(current),bodyBytes=enc.encode(body).byteLength;
-     if(bodyBytes>maxMessageBytes)throw Error(`ntfy message body ${bodyBytes} B exceeds ${maxMessageBytes} B.`);
-     if(current.type==="data")this.onDebug(`[ntfy] data POST body=${bodyBytes} B; limit=${maxMessageBytes} B; headroom=${maxMessageBytes-bodyBytes} B.`);
-     if(current.type==="data_part")this.onDebug(`[ntfy] data part POST ${i+1}/${messages.length}; body=${bodyBytes} B; limit=${maxMessageBytes} B; headroom=${maxMessageBytes-bodyBytes} B.`);
-     const url=BASE+await getNtfyTopic(to);
-     await this.waitForPublishSlot();
-     this.onDebug(`[ntfy] POST → ${current.type} (одна попытка)`);
-     let response;
-     try{response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body,cache:"no-store"});}
-     catch(error){const failure=Error("Сетевая ошибка при POST в ntfy ("+current.type+"): "+(error.message||String(error)));failure.retryable=true;throw failure;}
-     this.onDebug(`[ntfy] POST ← ${response.status} (${current.type})`);
-     if(!response.ok){
-      const retryAfter=response.headers.get("Retry-After");
-      if(response.status===429){this.rateLimited=true;this.clearHelloRetry();this.clearAnswerRetry();}
-      const failure=Error("ntfy HTTP "+response.status+(response.status===429?"; сервер ограничил частоту запросов"+(retryAfter?"; Retry-After: "+retryAfter:""):""));
-      failure.retryable=response.status===408||response.status>=500;throw failure;
-     }
-    }
-   };
-   const result=this.publishQueue.then(task,task);this.publishQueue=result.catch(()=>{});return result;
-  }
+  const task=async()=>{
+   const contact=await getContact(to);
+   if(!contact?.supabase_user_id||(!contact.supabase_invitation_redeemed_at&&!contact.supabase_contact_accepted_at))throw Error("У контакта нет подтверждённой Supabase-связи. Повторно добавьте его по новой ссылке-приглашению.");
+   if(!msg?.__supabaseBody||typeof msg.__supabaseBody!=="object")throw Error("Для сообщения отсутствует тело протокола Supabase v1.");
+   const result=await sendSupabaseMessage({contact,type:msg.type,body:msg.__supabaseBody});
+   this.onDebug("[Supabase v1] отправлено "+msg.type+" контакту «"+(contact.name||to.slice(0,10))+"»; seq="+result.sequence+".");
+  };
+  const result=this.publishQueue.then(task,task);this.publishQueue=result.catch(()=>{});return result;
+ }
   async beginKeyRotation(peer,contact){
   if(contact.rotation_id&&contact.rotation_private_key)return contact;
   if(contact.pending_secret||contact.previous_secret)return contact;
@@ -204,90 +167,27 @@ async publish(to,msg){
  }
 
  async subscribe(){
-  if(this.es&&this.es.readyState===EventSource.OPEN)return;
-  if(this.subscribePromise)return this.subscribePromise;
-  if(this.es&&this.es.readyState===EventSource.CONNECTING&&this.sseReadyPromise)return this.sseReadyPromise;
-  if(this.es&&this.es.readyState===EventSource.CLOSED){this.es=null;this.sseReadyPromise=null}
-  const task=this.openSubscription();
-  this.subscribePromise=task;
-  try{await task}
-  finally{if(this.subscribePromise===task)this.subscribePromise=null}
- }
- async openSubscription(){
-  this.onDebug(`[SSE ${this.debugId}] subscribe() вызван`);
-  if(!isUserId(this.me))throw Error("Локальная анонимная идентичность не инициализирована.");
-  if(!crypto.subtle||!window.isSecureContext)throw Error("Для защищённого соединения нужен браузер с Web Crypto и HTTPS.");
-  if(this.es){
-   if(this.es.readyState===EventSource.OPEN)return;
-   if(this.sseReadyPromise)return this.sseReadyPromise;
+   if(this.closed)throw Error("Сигнализация закрыта.");
+   if(!crypto.subtle||!window.isSecureContext)throw Error("Для защищённого соединения нужен браузер с Web Crypto и HTTPS.");
+   const identity=await getCurrentSignalingIdentity();
+   if(identity.user_id!==this.me)throw Error("Локальная идентичность изменилась. Перезапустите приложение.");
+   this.identity=identity;
+   this.onStatus("Supabase inbox готов");
+   this.onDebug("[Supabase] локальная сигнализация готова; входящие события поступают через приватный Supabase inbox.");
   }
-  this.identity=await getCurrentSignalingIdentity();
-  if(this.identity.user_id!==this.me)throw Error("Локальная идентичность изменилась. Перезапустите подписку.");
-  if(this.closed)throw Error("Открытие подписки отменено.");
-  const cursor=await getNtfyCursor(this.me);
-  this.lastProcessedMessageId=cursor;
-  const since=cursor||"latest";
-  this.onDebug("[SSE "+this.debugId+"] resume cursor="+(cursor||"latest (первичная установка)")+"; старые сообщения до курсора не запрашиваются.");
-  const url=BASE+await getNtfyTopic(this.me)+"/sse?since="+encodeURIComponent(since);
-  if(this.closed)throw Error("Открытие подписки отменено.");
-  const es=new EventSource(url);this.es=es;
-  let settled=false;
-  const createdAt=performance.now();let lastOpenAt=null;
-  const elapsed=()=>Math.round(performance.now()-createdAt);
-  const stateName=()=>es.readyState===EventSource.CONNECTING?"CONNECTING":es.readyState===EventSource.OPEN?"OPEN":es.readyState===EventSource.CLOSED?"CLOSED":String(es.readyState);
-  this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} CREATED; t=+0ms; readyState=${es.readyState} (${stateName()})`);
-  const ready=new Promise((resolve,reject)=>{
-   const timeout=setTimeout(()=>{if(!settled){settled=true;reject(Error("Тайм-аут подключения к ntfy"))}},15000);
-   es.onopen=event=>{
-    // ntfy sends its own named SSE event "open" immediately after connecting.
-    // It is a MessageEvent with data; it must not be mistaken for EventSource's
-    // transport-level open event (a plain Event).
-    if(typeof event?.data==="string"){
-     let serverEvent=null;
-     try{serverEvent=JSON.parse(event.data)?.event||null}catch{}
-     if(serverEvent==="open"){
-      this.onDebug(`[SSE ${this.debugId}] ntfy server event=open received; transport connection was already opened.`);
-      return;
-     }
-    }
-    const now=performance.now(),sincePrevious=lastOpenAt===null?"—":Math.round(now-lastOpenAt)+"ms";
-    this.sseOpenCount++;
-    this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} OPEN #${this.sseOpenCount}; since-create=+${elapsed()}ms; since-prev-open=${sincePrevious}; readyState(before)=${es.readyState} (${stateName()})`);
-    lastOpenAt=now;
-    if(!settled){settled=true;clearTimeout(timeout);resolve()}
-    this.onStatus(this.active?"Канал ntfy подключён. Ищем собеседника…":"Подписка ntfy активна. Можно подключаться.");
-    this.onDebug(`[SSE ${this.debugId}] OPEN #${this.sseOpenCount} handler завершён; readyState(after)=${es.readyState} (${stateName()})`);
-   };
-   es.onerror=event=>{
-    this.sseErrorCount++;
-    this.onDebug(`[SSE ${this.debugId}] ${new Date().toISOString()} ERROR #${this.sseErrorCount}; since-create=+${elapsed()}ms; readyState(before)=${es.readyState} (${stateName()}); event=${event.type}; trusted=${event.isTrusted}`);
-    this.onStatus("Канал ntfy переподключается…");
-    if(!settled){settled=true;clearTimeout(timeout);reject(Error("Не удалось подключиться к ntfy"))}
-    this.onDebug(`[SSE ${this.debugId}] ERROR #${this.sseErrorCount} handler завершён; readyState(after)=${es.readyState} (${stateName()})`);
-   };
-   es.onmessage=e=>this.enqueueMessages([e]);
-  });
-  this.sseReadyPromise=ready;
-  try{await ready}
-  catch(error){if(this.es===es){es.close();this.es=null;this.sseReadyPromise=null}throw error}
- }
- async start(){
+  async start(){
   this.onDebug(`[SSE ${this.debugId}] start() вызван`);
   if(!isUserId(this.me)||!isUserId(this.peer)||this.me===this.peer)throw Error("Выберите сохранённый контакт.");
   const peerContact=await getPeerSignalingIdentity(this.peer);
-  this.peerName=peerContact.name;
-  this.peerInvitationId=peerContact.invitation_id;
-  const supabaseContact=await getContact(this.peer);
-  const useSupabase=!!(supabaseContact?.supabase_user_id&&
-   (supabaseContact.supabase_invitation_redeemed_at||supabaseContact.supabase_contact_accepted_at));
-  if(useSupabase){
+   this.peerName=peerContact.name;
+   this.peerInvitationId=peerContact.invitation_id;
+   const supabaseContact=await getContact(this.peer);
+   const useSupabase=!!(supabaseContact?.supabase_user_id&&(supabaseContact.supabase_invitation_redeemed_at||supabaseContact.supabase_contact_accepted_at));
+   if(!useSupabase)throw Error("У контакта нет подтверждённой Supabase-связи. Повторно добавьте его по новой ссылке-приглашению.");
    this.identity=await getCurrentSignalingIdentity();
    this.rateLimited=false;
-   this.onDebug("[signaling] контакт подтверждён в Supabase; для звонка ntfy-подписка не требуется.");
-  }else{
-   await this.subscribe();
-  }
-  // Finish any already queued background events before switching to active call mode.
+   this.onDebug("[signaling] контакт подтверждён в Supabase; используем только приватный Supabase inbox.");
+   // Finish any already queued background events before switching to active call mode.
   await this.messageQueue;
   this.active=true;
   if(this.preAnswerMessageCount){this.onDebug(`[signaling] до активации проверено ${this.preAnswerMessageCount} входящих событий; отложенная очередь не используется`);this.preAnswerMessageCount=0;}
