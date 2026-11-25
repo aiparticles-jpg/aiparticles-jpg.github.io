@@ -464,10 +464,10 @@ function updateCallButtons(){
  els.answerIncoming.disabled=state.connecting;
  els.dismissIncoming.disabled=state.connecting;
  const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
- const callBlocked=!state.incomingCall&&(!selectedPeer||contactReplyFailures.has(els.peer.value));
+ const callBlocked=!state.incomingCall&&!selectedPeer;
  els.contactScreenCall.disabled=active||state.connecting||callBlocked;
- els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":callBlocked?"Позвонить — ответное приглашение не отправлено":"Позвонить");
- els.contactScreenCall.title=state.incomingCall?"Ответить на звонок":contactReplyFailures.has(els.peer.value)?"Ответное приглашение не отправлено":active||state.connecting?"Звонок уже устанавливается или идёт":"Позвонить";
+ els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":callBlocked?"Выберите контакт":"Позвонить");
+ els.contactScreenCall.title=state.incomingCall?"Ответить на звонок":active||state.connecting?"Звонок уже устанавливается или идёт":"Позвонить";
  if(els.chatMessage)updateChatComposerState();
  const selectedContact=allContacts.find(contact=>contact.user_id===els.peer.value);
  const pendingRequest=selectedContact?.request_pending===true;
@@ -493,10 +493,8 @@ function updateCallButtons(){
  els.openContactDelete.classList.toggle("hidden",!selectedPeer||pendingRequest);
  els.confirmDeleteContact.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
  els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim()||els.editContactName.value.trim()===originalEditContactName;
- const exchangeCompleted=selectedPeer&&completedContactRequests.has(els.peer.value);
- els.replyInvite.classList.toggle("hidden",!selectedPeer||exchangeCompleted);
- els.replyInvite.querySelector(".contact-menu-label").textContent=sentContactRequests[els.peer.value]&&!completedContactRequests.has(els.peer.value)?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
- els.replyInvite.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
+ els.replyInvite.classList.add("hidden");
+ els.replyInvite.disabled=true;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging({suspend=true}={}){
@@ -764,7 +762,7 @@ async function rejectIncoming(){
   clearIncomingAttemptTimer();
   clearIncomingUi();stopRinging();
   setStatus("Вызов отклонён","Вызывающий получил подтверждённое уведомление об отказе.","idle");
-  debug("Входящий вызов явно отклонён; подтверждённое сообщение отправлено через ntfy.");
+  debug("Входящий вызов явно отклонён; подтверждённое сообщение отправлено через Supabase.");
   closeCallScreen();
  }catch(error){showError("Не удалось отправить отказ: "+(error.message||String(error)));}
 }
@@ -1098,7 +1096,7 @@ async function connect(){
   if(state.secure&&state.secure.me!==me){state.secure.close();state.secure=null}
   if(!state.secure)state.secure=createSecureSignaling(me,peer);
   else state.secure.setPeer(peer);
-  els.debugUrl.textContent="https://ntfy.sh/ · "+me;
+  els.debugUrl.textContent="Supabase · "+(state.supabaseUserId||"недоступен");
 
   // The caller does not request microphone access while ringing.
   // The answerer requests it only after the user explicitly presses Answer.
@@ -1135,7 +1133,7 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  if(notifyPeer&&state.outgoingCall&&state.secure?.role==="B"){
   setStatus("Отменяем вызов","Уведомляем собеседника через Supabase.","wait");
   try{const sent=await state.secure.cancelCall();debug(sent?"Отмена исходящего вызова отправлена через Supabase.":"У исходящего вызова не найден активный запрос для отмены.");}
-  catch(error){debug("Не удалось отправить отмену через ntfy: "+(error.message||String(error)));}
+  catch(error){debug("Не удалось отправить отмену через Supabase: "+(error.message||String(error)));}
  }
  if(notifyPeer&&state.peerPresent&&state.webrtc?.isControlOpen()){
   setStatus("Завершаем звонок","Отправляем собеседнику P2P-уведомление и ждём подтверждение.","wait");
@@ -1283,9 +1281,8 @@ function renderContactList(contacts){
   const details=document.createElement("span");details.className="contact-list-details";
   const name=document.createElement("span");name.className="contact-list-name";name.textContent=contact.name;
   const status=document.createElement("span");status.className="contact-list-status";
-  const replyFailed=contactReplyFailures.has(contact.user_id);
-  status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):replyFailed?"Ответное приглашение не отправлено":"Контакт добавлен";
-  status.dataset.statusType=replyFailed&&!isPendingRequest?"error":isPendingRequest?"pending":"normal";
+  status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):"Контакт добавлен";
+  status.dataset.statusType=isPendingRequest?"pending":"normal";
   details.append(name,status);
   const last=document.createElement("span");last.className="contact-list-last";last.textContent=formatLastInteraction(contact.last_interaction_at);
   item.append(avatar,details,last);
@@ -1546,7 +1543,7 @@ async function redeemSupabaseInvitationOnce(contact,source="импорт"){
   debug("Supabase-приглашение погашено ("+source+"); связь создана, первое зашифрованное сообщение записано (created_at="+result.created_at+").");
   return true;
  }catch(error){
-  debug("Единственная попытка погасить Supabase-приглашение ("+source+") не удалась; повторной отправки не будет. Старый ntfy остаётся активен: "+(error.message||String(error)));
+  debug("Не удалось погасить Supabase-приглашение ("+source+"): "+(error.message||String(error)));
   return false;
  }
 }
@@ -1621,7 +1618,7 @@ async function processSupabaseInboxRecord(record,source){
     await saveContact(contactData);
     contact=await findContactBySupabaseUserId(record.sender_id);
     message=candidate;
-    debug("Supabase v1: первое зашифрованное сообщение приняло приглашение и создало контакт «"+contact.name+"»; ntfy для нового контакта не использовался.");
+    debug("Supabase v1: первое зашифрованное сообщение приняло приглашение и создало контакт «"+contact.name+"».");
     break;
    }catch(error){
     if(error?.name==="OperationError")continue;
@@ -1954,12 +1951,9 @@ async function importContactFromInput(){
   else debug("Контакт сохранён, но его карточку не удалось открыть автоматически.");
   const latestContact=await getContact(verified.user_id);
   const supabaseLinked=!!latestContact?.supabase_invitation_redeemed_at;
-  if(!supabaseLinked){
-   if(!existing)debug("Supabase-приглашение не погашено; используем совместимый старый обмен для этого контакта.");
-   void sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
-  }else{
-   debug("Контакт принят через единый Supabase v1 протокол; отдельный ntfy contact_request не отправляется.");
-  }
+  if(!supabaseLinked)throw Error("Не удалось установить Supabase-связь. Старый транспорт отключён; попросите собеседника создать новую ссылку-приглашение и повторите импорт.");
+  debug("Контакт принят через единый Supabase v1 протокол.");
+
  }catch(error){
   setInlineStatus(els.qrStatus,error.message||"Не удалось импортировать контакт.",true);
  }finally{importingContact=false;updateImportContactButton()}
@@ -2422,7 +2416,7 @@ function syncChatVisualViewport(){
 }
 function updateChatComposerState(){
  const contact=allContacts.find(item=>item.user_id===els.peer.value);
- const allowed=!!contact&&!contact.request_pending&&!contactReplyFailures.has(els.peer.value);
+ const allowed=!!contact&&!contact.request_pending;
  els.chatMessage.disabled=!allowed;
  els.sendChatMessage.disabled=!allowed||!els.chatMessage.value.trim();
  els.chatMessage.placeholder=allowed?"Сообщение…":"Добавьте контакт, чтобы переписываться";
