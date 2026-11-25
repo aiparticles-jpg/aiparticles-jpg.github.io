@@ -1,4 +1,4 @@
-import {getOrCreateIdentity,getContact} from "./local-store.js?v=12";
+import {getOrCreateIdentity,getContact} from "./local-store.js?v=26";
 const enc=new TextEncoder(),toHex=v=>Array.from(new Uint8Array(v),b=>b.toString(16).padStart(2,"0")).join("");
 export function isUserId(v){return typeof v==="string"&&/^[a-f0-9]{64}$/.test(v)}
 export async function getCurrentSignalingIdentity(){const x=await getOrCreateIdentity();if(!isUserId(x.user_id))throw Error("The local anonymous identity is invalid.");return {user_id:x.user_id}}

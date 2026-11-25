@@ -1,6 +1,6 @@
 import { getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./local-identity.js?v=1";
-import { hasActiveInvitationGrant, getContact, updateContact } from "./local-store.js?v=24";
-import { sendSupabaseMessage } from "./supabase-client.js?v=8";
+import { hasActiveInvitationGrant, getContact, updateContact } from "./local-store.js?v=26";
+import { sendSupabaseMessage } from "./supabase-client.js?v=10";
 const bytes=b=>b instanceof Uint8Array?b:new Uint8Array(b);
 const b64u=b=>{let s="";for(const x of bytes(b))s+=String.fromCharCode(x);return btoa(s).replaceAll("+","-").replaceAll("/","_").replace(/=+$/g,"")};
 const un64=s=>{const x=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4));return Uint8Array.from(x,c=>c.charCodeAt(0))};
