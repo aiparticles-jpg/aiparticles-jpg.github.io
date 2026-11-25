@@ -683,9 +683,10 @@ function clearIncomingAttemptTimer(sid=null){
  if(state.callAttemptTimer){clearTimeout(state.callAttemptTimer);state.callAttemptTimer=null}
  state.callAttemptSid=null;
 }
-function startIncomingAttemptTimer(sid){
+function startIncomingAttemptTimer(sid,receivedAt=performance.now()){
  clearIncomingAttemptTimer();
  state.callAttemptSid=sid;
+ const remaining=Math.max(0,45000-(performance.now()-receivedAt));
  state.callAttemptTimer=window.setTimeout(()=>{
   state.callAttemptTimer=null;
   if(state.callAttemptSid!==sid)return;
@@ -694,7 +695,7 @@ function startIncomingAttemptTimer(sid){
   if(state.incomingCall)dismissIncoming(true);
   else if(state.answeringCall)hangup({notifyPeer:false,failure:true});
   else clearIncomingAttemptTimer(sid);
- },45000);
+ },remaining);
 }
 function setCallPeer(peerId,fallbackLabel=""){
  state.callPeer=NtfySecureSignaling.validUserId(peerId)&&peerId!==state.me?peerId:"";
@@ -705,7 +706,7 @@ function setCallPeer(peerId,fallbackLabel=""){
  els.callScreenAvatar.textContent=contactInitials(label);
  els.callScreenAvatar.style.backgroundColor=contactAvatarColor(state.callPeer);
 }
-function showIncomingCall({peer,peerId,sid}){
+function showIncomingCall({peer,peerId,sid,receivedAt}){
  if(state.connecting||state.callStarted||state.incomingCall||!sid)return;
  const incomingPeer=peerId||state.secure?.peer||"";
  if(!NtfySecureSignaling.validUserId(incomingPeer)||incomingPeer===state.me)return;
@@ -715,7 +716,7 @@ function showIncomingCall({peer,peerId,sid}){
   debug("Одновременный вызов: роль A принимает входящий запрос; исходящий запрос отменён локально.");
  }
  setCallPeer(incomingPeer,peer);
- startIncomingAttemptTimer(sid);
+ startIncomingAttemptTimer(sid,receivedAt);
  state.incomingCall=true;
  els.answerIncoming.classList.remove("hidden");els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");
  openCallScreen();
