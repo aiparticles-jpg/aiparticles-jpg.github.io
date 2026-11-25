@@ -47,3 +47,10 @@ jobs:
             node --check "$file"
           done
           node backend/scripts/test-supabase-envelope.mjs
+      - name: Ensure the runtime has no legacy ntfy transport
+        run: |
+          set -eu
+          if grep -nE "ntfy\\.sh|EventSource|NtfySecureSignaling|sendContactRequest" js/app.js js/supabase-signaling.js js/local-identity.js; then
+            echo "Legacy ntfy transport reference found in runtime modules."
+            exit 1
+          fi

@@ -467,3 +467,21 @@ The initial WebRTC offer reserves a bidirectional video transceiver so either pa
 The call UI previously treated the existence of any live remote video track as an attempt to connect video, displaying "Подключаем видео собеседника…" during an audio-only call. `updateCallVideoStage()` now treats the remote video as active only when the receiver track is live and unmuted. The video stage stays hidden when both local video is off and the remote receiver is muted. This changes only presentation state; it does not change camera capture, SDP negotiation, or the reserved transceiver.
 
 The user has confirmed that new-contact setup, messaging, and calls work in the current Supabase migration. The video-stage correction passed the browser-module syntax and v1 envelope CI workflow at commit `d9cf231dc78f93e02b3da727d2a3c7c356e2484a` (run `45585553993`).
+
+
+## 19. Supabase-only transport — 2026-11-25
+
+The user confirmed that no pre-Supabase contacts remain: all saved contacts have migrated. The runtime has therefore retired ntfy as a transport rather than keeping a legacy fallback.
+
+- The signaling class is now `SupabaseSecureSignaling` in `js/supabase-signaling.js`; local identity helpers live in `js/local-identity.js`.
+- The old `ntfy-signaling.js` and `ntfy-identity.js` modules were removed.
+- Startup no longer opens an ntfy SSE connection. The browser initializes its local signaling identity and receives incoming application messages through the private Supabase Realtime inbox plus durable inbox recovery.
+- All outgoing call signaling, WebRTC data, chat, delivery receipts, cancellation/rejection and key-rotation messages require an accepted Supabase contact and use the same v1 encrypted message path. There is no v3/ntfy send fallback.
+- New contact import requires a Supabase invitation and successful one-time redemption. It no longer sends a legacy `contact_request` through ntfy.
+- Service Worker push events wake Supabase inbox recovery; OneSignal remains push-only.
+- The obsolete reply-invitation action is hidden. Old local failure flags no longer block calls or chat.
+- CI now statically rejects references to the ntfy transport in the active runtime modules.
+
+Verification: browser module syntax, Supabase v1 envelope tests and the no-ntfy runtime assertion passed at commit `2715755bac4591b329725993b186a204eeed8dc4` (run `45587797800`).
+
+The current user's real-device confirmation covers new-contact setup, messages and calls on Supabase. No production Pages deployment has been made from this branch. The remaining final acceptance check is to test a fresh contact invitation and a two-device call/chat after this ntfy removal, then merge and deploy.
