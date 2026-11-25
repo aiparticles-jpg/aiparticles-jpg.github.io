@@ -195,6 +195,11 @@ async publish(to,msg){
     const envelopeBytes=enc.encode(JSON.stringify(envelope)).byteLength;
     this.onDebug(`[signaling] data actual: plaintext=${plaintext.byteLength} B; AES-GCM input=${encryptionInput.byteLength} B; compression=${compression||"none"}; ciphertext=${ciphertextBytes} B; base64url=${ciphertextText.length} chars; envelope JSON=${envelopeBytes} B; ntfy message limit=4096 B.`);
    }
+   // Retain the authenticated application body in memory for a transport
+   // switch that happens between envelope creation and publication. The property
+   // is non-enumerable, so it can never leak into a legacy ntfy JSON message.
+   const {from,to,...supabaseBody}=body;
+   Object.defineProperty(envelope,"__supabaseBody",{value:supabaseBody});
    return envelope;
  }
 
