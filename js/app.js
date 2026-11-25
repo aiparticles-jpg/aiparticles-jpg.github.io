@@ -1,8 +1,8 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
 import { NtfySecureSignaling } from "./ntfy-signaling.js?v=58";
-import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
+import { getCurrentSignalingIdentity } from "./ntfy-identity.js?v=3";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=26";
-import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
+import { verifyContactPackage } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
 import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance, subscribeSupabaseInbox, fetchSupabaseInbox, decryptSupabaseInboxRecord, flushSupabaseOutbox } from "./supabase-client.js?v=10";
@@ -927,12 +927,12 @@ function createSecureSignaling(me,peer=""){
     stopRinging();
     state.secure?.dismissIncoming();
     setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");
-    debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");
+    debug("Входящий вызов "+info.sid+" отменён вызывающим через Supabase.");
     closeCallScreen();
    }
   },
   onRejectOutgoing:info=>{finishRejectedCall(info).catch(error=>showError(error.message||String(error)))},
-  onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(state.callPeer||state.secure?.peer||info.peer,"incoming_call",info.callId,info.expiresAt,debug).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
+  onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(state.callPeer||state.secure?.peer||info.peer,"incoming_call",info.callId,info.expiresAt,debug).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (сигнализация звонка работает через Supabase): "+error.message))}},
   onReady:()=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady().catch(showError)},
   onError:e=>showError(e.message||String(e)),
   onDebug:debug
@@ -940,36 +940,16 @@ function createSecureSignaling(me,peer=""){
 }
 async function subscribeForUser(me){
  if(!NtfySecureSignaling.validUserId(me))return false;
- if(state.secure&&state.secure.me===me&&!state.secure.closed){
-  try{
-   await state.secure.subscribe();
-   debug("Фоновая подписка активна для локальной анонимной идентичности. POST hello пока не отправлялся.");
-   return true;
-  }catch(error){
-   if(state.supabaseUserId){
-    setServiceStatus(els.ntfyStatus,"Supabase / ntfy fallback");
-    debug("ntfy недоступен; контакты с подтверждённой Supabase-связью смогут использовать Supabase: "+(error.message||String(error)));
-   }else if(state.secure){
-    setServiceStatus(els.ntfyStatus,"Недоступен");showError(error.message||String(error));setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");
-   }
-   return false;
-  }
- }
+ if(!state.supabaseUserId)throw Error("Supabase Auth недоступен. Для защищённого обмена требуется подключение к Supabase.");
+ if(state.secure&&state.secure.me===me&&!state.secure.closed){await state.secure.subscribe();return true}
  if(state.secure){state.secure.close();state.secure=null}
  const peer=els.peer.value;
  const subscription=createSecureSignaling(me,NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  state.secure=subscription;
- els.debugUrl.textContent="https://ntfy.sh/ · "+me.slice(0,12)+"…";
- setStatus("Подписываемся на ntfy","Открываем постоянный канал входящих сообщений для "+me+".","wait");
- try{
-  await subscription.subscribe();
-  debug("Фоновая подписка активна для локальной анонимной идентичности. POST hello пока не отправлялся.");
-  return true;
- }catch(error){
-  if(state.supabaseUserId){setServiceStatus(els.ntfyStatus,"Supabase / ntfy fallback");debug("ntfy недоступен; контакты с подтверждённой Supabase-связью смогут использовать Supabase: "+(error.message||String(error)));}
-  else if(state.secure===subscription){showError(error.message||String(error));setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");}
-  return false;
- }
+ els.debugUrl.textContent="Supabase · "+state.supabaseUserId.slice(0,12)+"…";
+ setStatus("Подключено к Supabase","Входящие сообщения поступают через защищённый Supabase inbox.","live");
+ await subscription.subscribe();
+ return true;
 }
 if("serviceWorker" in navigator){
  function requestServiceWorkerLog(target=navigator.serviceWorker.controller){
@@ -1046,7 +1026,7 @@ if("serviceWorker" in navigator){
   }
   if(event.data?.type==="VL_PUSH_EVENTS"){
    const pending=Array.isArray(event.data.events)?event.data.events:[];
-   debug("VoiceLink получил из Service Worker "+pending.length+" сохранённых push-событий; сверяемся с очередью ntfy.");
+   debug("VoiceLink получил из Service Worker "+pending.length+" сохранённых push-событий; проверяем Supabase inbox.");
    subscribeForUser(state.me).then(connected=>{
     if(connected)event.source?.postMessage({type:"VL_CLEAR_PUSH_EVENTS"});
    });
@@ -1057,7 +1037,7 @@ if("serviceWorker" in navigator){
   debug("Service Worker получил фоновый push. Проверяем канал входящих сообщений.");
   const subscription=state.secure;
   if(subscription&&!subscription.closed&&(!subscription.es||subscription.es.readyState===EventSource.CLOSED)){
-   subscription.subscribe().then(()=>debug("Подписка ntfy восстановлена после фонового push.")).catch(error=>debug("Не удалось восстановить ntfy после push: "+(error.message||String(error))));
+   subscription.subscribe().then(()=>debug("Supabase inbox повторно проверен после фонового push.")).catch(error=>debug("Не удалось проверить Supabase inbox после фонового push: "+(error.message||String(error))));
   }
  });
 }
@@ -1153,8 +1133,8 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  clearIncomingAttemptTimer();
  state.hangingUp=true;updateCallButtons();
  if(notifyPeer&&state.outgoingCall&&state.secure?.role==="B"){
-  setStatus("Отменяем вызов","Уведомляем собеседника через ntfy.","wait");
-  try{const sent=await state.secure.cancelCall();debug(sent?"Отмена исходящего вызова отправлена через ntfy.":"У исходящего вызова не найден активный запрос для отмены.");}
+  setStatus("Отменяем вызов","Уведомляем собеседника через Supabase.","wait");
+  try{const sent=await state.secure.cancelCall();debug(sent?"Отмена исходящего вызова отправлена через Supabase.":"У исходящего вызова не найден активный запрос для отмены.");}
   catch(error){debug("Не удалось отправить отмену через ntfy: "+(error.message||String(error)));}
  }
  if(notifyPeer&&state.peerPresent&&state.webrtc?.isControlOpen()){
@@ -1539,26 +1519,6 @@ async function pasteContactInvitation(event){
   setInlineStatus(els.qrStatus,"Не удалось прочитать буфер обмена. Разрешите доступ браузеру или вставьте ссылку в поле вручную.",true);
   debug("Не удалось вставить приглашение из буфера обмена: "+(error.message||String(error)));
  }
-}
-
-async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus,displayNameOverride=undefined,options={}){
- const peer=peerOverride,senderDisplayName=displayNameOverride===undefined?getProfileDisplayName():String(displayNameOverride||"").trim().slice(0,40);
- if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){const m="Не удалось отправить ответное приглашение: сначала выберите контакт, от которого вы получили приглашение.";debug(m);return false}
- updateCallButtons();els.replyInvite.disabled=true;clearError();
- try{
-  const contact=await getContact(peer);if(!contact?.push_subscription_id||!contact?.invitation_secret||!contact?.invitation_id)throw Error("У контакта отсутствуют данные приглашения. Попросите его прислать новую ссылку.");
-  const subscriptionId=await getOptionalOneSignalSubscriptionId(),identity=await getCurrentSignalingIdentity(),invitationId=contact.invitation_id,createdAt=Number(contact.shared_secret_created_at)||Date.now();
-  if(!subscriptionId)debug("На этом устройстве Web Push недоступен или не разрешён; ответное приглашение будет отправлено через ntfy без push-подписки.");
-  const pack={version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,...(state.supabaseUserId?{supabase_user_id:state.supabaseUserId}:{}),...(subscriptionId?{push_subscription_id:subscriptionId}:{}),invitation_id:invitationId,invitation_secret:contact.invitation_secret,shared_secret_created_at:createdAt,...(senderDisplayName?{display_name:senderDisplayName}:{})};
-  const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER,msg=await createContactRequestEnvelope({contact,contactPackage:pack,from:identity.user_id,to:peer,requestId,expiresAt});
-  const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
-  const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
-  markContactRequestSent(peer,invitationId,createdAt);await updateContact(peer,{shared_secret_created_at:createdAt});setContactReplyFailure(peer,false);updateCallButtons();
-  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug,{invitation_id:invitationId,sender_name:senderDisplayName});debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
-  catch(e){debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(e.message||String(e)))}
-  return true;
- }catch(e){const d=e.message||String(e),m="Не удалось отправить ответное приглашение: "+d;setContactReplyFailure(peer,true);if(els.debugMode.checked){const dialog=statusElement?.closest('[role="dialog"]');if(dialog&&!dialog.classList.contains("hidden"))showError(d)}debug(m);return false}
- finally{els.replyInvite.disabled=false;updateCallButtons()}
 }
 
 /**
@@ -2164,7 +2124,6 @@ function updateSaveResponseDisplayNameOption(){const hasName=!!els.responseDispl
  updateSaveResponseDisplayNameOption();
 els.importContact.addEventListener("click",importContactFromInput);
 updateImportContactButton();
-els.replyInvite.addEventListener("click",()=>{els.contactScreenMenu.open=false;sendContactRequest()});
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
 async function handleCreateInvitationClick(){
@@ -2483,7 +2442,7 @@ async function sendChatMessage(){
   await state.secure.sendText(peer,text);
   sendPushEventToContact(peer,"new_message",crypto.randomUUID(),Date.now()+24*60*60*1000,debug)
    .then(()=>debug("OneSignal принял push о новом сообщении."))
-   .catch(error=>debug("Push о сообщении не отправлен (сообщение уже доставлено через ntfy): "+(error.message||String(error))));
+   .catch(error=>debug("Push о сообщении не отправлен (сообщение уже отправлено через Supabase): "+(error.message||String(error))));
   if(els.peer.value===peer)els.chatMessage.value="";
   updateChatComposerState();
  }catch(error){
@@ -2728,14 +2687,15 @@ async function initializeApp(){
    debug("Supabase Anonymous Auth готов; UUID="+state.supabaseUserId+".");
   }catch(error){
    state.supabaseUserId=null;
-   debug("Supabase Auth пока недоступен; старый ntfy-транспорт продолжит работать: "+(error.message||String(error)));
+   throw new Error("Supabase Auth недоступен: "+(error.message||String(error)));
   }
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
   await redeemPendingSupabaseInvitations();
   await flushPendingSupabaseOutboxes("запуск приложения");
   await refreshContactOptions();
-  if(state.supabaseUserId){try{startSupabaseInbox();}catch(error){debug("Supabase Realtime пока недоступен; ntfy продолжает работать: "+(error.message||String(error)));}}
+  if(!state.supabaseUserId)throw Error("Supabase Auth не инициализирован.");
+   try{startSupabaseInbox()}catch(error){throw new Error("Не удалось запустить Supabase inbox: "+(error.message||String(error)))}
 
   const requestedChat=new URLSearchParams(window.location.search).get("openChat");
   if(requestedChat){
@@ -2757,7 +2717,7 @@ async function initializeApp(){
      window.history.replaceState(null,"",cleanUrl.href);
    }
   const contacts=await listContacts();
-  els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"… · Supabase "+(state.supabaseUserId?state.supabaseUserId.slice(0,8)+"…":"недоступен");
+  els.debugUrl.textContent="Supabase · "+(state.supabaseUserId?state.supabaseUserId.slice(0,12)+"…":"недоступен");
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
   document.documentElement.dataset.voicelinkBooted="true";
   updateWebPushStatus();
