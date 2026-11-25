@@ -549,7 +549,7 @@ export class WebRtcAudio {
       this.remoteAnalyserBuffer = new Float32Array(this.remoteAnalyser.frequencyBinCount);
       this.onState("AUDIO_DIAGNOSTICS: анализатор подключён к входящему аудиотреку (до audio element).");
     } catch (error) {
-      this.onState("MIC SIMULATION: ошибка анализатора: " + error.message);
+      this.onState("AUDIO_DIAGNOSTICS: ошибка анализатора: " + error.message);
     }
   }
 
