@@ -624,8 +624,12 @@ async publish(to,msg){
     time:Date.parse(record.created_at)/1000,
     message:JSON.stringify({v:1,type:message.type,payload})
    })};
-   try{await this.handle(event,true)}
-   catch(error){this.seen.delete(eventId);throw error;}
+   try{
+    // Chat and receipts are independent of whichever peer currently owns the
+    // single active WebRTC session. Process them through the common v1 validator.
+    if(message.type==="text"||message.type==="delivered")await this.inspectIncoming(event,true);
+    else await this.handle(event,true);
+   }catch(error){this.seen.delete(eventId);throw error;}
   }
 
 async handle(event,trustedSupabase=false){
