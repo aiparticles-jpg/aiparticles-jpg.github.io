@@ -2670,7 +2670,8 @@ async function initializeApp(){
   await flushPendingSupabaseOutboxes("запуск приложения");
   await refreshContactOptions();
   if(!state.supabaseUserId)throw Error("Supabase Auth не инициализирован.");
-   try{startSupabaseInbox()}catch(error){throw new Error("Не удалось запустить Supabase inbox: "+(error.message||String(error)))}
+  const subscribed=await subscribeForUser(state.me);
+  try{startSupabaseInbox()}catch(error){throw new Error("Не удалось запустить Supabase inbox: "+(error.message||String(error)))}
 
   const requestedChat=new URLSearchParams(window.location.search).get("openChat");
   if(requestedChat){
@@ -2713,7 +2714,6 @@ async function initializeApp(){
    debug("OneSignal пока недоступен: "+(error.message||String(error)));
    return false;
   });
-  const subscribed=await subscribeForUser(state.me);
   if(subscribed)oneSignalReady.then(async ready=>{
    if(!ready)return;
    try{
