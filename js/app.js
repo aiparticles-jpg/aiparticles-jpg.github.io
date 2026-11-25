@@ -1654,16 +1654,16 @@ async function processSupabaseInboxRecord(record,source){
     "» ("+source+"); created_at="+record.created_at+".");
   }
  }else if(["hello","answer","cancel","reject","rotation_response","data","text","delivered"].includes(message.type)){
-  const envelope=message.body?.envelope;
-  if(!envelope||envelope.v!==3||envelope.type!==message.type||!envelope.payload){
-   debug("Supabase inbox: некорректный внутренний конверт типа «"+message.type+"»; seq оставлен необработанным.");
+  if(!message.body||typeof message.body!=="object"||Array.isArray(message.body)||
+     Object.hasOwn(message.body,"from")||Object.hasOwn(message.body,"to")){
+   debug("Supabase inbox: некорректное plaintext body v1 типа «"+message.type+"»; seq оставлен необработанным.");
    return false;
   }
   if(!state.secure||state.secure.closed||state.secure.me!==state.me){
    state.secure=createSecureSignaling(state.me,contact.user_id);
   }
-  await state.secure.handleSupabaseEnvelope(record,message);
-  debug("Supabase inbox: обработан сигнал «"+message.type+"» от «"+contact.name+"»; seq="+message.seq+" ("+source+").");
+  await state.secure.handleSupabaseEnvelope(record,message,contact);
+  debug("Supabase inbox: обработано сообщение v1 «"+message.type+"» от «"+contact.name+"»; seq="+message.seq+" ("+source+").");
  }else{
   debug("Supabase inbox: неизвестный тип «"+message.type+"» от «"+contact.name+
    "»; seq="+message.seq+" оставлен необработанным.");
