@@ -5,6 +5,7 @@ on:
     paths:
       - "index.html"
       - "js/app.js"
+      - "js/bootstrap.js"
       - "js/contact-exchange.js"
       - "js/local-store.js"
       - "js/supabase-client.js"
@@ -36,7 +37,7 @@ jobs:
       - name: Check browser ES modules
         run: |
           set -eu
-          for file in js/app.js js/contact-exchange.js js/local-store.js js/supabase-client.js js/ntfy-signaling.js js/supabase-protocol.mjs; do
+          for file in js/app.js js/bootstrap.js js/contact-exchange.js js/local-store.js js/supabase-client.js js/ntfy-signaling.js js/supabase-protocol.mjs; do
             echo "Checking $file"
             node --input-type=module --check < "$file"
           done
