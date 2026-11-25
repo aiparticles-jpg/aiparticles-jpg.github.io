@@ -458,3 +458,12 @@ The production browser path now uses the same v1 outer envelope for every applic
 - The isolated protocol test verifies encryption/decryption, routing AAD, tamper rejection, version rejection, uint64 bounds, and absence of top-level clear `from/to`. It does not exercise the complete browser contact bootstrap or two-device call flow.
 - No production Pages deployment or real two-device test has been performed for this integration yet.
 - Do not remove ntfy or merge/deploy this migration until the latest CI run passes and the two-device invitation → contact → call → chat → delivery-receipt flow has been tested.
+
+
+## 18. Video-stage idle-track correction — 2026-11-25
+
+The initial WebRTC offer reserves a bidirectional video transceiver so either participant can enable the camera later without renegotiating the session. Consequently, the browser may expose a live remote video receiver track while the peer's camera is still off; that track remains muted until video packets arrive.
+
+The call UI previously treated the existence of any live remote video track as an attempt to connect video, displaying "Подключаем видео собеседника…" during an audio-only call. `updateCallVideoStage()` now treats the remote video as active only when the receiver track is live and unmuted. The video stage stays hidden when both local video is off and the remote receiver is muted. This changes only presentation state; it does not change camera capture, SDP negotiation, or the reserved transceiver.
+
+The user has confirmed that new-contact setup, messaging, and calls work in the current Supabase migration. The video-stage correction passed the browser-module syntax and v1 envelope CI workflow at commit `d9cf231dc78f93e02b3da727d2a3c7c356e2484a` (run `45585553993`).
