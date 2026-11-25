@@ -482,6 +482,6 @@ The user confirmed that no pre-Supabase contacts remain: all saved contacts have
 - The obsolete reply-invitation action is hidden. Old local failure flags no longer block calls or chat.
 - CI now statically rejects references to the ntfy transport in the active runtime modules.
 
-Verification: browser module syntax, Supabase v1 envelope tests and the no-ntfy runtime assertion passed at commit `2715755bac4591b329725993b186a204eeed8dc4` (run `45587797800`).
+Verification: browser module syntax, Supabase v1 envelope tests and the no-ntfy runtime assertion passed at commit `e11b5a069e375aaf48efe22fa22f87accf536d59` (run `45588626374`). The v3 contact-request encryption/decryption and v3 signaling receive paths were removed; invitation validation now requires both the Supabase Auth UUID and one-time Supabase invitation token. App, signaling and identity modules share the same versioned Supabase/IndexedDB module instances.
 
 The current user's real-device confirmation covers new-contact setup, messages and calls on Supabase. No production Pages deployment has been made from this branch. The remaining final acceptance check is to test a fresh contact invitation and a two-device call/chat after this ntfy removal, then merge and deploy.
