@@ -1992,9 +1992,8 @@ async function importContactFromInput(){
    .find(item=>item.dataset.peer===verified.user_id);
   if(contactItem)openContactScreen(contactItem,false,{returnTo:"main"});
   else debug("Контакт сохранён, но его карточку не удалось открыть автоматически.");
-  const supabaseLinked=!!(savedContact?.supabase_invitation_redeemed_at||
-   (savedContact?.supabase_user_id&&savedContact?.supabase_invitation_id&&
-    await redeemSupabaseInvitationOnce(savedContact,"сразу после импорта")));
+  const latestContact=await getContact(verified.user_id);
+  const supabaseLinked=!!latestContact?.supabase_invitation_redeemed_at;
   if(!supabaseLinked){
    if(!existing)debug("Supabase-приглашение не погашено; используем совместимый старый обмен для этого контакта.");
    void sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
