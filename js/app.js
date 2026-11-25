@@ -1,15 +1,15 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=58";
-import { getCurrentSignalingIdentity, getNtfyTopic } from "./ntfy-identity.js?v=3";
+import { SupabaseSecureSignaling } from "./supabase-signaling.js?v=1";
+import { getCurrentSignalingIdentity } from "./local-identity.js?v=1";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=26";
-import { INVITATION_FORMAT_VERSION, verifyContactPackage, createContactRequestEnvelope } from "./contact-exchange.js?v=16";
+import { INVITATION_FORMAT_VERSION, verifyContactPackage } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
 import { sendPushEventToContact } from "./push-api.js?v=5";
 import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance, subscribeSupabaseInbox, fetchSupabaseInbox, decryptSupabaseInboxRecord, flushSupabaseOutbox } from "./supabase-client.js?v=10";
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),invitationScreen:$("invitation-screen"),invitationScreenBack:$("invitation-screen-back"),invitationScreenStatus:$("invitation-screen-status"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
+ contactList:$("contacts-list"),appNotice:$("app-notice"),supabaseStatus:$("supabase-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),invitationScreen:$("invitation-screen"),invitationScreenBack:$("invitation-screen-back"),invitationScreenStatus:$("invitation-screen-status"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),cameraToggle:$("camera-toggle"),cameraSwitch:$("camera-switch"),
  audio:$("remote-audio"),remoteVideo:$("remote-video"),localVideo:$("local-video"),callVideoStage:$("call-video-stage"),remoteVideoPlaceholder:$("remote-video-placeholder"),pilot:$("diagnostic-pilot"),cameraPilot:$("diagnostic-camera-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
@@ -107,24 +107,9 @@ async function findReusableContactResponseInvitation(userId){
  }
  throw Error("Не удалось однозначно найти ранее отправленное ответное приглашение на этом устройстве. Старое приглашение не заменено.");
 }
-const CONTACT_REPLY_FAILURES_KEY="vl.contactReplyFailures.v1";
-function loadContactReplyFailures(){
- try{const value=JSON.parse(localStorage.getItem(CONTACT_REPLY_FAILURES_KEY)||"[]");return new Set(Array.isArray(value)?value.filter(id=>NtfySecureSignaling.validUserId(id)):[])}
- catch{return new Set()}
-}
-const contactReplyFailures=loadContactReplyFailures();
-function setContactReplyFailure(userId,failed){
- if(!NtfySecureSignaling.validUserId(userId))return;
- if(failed)contactReplyFailures.add(userId);else contactReplyFailures.delete(userId);
- try{localStorage.setItem(CONTACT_REPLY_FAILURES_KEY,JSON.stringify([...contactReplyFailures]))}
- catch(error){debug("Не удалось сохранить статус ответного приглашения: "+(error.message||String(error)))}
- if(typeof allContacts!=="undefined"&&allContacts.length)renderContactList(allContacts);
- if(els.peer.value===userId)updateCallButtons();
-}
-
 const CONTACT_REQUESTS_CONFIRMED_KEY="vl.contactRequestsConfirmed.v1";
 function loadConfirmedContactRequests(){
- try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_CONFIRMED_KEY)||"[]");return Array.isArray(value)?value.filter(id=>NtfySecureSignaling.validUserId(id)):[]}
+ try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_CONFIRMED_KEY)||"[]");return Array.isArray(value)?value.filter(id=>SupabaseSecureSignaling.validUserId(id)):[]}
  catch{return []}
 }
 const completedContactRequests=new Set(loadConfirmedContactRequests());
@@ -133,7 +118,7 @@ function persistConfirmedContactRequests(){
  catch(error){debug("Не удалось сохранить подтверждение обмена приглашениями: "+(error.message||String(error)))}
 }
 function markContactRequestReceived(userId){
- if(!NtfySecureSignaling.validUserId(userId))return;
+ if(!SupabaseSecureSignaling.validUserId(userId))return;
  let changed=false;
  if(!completedContactRequests.has(userId)){
   completedContactRequests.add(userId);
@@ -378,17 +363,17 @@ async function checkServiceWorkerAvailability(){
 function updateCallVideoStage(){
  const localActive=!!state.webrtc?.videoEnabled;
  const remoteTrack=els.remoteVideo.srcObject?.getVideoTracks?.().find(track=>track.readyState==="live");
- const remoteTrackPresent=!!remoteTrack;
- const remoteActive=remoteTrackPresent&&!remoteTrack.muted;
- // Keep the stage visible as soon as a live remote video track arrives,
- // even while the browser is waiting for its first decoded frames.
- els.callVideoStage.classList.toggle("hidden",!localActive&&!remoteTrackPresent);
+ // A negotiated recvonly/sendrecv video m-line creates a remote MediaStreamTrack
+ // even when the peer has not enabled its camera. A muted track is only a
+ // reserved receiver, not an attempt to connect video.
+ const remoteActive=!!remoteTrack&&!remoteTrack.muted;
+ els.callVideoStage.classList.toggle("hidden",!localActive&&!remoteActive);
  els.remoteVideo.classList.toggle("hidden",!remoteActive);
  els.remoteVideoPlaceholder.classList.toggle("hidden",remoteActive);
  els.localVideo.classList.toggle("hidden",!localActive);
- els.remoteVideoPlaceholder.textContent=remoteTrackPresent
-  ?"Подключаем видео собеседника…"
-  :localActive?"Ожидаем видео собеседника":"Видео собеседника выключено";
+ els.remoteVideoPlaceholder.textContent=localActive
+  ?"Ожидаем видео собеседника"
+  :"Видео собеседника выключено";
 }
 async function refreshAudioOutputCount(){
  if(state.audioOutputCheckPending||state.audioOutputCount!==null)return;
@@ -463,11 +448,11 @@ function updateCallButtons(){
  updateCallVideoStage();
  els.answerIncoming.disabled=state.connecting;
  els.dismissIncoming.disabled=state.connecting;
- const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
- const callBlocked=!state.incomingCall&&(!selectedPeer||contactReplyFailures.has(els.peer.value));
+ const selectedPeer=SupabaseSecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
+ const callBlocked=!state.incomingCall&&!selectedPeer;
  els.contactScreenCall.disabled=active||state.connecting||callBlocked;
- els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":callBlocked?"Позвонить — ответное приглашение не отправлено":"Позвонить");
- els.contactScreenCall.title=state.incomingCall?"Ответить на звонок":contactReplyFailures.has(els.peer.value)?"Ответное приглашение не отправлено":active||state.connecting?"Звонок уже устанавливается или идёт":"Позвонить";
+ els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":callBlocked?"Выберите контакт":"Позвонить");
+ els.contactScreenCall.title=state.incomingCall?"Ответить на звонок":active||state.connecting?"Звонок уже устанавливается или идёт":"Позвонить";
  if(els.chatMessage)updateChatComposerState();
  const selectedContact=allContacts.find(contact=>contact.user_id===els.peer.value);
  const pendingRequest=selectedContact?.request_pending===true;
@@ -493,10 +478,8 @@ function updateCallButtons(){
  els.openContactDelete.classList.toggle("hidden",!selectedPeer||pendingRequest);
  els.confirmDeleteContact.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
  els.saveContactName.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall||!els.editContactName.value.trim()||els.editContactName.value.trim()===originalEditContactName;
- const exchangeCompleted=selectedPeer&&completedContactRequests.has(els.peer.value);
- els.replyInvite.classList.toggle("hidden",!selectedPeer||exchangeCompleted);
- els.replyInvite.querySelector(".contact-menu-label").textContent=sentContactRequests[els.peer.value]&&!completedContactRequests.has(els.peer.value)?"Послать ответное приглашение ещё раз":"Послать ответное приглашение";
- els.replyInvite.disabled=!selectedPeer||state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall;
+ els.replyInvite.classList.add("hidden");
+ els.replyInvite.disabled=true;
 }
 function setBusy(value){state.connecting=value;updateCallButtons();els.peer.disabled=value}
 function stopRinging({suspend=true}={}){
@@ -698,7 +681,7 @@ function startIncomingAttemptTimer(sid,receivedAt=performance.now()){
  },remaining);
 }
 function setCallPeer(peerId,fallbackLabel=""){
- state.callPeer=NtfySecureSignaling.validUserId(peerId)&&peerId!==state.me?peerId:"";
+ state.callPeer=SupabaseSecureSignaling.validUserId(peerId)&&peerId!==state.me?peerId:"";
  const item=state.callPeer?Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(node=>node.dataset.peer===state.callPeer):null;
  const label=item?.querySelector(".contact-list-name")?.textContent?.trim()||String(fallbackLabel||"").trim()||"Контакт";
  state.callPeerLabel=label;
@@ -709,7 +692,7 @@ function setCallPeer(peerId,fallbackLabel=""){
 function showIncomingCall({peer,peerId,sid,receivedAt}){
  if(state.connecting||state.callStarted||state.incomingCall||!sid)return;
  const incomingPeer=peerId||state.secure?.peer||"";
- if(!NtfySecureSignaling.validUserId(incomingPeer)||incomingPeer===state.me)return;
+ if(!SupabaseSecureSignaling.validUserId(incomingPeer)||incomingPeer===state.me)return;
  if(state.outgoingCall){
   if(state.secure?.role!=="A"||state.secure?.hello)return;
   stopOutgoingCall();
@@ -764,7 +747,7 @@ async function rejectIncoming(){
   clearIncomingAttemptTimer();
   clearIncomingUi();stopRinging();
   setStatus("Вызов отклонён","Вызывающий получил подтверждённое уведомление об отказе.","idle");
-  debug("Входящий вызов явно отклонён; подтверждённое сообщение отправлено через ntfy.");
+  debug("Входящий вызов явно отклонён; подтверждённое сообщение отправлено через Supabase.");
   closeCallScreen();
  }catch(error){showError("Не удалось отправить отказ: "+(error.message||String(error)));}
 }
@@ -824,7 +807,7 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera
   diagnosticPilot,
   diagnosticCamera,
   audioDiagnostics,
-  initiator:NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer,
+  initiator:SupabaseSecureSignaling.validUserId(me)&&SupabaseSecureSignaling.validUserId(peer)&&me<peer,
   onRemoteHangup:()=>handleRemoteHangup(),
   sendSignal:payload=>state.secure.sendSignal(payload),
   onLocalVideoStream:stream=>{
@@ -907,15 +890,14 @@ async function ensureWebRtc(){
  if(!state.webrtc)state.webrtc=createWebRtcInstance();
 }
 function createSecureSignaling(me,peer=""){
- return new NtfySecureSignaling({
+ return new SupabaseSecureSignaling({
   me,peer,
   onSignal:handleSignal,
   onStatus:m=>{
    els.statusText.textContent=m;debug(m);
-   setServiceStatus(els.ntfyStatus,m.includes("переподключ")?"Переподключается…":"Подключён");
+   setServiceStatus(els.supabaseStatus,"Подключён");
   },
   onIncoming:showIncomingCall,
-  onContactRequest:handleIncomingContactRequest,
   onPeerMessage:markContactRequestReceived,
   onConversationEvent:async event=>{await addConversationEvent(event);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить историю контакта: "+(error.message||String(error))))},
   onConversationDelivery:async event=>{await markConversationMessageDelivered(event.contact_user_id,event.message_id,event.delivered_at);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить статус доставки: "+(error.message||String(error))))},
@@ -927,49 +909,29 @@ function createSecureSignaling(me,peer=""){
     stopRinging();
     state.secure?.dismissIncoming();
     setStatus("Вызов отменён",info.peer+" отменил вызов до ответа.","idle");
-    debug("Входящий вызов "+info.sid+" отменён вызывающим через ntfy.");
+    debug("Входящий вызов "+info.sid+" отменён вызывающим через Supabase.");
     closeCallScreen();
    }
   },
   onRejectOutgoing:info=>{finishRejectedCall(info).catch(error=>showError(error.message||String(error)))},
-  onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(state.callPeer||state.secure?.peer||info.peer,"incoming_call",info.callId,info.expiresAt,debug).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (звонок через ntfy продолжается): "+error.message))}},
+  onDialing:info=>{if(!state.answeringCall){startOutgoingCall(info);sendPushEventToContact(state.callPeer||state.secure?.peer||info.peer,"incoming_call",info.callId,info.expiresAt,debug).then(()=>debug("OneSignal принял push входящего вызова.")).catch(error=>debug("Push не отправлен (сигнализация звонка работает через Supabase): "+error.message))}},
   onReady:()=>{stopOutgoingCall();clearIncomingUi();stopRinging();return onSecureReady().catch(showError)},
   onError:e=>showError(e.message||String(e)),
   onDebug:debug
  });
 }
 async function subscribeForUser(me){
- if(!NtfySecureSignaling.validUserId(me))return false;
- if(state.secure&&state.secure.me===me&&!state.secure.closed){
-  try{
-   await state.secure.subscribe();
-   debug("Фоновая подписка активна для локальной анонимной идентичности. POST hello пока не отправлялся.");
-   return true;
-  }catch(error){
-   if(state.supabaseUserId){
-    setServiceStatus(els.ntfyStatus,"Supabase / ntfy fallback");
-    debug("ntfy недоступен; контакты с подтверждённой Supabase-связью смогут использовать Supabase: "+(error.message||String(error)));
-   }else if(state.secure){
-    setServiceStatus(els.ntfyStatus,"Недоступен");showError(error.message||String(error));setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");
-   }
-   return false;
-  }
- }
+ if(!SupabaseSecureSignaling.validUserId(me))return false;
+ if(!state.supabaseUserId)throw Error("Supabase Auth недоступен. Для защищённого обмена требуется подключение к Supabase.");
+ if(state.secure&&state.secure.me===me&&!state.secure.closed){await state.secure.subscribe();return true}
  if(state.secure){state.secure.close();state.secure=null}
  const peer=els.peer.value;
- const subscription=createSecureSignaling(me,NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
+ const subscription=createSecureSignaling(me,SupabaseSecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  state.secure=subscription;
- els.debugUrl.textContent="https://ntfy.sh/ · "+me.slice(0,12)+"…";
- setStatus("Подписываемся на ntfy","Открываем постоянный канал входящих сообщений для "+me+".","wait");
- try{
-  await subscription.subscribe();
-  debug("Фоновая подписка активна для локальной анонимной идентичности. POST hello пока не отправлялся.");
-  return true;
- }catch(error){
-  if(state.supabaseUserId){setServiceStatus(els.ntfyStatus,"Supabase / ntfy fallback");debug("ntfy недоступен; контакты с подтверждённой Supabase-связью смогут использовать Supabase: "+(error.message||String(error)));}
-  else if(state.secure===subscription){showError(error.message||String(error));setStatus("Подписка не установлена","При подключении попробуем открыть канал ещё раз.","error");}
-  return false;
- }
+ els.debugUrl.textContent="Supabase · "+state.supabaseUserId.slice(0,12)+"…";
+ setStatus("Локальная идентичность готова","Входящие сообщения принимаются через Supabase inbox.","live");
+ await subscription.subscribe();
+ return true;
 }
 if("serviceWorker" in navigator){
  function requestServiceWorkerLog(target=navigator.serviceWorker.controller){
@@ -1046,19 +1008,15 @@ if("serviceWorker" in navigator){
   }
   if(event.data?.type==="VL_PUSH_EVENTS"){
    const pending=Array.isArray(event.data.events)?event.data.events:[];
-   debug("VoiceLink получил из Service Worker "+pending.length+" сохранённых push-событий; сверяемся с очередью ntfy.");
-   subscribeForUser(state.me).then(connected=>{
-    if(connected)event.source?.postMessage({type:"VL_CLEAR_PUSH_EVENTS"});
-   });
+   debug("VoiceLink получил из Service Worker "+pending.length+" сохранённых push-событий; запускаем восстановление Supabase inbox.");
+   scheduleSupabaseInboxRecovery();
+   event.source?.postMessage({type:"VL_CLEAR_PUSH_EVENTS"});
    return;
   }
   if(event.data?.type!=="VL_PUSH_RECEIVED")return;
   appendServiceWorkerLog("push_event_received",{source:"service_worker_message"});
-  debug("Service Worker получил фоновый push. Проверяем канал входящих сообщений.");
-  const subscription=state.secure;
-  if(subscription&&!subscription.closed&&(!subscription.es||subscription.es.readyState===EventSource.CLOSED)){
-   subscription.subscribe().then(()=>debug("Подписка ntfy восстановлена после фонового push.")).catch(error=>debug("Не удалось восстановить ntfy после push: "+(error.message||String(error))));
-  }
+  debug("Service Worker получил фоновый push. Запускаем восстановление Supabase inbox.");
+  scheduleSupabaseInboxRecovery();
  });
 }
 async function onSecureReady(){
@@ -1069,7 +1027,7 @@ async function onSecureReady(){
  setStatus("Защищённый канал установлен","Запускаем голосовой канал.","wait");
  debug("Защищённый канал установлен; secure-role="+state.role+"; peer="+(state.secure?.peer||els.peer.value)+".");
  const peerId=state.secure?.peer||els.peer.value;
- if(NtfySecureSignaling.validUserId(peerId)){
+ if(SupabaseSecureSignaling.validUserId(peerId)){
   try{
    await updateContact(peerId,{last_interaction_at:new Date().toISOString()});
    await refreshContactOptions(peerId);
@@ -1095,11 +1053,6 @@ async function connect(){
  const answering=state.incomingCall;
  if(!answering)setCallPeer(els.peer.value,els.contactScreenName.textContent);
  const peer=state.callPeer;
- if(!answering&&contactReplyFailures.has(peer)){
-  updateCallButtons();
-  showError("Нельзя позвонить: ответное приглашение этому контакту не отправлено.");
-  return;
- }
  openCallScreen();
  state.answeringCall=answering;
  if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging();els.callScreenStatus.textContent="Соединяемся…"}
@@ -1113,12 +1066,12 @@ async function connect(){
   // Keep a matching prepared PC even while its ICE gathering is still running.
   if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
   state.callStarted=false;state.peerPresent=false;
-  if(!NtfySecureSignaling.validUserId(me)||!NtfySecureSignaling.validUserId(peer)||me===peer)throw Error("Выберите сохранённый контакт. Собеседник должен отличаться от вашей идентичности.");
+  if(!SupabaseSecureSignaling.validUserId(me)||!SupabaseSecureSignaling.validUserId(peer)||me===peer)throw Error("Выберите сохранённый контакт. Собеседник должен отличаться от вашей идентичности.");
   
   if(state.secure&&state.secure.me!==me){state.secure.close();state.secure=null}
   if(!state.secure)state.secure=createSecureSignaling(me,peer);
   else state.secure.setPeer(peer);
-  els.debugUrl.textContent="https://ntfy.sh/ · "+me;
+  els.debugUrl.textContent="Supabase · "+(state.supabaseUserId||"недоступен");
 
   // The caller does not request microphone access while ringing.
   // The answerer requests it only after the user explicitly presses Answer.
@@ -1153,9 +1106,9 @@ async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  clearIncomingAttemptTimer();
  state.hangingUp=true;updateCallButtons();
  if(notifyPeer&&state.outgoingCall&&state.secure?.role==="B"){
-  setStatus("Отменяем вызов","Уведомляем собеседника через ntfy.","wait");
-  try{const sent=await state.secure.cancelCall();debug(sent?"Отмена исходящего вызова отправлена через ntfy.":"У исходящего вызова не найден активный запрос для отмены.");}
-  catch(error){debug("Не удалось отправить отмену через ntfy: "+(error.message||String(error)));}
+  setStatus("Отменяем вызов","Уведомляем собеседника через Supabase.","wait");
+  try{const sent=await state.secure.cancelCall();debug(sent?"Отмена исходящего вызова отправлена через Supabase.":"У исходящего вызова не найден активный запрос для отмены.");}
+  catch(error){debug("Не удалось отправить отмену через Supabase: "+(error.message||String(error)));}
  }
  if(notifyPeer&&state.peerPresent&&state.webrtc?.isControlOpen()){
   setStatus("Завершаем звонок","Отправляем собеседнику P2P-уведомление и ждём подтверждение.","wait");
@@ -1303,9 +1256,8 @@ function renderContactList(contacts){
   const details=document.createElement("span");details.className="contact-list-details";
   const name=document.createElement("span");name.className="contact-list-name";name.textContent=contact.name;
   const status=document.createElement("span");status.className="contact-list-status";
-  const replyFailed=contactReplyFailures.has(contact.user_id);
-  status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):replyFailed?"Ответное приглашение не отправлено":"Контакт добавлен";
-  status.dataset.statusType=replyFailed&&!isPendingRequest?"error":isPendingRequest?"pending":"normal";
+  status.textContent=isPendingRequest?"Новый запрос · "+formatLastInteraction(contact.request_received_at):"Контакт добавлен";
+  status.dataset.statusType=isPendingRequest?"pending":"normal";
   details.append(name,status);
   const last=document.createElement("span");last.className="contact-list-last";last.textContent=formatLastInteraction(contact.last_interaction_at);
   item.append(avatar,details,last);
@@ -1541,26 +1493,6 @@ async function pasteContactInvitation(event){
  }
 }
 
-async function sendContactRequest(peerOverride=els.peer.value,statusElement=els.replyInviteStatus,displayNameOverride=undefined,options={}){
- const peer=peerOverride,senderDisplayName=displayNameOverride===undefined?getProfileDisplayName():String(displayNameOverride||"").trim().slice(0,40);
- if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){const m="Не удалось отправить ответное приглашение: сначала выберите контакт, от которого вы получили приглашение.";debug(m);return false}
- updateCallButtons();els.replyInvite.disabled=true;clearError();
- try{
-  const contact=await getContact(peer);if(!contact?.push_subscription_id||!contact?.invitation_secret||!contact?.invitation_id)throw Error("У контакта отсутствуют данные приглашения. Попросите его прислать новую ссылку.");
-  const subscriptionId=await getOptionalOneSignalSubscriptionId(),identity=await getCurrentSignalingIdentity(),invitationId=contact.invitation_id,createdAt=Number(contact.shared_secret_created_at)||Date.now();
-  if(!subscriptionId)debug("На этом устройстве Web Push недоступен или не разрешён; ответное приглашение будет отправлено через ntfy без push-подписки.");
-  const pack={version:INVITATION_FORMAT_VERSION,user_id:identity.user_id,...(state.supabaseUserId?{supabase_user_id:state.supabaseUserId}:{}),...(subscriptionId?{push_subscription_id:subscriptionId}:{}),invitation_id:invitationId,invitation_secret:contact.invitation_secret,shared_secret_created_at:createdAt,...(senderDisplayName?{display_name:senderDisplayName}:{})};
-  const requestId=crypto.randomUUID(),expiresAt=Number.MAX_SAFE_INTEGER,msg=await createContactRequestEnvelope({contact,contactPackage:pack,from:identity.user_id,to:peer,requestId,expiresAt});
-  const response=await fetch("https://ntfy.sh/"+await getNtfyTopic(peer),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg),cache:"no-store"});if(!response.ok)throw Error("ntfy не принял запрос (HTTP "+response.status+").");
-  const activation=await consumeIssuedInvitation({invitationId,userId:peer,requestId});if(!activation.accepted)throw Error("Ответное приглашение отправлено, но не удалось зарегистрировать разрешение для контакта.");
-  markContactRequestSent(peer,invitationId,createdAt);await updateContact(peer,{shared_secret_created_at:createdAt});setContactReplyFailure(peer,false);updateCallButtons();
-  try{await sendPushEventToContact(peer,"contact_request",requestId,expiresAt,debug,{invitation_id:invitationId,sender_name:senderDisplayName});debug("Зашифрованный запрос контакта опубликован в ntfy; OneSignal принял push.")}
-  catch(e){debug("Запрос контакта отправлен через ntfy; push не отправлен: "+(e.message||String(e)))}
-  return true;
- }catch(e){const d=e.message||String(e),m="Не удалось отправить ответное приглашение: "+d;setContactReplyFailure(peer,true);if(els.debugMode.checked){const dialog=statusElement?.closest('[role="dialog"]');if(dialog&&!dialog.classList.contains("hidden"))showError(d)}debug(m);return false}
- finally{els.replyInvite.disabled=false;updateCallButtons()}
-}
-
 /**
  * One-shot migration of imported contacts to their Supabase route.
  * The attempt is recorded before sending so it is never duplicated.
@@ -1571,13 +1503,22 @@ async function redeemSupabaseInvitationOnce(contact,source="импорт"){
     contact.supabase_invitation_redeemed_at||contact.request_pending)return false;
  await updateContact(contact.user_id,{supabase_invitation_attempted_at:new Date().toISOString()});
  try{
-  const result=await submitSupabaseInvitationAcceptance({contact});
+  const identity=await getCurrentSignalingIdentity();
+  const pushSubscriptionId=await getOptionalOneSignalSubscriptionId();
+  const result=await submitSupabaseInvitationAcceptance({
+   contact,
+   sender:{
+    user_id:identity.user_id,
+    display_name:getProfileDisplayName(),
+    ...(pushSubscriptionId?{push_subscription_id:pushSubscriptionId}:{})
+   }
+  });
   await ensureSupabaseOutgoingSequence(contact.supabase_user_id,"1");
   await updateContact(contact.user_id,{supabase_invitation_redeemed_at:new Date().toISOString()});
   debug("Supabase-приглашение погашено ("+source+"); связь создана, первое зашифрованное сообщение записано (created_at="+result.created_at+").");
   return true;
  }catch(error){
-  debug("Единственная попытка погасить Supabase-приглашение ("+source+") не удалась; повторной отправки не будет. Старый ntfy остаётся активен: "+(error.message||String(error)));
+  debug("Не удалось погасить Supabase-приглашение ("+source+"): "+(error.message||String(error)));
   return false;
  }
 }
@@ -1618,17 +1559,57 @@ async function processSupabaseInboxRecord(record,source){
   debug("Supabase inbox: пропуск recipient_seq (ожидается "+(cursor+1n)+", получено "+recipientSeq+"); требуется восстановление.");
   return false;
  }
- const contact=await findContactBySupabaseUserId(record.sender_id);
+ let contact=await findContactBySupabaseUserId(record.sender_id);
+ let message=null;
  if(!contact){
-  // Never advance the durable recipient cursor for a record we cannot process.
-  // The contact may be saved later (for example, after invite acceptance); recovery
-  // must retry this exact row instead of permanently skipping it.
-  debug("Supabase inbox: отправитель "+record.sender_id+" пока не найден в локальных контактах; recipient_seq="+recipientSeq+" оставлен необработанным, курсор не изменён.");
-  return false;
+  // First contact is also a normal v1 encrypted inbox message. Try the locally
+  // issued one-time invitation secrets; a successful AES-GCM decrypt identifies
+  // the invitation without exposing any routing metadata in the clear.
+  const issuedInvitations=await listIssuedInvitations();
+  for(const issued of issuedInvitations){
+   if(!issued||issued.revoked||typeof issued.secret!=="string")continue;
+   try{
+    const candidate=await decryptSupabaseInboxRecord(record,issued.secret);
+    const body=candidate?.body;
+    if(candidate.type!=="contact_accept"||candidate.seq!=="1"||
+       !body||typeof body!=="object"||body.invitation_id!==issued.id||
+       typeof body.user_id!=="string"||!/^[a-f0-9]{64}$/.test(body.user_id)||
+       typeof body.request_id!=="string"||!/^[0-9a-f-]{36}$/i.test(body.request_id))continue;
+    const activation=await consumeIssuedInvitation({invitationId:issued.id,userId:body.user_id,requestId:body.request_id});
+    if(!activation.accepted)throw new Error("Одноразовое локальное приглашение уже использовано или отозвано.");
+    const existing=await getContact(body.user_id);
+    const acceptedAt=new Date().toISOString();
+    const contactData={
+     ...(existing||{}),user_id:body.user_id,
+     name:issued.local_contact_name||existing?.name||String(body.display_name||"").trim()||await nextGeneratedContactName(),
+     invitation_id:issued.id,invitation_secret:issued.secret,
+     shared_secret_created_at:Number(body.shared_secret_created_at)||issued.created_at,
+     supabase_user_id:record.sender_id,
+     supabase_contact_accepted_at:acceptedAt,
+     supabase_invitation_redeemed_at:acceptedAt,
+     last_interaction_at:existing?.last_interaction_at||acceptedAt,
+     ...(typeof body.push_subscription_id==="string"&&body.push_subscription_id.trim()?{push_subscription_id:body.push_subscription_id.trim()}:{})
+    };
+    await saveContact(contactData);
+    contact=await findContactBySupabaseUserId(record.sender_id);
+    message=candidate;
+    debug("Supabase v1: первое зашифрованное сообщение приняло приглашение и создало контакт «"+contact.name+"».");
+    break;
+   }catch(error){
+    if(error?.name==="OperationError")continue;
+    if(error?.message?.includes("Одноразовое локальное приглашение"))throw error;
+   }
+  }
+  if(!contact){
+   debug("Supabase inbox: не найден контакт или подходящее локальное приглашение для sender_id="+record.sender_id+"; recipient_seq="+recipientSeq+" оставлен необработанным.");
+   return false;
+  }
  }
- const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
- if(!secrets.length)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
- const message=await decryptSupabaseInboxRecord(record,secrets);
+ if(!message){
+  const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
+  if(!secrets.length)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
+  message=await decryptSupabaseInboxRecord(record,secrets);
+ }
  const sequence=BigInt(message.seq);
  const current=await getSupabaseSequenceState(record.sender_id);
  const last=BigInt(current.incoming);
@@ -1654,16 +1635,16 @@ async function processSupabaseInboxRecord(record,source){
     "» ("+source+"); created_at="+record.created_at+".");
   }
  }else if(["hello","answer","cancel","reject","rotation_response","data","text","delivered"].includes(message.type)){
-  const envelope=message.body?.envelope;
-  if(!envelope||envelope.v!==3||envelope.type!==message.type||!envelope.payload){
-   debug("Supabase inbox: некорректный внутренний конверт типа «"+message.type+"»; seq оставлен необработанным.");
+  if(!message.body||typeof message.body!=="object"||Array.isArray(message.body)||
+     Object.hasOwn(message.body,"from")||Object.hasOwn(message.body,"to")){
+   debug("Supabase inbox: некорректное plaintext body v1 типа «"+message.type+"»; seq оставлен необработанным.");
    return false;
   }
   if(!state.secure||state.secure.closed||state.secure.me!==state.me){
    state.secure=createSecureSignaling(state.me,contact.user_id);
   }
-  await state.secure.handleSupabaseEnvelope(record,message);
-  debug("Supabase inbox: обработан сигнал «"+message.type+"» от «"+contact.name+"»; seq="+message.seq+" ("+source+").");
+  await state.secure.handleSupabaseEnvelope(record,message,contact);
+  debug("Supabase inbox: обработано сообщение v1 «"+message.type+"» от «"+contact.name+"»; seq="+message.seq+" ("+source+").");
  }else{
   debug("Supabase inbox: неизвестный тип «"+message.type+"» от «"+contact.name+
    "»; seq="+message.seq+" оставлен необработанным.");
@@ -1720,7 +1701,12 @@ function startSupabaseInbox(){
   },
   status=>{
    debug("Supabase Realtime status="+status+".");
-   if(status==="SUBSCRIBED")scheduleSupabaseInboxRecovery();
+   if(status==="SUBSCRIBED"){
+    setServiceStatus(els.supabaseStatus,"Подключён");
+    scheduleSupabaseInboxRecovery();
+   }else if(["CHANNEL_ERROR","TIMED_OUT","CLOSED"].includes(status)){
+    setServiceStatus(els.supabaseStatus,"Переподключение…");
+   }
   });
 }
 
@@ -1783,22 +1769,6 @@ async function nextGeneratedContactName(){
  generatedContactNameNumber++;
  return "Новый контакт "+generatedContactNameNumber;
 }
-async function handleIncomingContactRequest(request){
-  const id=request?.contact?.user_id;if(!NtfySecureSignaling.validUserId(id)||id===state.me)return;
-  try{
-   const existing=await getContact(id);
-   if(existing?.request_id===request.requestId){debug("Повторная доставка уже обработанного запроса контакта пропущена.");return}
-   const issuedInvitation=await getIssuedInvitation(request.invitationId);
-   const receivedAt=new Date().toISOString();
-   const localName=String(issuedInvitation?.local_contact_name||"").trim();
-   const remoteName=String(request.contact.display_name||"").trim();
-   const name=localName||existing?.name||remoteName||await nextGeneratedContactName();
-   await saveContact({...existing,...request.contact,name,request_pending:false,...(existing?.request_received_at?{request_received_at:existing.request_received_at}:{request_received_at:receivedAt}),last_interaction_at:existing?.last_interaction_at||receivedAt,request_id:request.requestId,invitation_created_at:request.invitationCreatedAt,authorized_by_invitation_id:request.invitationId});
-   await refreshContactOptions(els.peer.value);
-   debug(existing?"Получено обновлённое приглашение от контакта: "+name+". Локальное имя и история сохранены.":"Получено и сохранено приглашение от контакта: "+name+".");
- }catch(e){debug("Не удалось сохранить запрос контакта: "+(e.message||String(e)))}
-}
-
 async function acceptContactRequest(){
  const peer=els.peer.value;
  const contact=await getContact(peer);
@@ -1839,7 +1809,7 @@ async function declineContactRequest(){
 async function saveSelectedContactName(){
  const peer=els.peer.value;
  const name=els.editContactName.value.trim();
- if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите сохранённый контакт.");return}
+ if(!SupabaseSecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите сохранённый контакт.");return}
  if(!name){showError("Укажите имя контакта.");els.editContactName.focus();return}
  if(state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall){showError("Завершите текущий вызов, чтобы изменить имя контакта.");return}
  els.saveContactName.disabled=true;
@@ -1868,7 +1838,7 @@ async function saveSelectedContactName(){
 
 async function deleteSelectedContact(){
  const peer=els.peer.value;
- if(!NtfySecureSignaling.validUserId(peer)){
+ if(!SupabaseSecureSignaling.validUserId(peer)){
   showError("Сначала выберите сохранённый контакт.");
   return;
  }
@@ -1943,8 +1913,11 @@ async function importContactFromInput(){
    .find(item=>item.dataset.peer===verified.user_id);
   if(contactItem)openContactScreen(contactItem,false,{returnTo:"main"});
   else debug("Контакт сохранён, но его карточку не удалось открыть автоматически.");
-  if(!existing)debug("Автоматически отправляем ответное приглашение новому контакту.");
-  void sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
+  const latestContact=await getContact(verified.user_id);
+  const supabaseLinked=!!latestContact?.supabase_invitation_redeemed_at;
+  if(!supabaseLinked)throw Error("Не удалось установить Supabase-связь. Старый транспорт отключён; попросите собеседника создать новую ссылку-приглашение и повторите импорт.");
+  debug("Контакт принят через единый Supabase v1 протокол.");
+
  }catch(error){
   setInlineStatus(els.qrStatus,error.message||"Не удалось импортировать контакт.",true);
  }finally{importingContact=false;updateImportContactButton()}
@@ -2109,7 +2082,6 @@ function updateSaveResponseDisplayNameOption(){const hasName=!!els.responseDispl
  updateSaveResponseDisplayNameOption();
 els.importContact.addEventListener("click",importContactFromInput);
 updateImportContactButton();
-els.replyInvite.addEventListener("click",()=>{els.contactScreenMenu.open=false;sendContactRequest()});
 els.acceptContactRequest.addEventListener("click",acceptContactRequest);
 els.declineContactRequest.addEventListener("click",declineContactRequest);
 async function handleCreateInvitationClick(){
@@ -2341,7 +2313,7 @@ function conversationEventLabel(event){
  return "Событие";
 }
 async function renderConversation(contactUserId){
- if(!els.chatEvents||!NtfySecureSignaling.validUserId(contactUserId))return;
+ if(!els.chatEvents||!SupabaseSecureSignaling.validUserId(contactUserId))return;
  const events=await listConversationEvents(contactUserId);
  if(els.peer.value!==contactUserId)return;
  els.chatEvents.replaceChildren();
@@ -2408,7 +2380,7 @@ function syncChatVisualViewport(){
 }
 function updateChatComposerState(){
  const contact=allContacts.find(item=>item.user_id===els.peer.value);
- const allowed=!!contact&&!contact.request_pending&&!contactReplyFailures.has(els.peer.value);
+ const allowed=!!contact&&!contact.request_pending;
  els.chatMessage.disabled=!allowed;
  els.sendChatMessage.disabled=!allowed||!els.chatMessage.value.trim();
  els.chatMessage.placeholder=allowed?"Сообщение…":"Добавьте контакт, чтобы переписываться";
@@ -2428,7 +2400,7 @@ async function sendChatMessage(){
   await state.secure.sendText(peer,text);
   sendPushEventToContact(peer,"new_message",crypto.randomUUID(),Date.now()+24*60*60*1000,debug)
    .then(()=>debug("OneSignal принял push о новом сообщении."))
-   .catch(error=>debug("Push о сообщении не отправлен (сообщение уже доставлено через ntfy): "+(error.message||String(error))));
+   .catch(error=>debug("Push о сообщении не отправлен (сообщение уже отправлено через Supabase): "+(error.message||String(error))));
   if(els.peer.value===peer)els.chatMessage.value="";
   updateChatComposerState();
  }catch(error){
@@ -2485,7 +2457,7 @@ function openContactScreen(item,preserveSelection=false,{returnTo="main"}={}){
  els.contactScreenBack.focus();
 }
 async function openChatFromNotification(senderId){
- if(!NtfySecureSignaling.validUserId(senderId)||senderId===state.me)return false;
+ if(!SupabaseSecureSignaling.validUserId(senderId)||senderId===state.me)return false;
  let item=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(node=>node.dataset.peer===senderId);
  if(!item){
   await refreshContactOptions();
@@ -2583,7 +2555,7 @@ els.peer.addEventListener("change",()=>{
  if(state.incomingCall&&peer!==state.secure?.peer)dismissIncoming(false);
  if(state.secure&&!state.secure.active&&!state.connecting){
   const me=state.me;
-  state.secure.setPeer(NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
+  state.secure.setPeer(SupabaseSecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  }
 
 });
@@ -2673,14 +2645,16 @@ async function initializeApp(){
    debug("Supabase Anonymous Auth готов; UUID="+state.supabaseUserId+".");
   }catch(error){
    state.supabaseUserId=null;
-   debug("Supabase Auth пока недоступен; старый ntfy-транспорт продолжит работать: "+(error.message||String(error)));
+   throw new Error("Supabase Auth недоступен: "+(error.message||String(error)));
   }
   const identity=await getCurrentSignalingIdentity();
   state.me=identity.user_id;
   await redeemPendingSupabaseInvitations();
   await flushPendingSupabaseOutboxes("запуск приложения");
   await refreshContactOptions();
-  if(state.supabaseUserId){try{startSupabaseInbox();}catch(error){debug("Supabase Realtime пока недоступен; ntfy продолжает работать: "+(error.message||String(error)));}}
+  if(!state.supabaseUserId)throw Error("Supabase Auth не инициализирован.");
+  const subscribed=await subscribeForUser(state.me);
+  try{startSupabaseInbox()}catch(error){throw new Error("Не удалось запустить Supabase inbox: "+(error.message||String(error)))}
 
   const requestedChat=new URLSearchParams(window.location.search).get("openChat");
   if(requestedChat){
@@ -2702,7 +2676,7 @@ async function initializeApp(){
      window.history.replaceState(null,"",cleanUrl.href);
    }
   const contacts=await listContacts();
-  els.debugUrl.textContent="https://ntfy.sh/ · "+state.me.slice(0,12)+"… · Supabase "+(state.supabaseUserId?state.supabaseUserId.slice(0,8)+"…":"недоступен");
+  els.debugUrl.textContent="Supabase · "+(state.supabaseUserId?state.supabaseUserId.slice(0,12)+"…":"недоступен");
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
   document.documentElement.dataset.voicelinkBooted="true";
   updateWebPushStatus();
@@ -2723,7 +2697,6 @@ async function initializeApp(){
    debug("OneSignal пока недоступен: "+(error.message||String(error)));
    return false;
   });
-  const subscribed=await subscribeForUser(state.me);
   if(subscribed)oneSignalReady.then(async ready=>{
    if(!ready)return;
    try{

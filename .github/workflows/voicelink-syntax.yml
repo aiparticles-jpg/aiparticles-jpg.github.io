@@ -5,12 +5,15 @@ on:
     paths:
       - "index.html"
       - "js/app.js"
+      - "js/bootstrap.js"
       - "js/contact-exchange.js"
       - "js/local-store.js"
+      - "js/local-identity.js"
       - "js/supabase-client.js"
-      - "js/ntfy-signaling.js"
+      - "js/supabase-signaling.js"
       - "js/supabase-protocol.mjs"
       - "backend/scripts/apply-supabase-recipient-sequence-migration.js"
+      - "backend/scripts/test-supabase-envelope.mjs"
       - "backend/scripts/test-supabase-flow.js"
       - "backend/scripts/test-supabase-realtime.js"
       - ".github/workflows/voicelink-syntax.yml"
@@ -35,7 +38,7 @@ jobs:
       - name: Check browser ES modules
         run: |
           set -eu
-          for file in js/app.js js/contact-exchange.js js/local-store.js js/supabase-client.js js/ntfy-signaling.js js/supabase-protocol.mjs; do
+          for file in js/app.js js/bootstrap.js js/contact-exchange.js js/local-identity.js js/local-store.js js/supabase-client.js js/supabase-signaling.js js/supabase-protocol.mjs; do
             echo "Checking $file"
             node --input-type=module --check < "$file"
           done
@@ -43,3 +46,11 @@ jobs:
             echo "Checking $file"
             node --check "$file"
           done
+          node backend/scripts/test-supabase-envelope.mjs
+      - name: Ensure the runtime has no legacy ntfy transport
+        run: |
+          set -eu
+          if grep -nE "ntfy\\.sh|EventSource|NtfySecureSignaling|sendContactRequest" js/app.js js/supabase-signaling.js js/local-identity.js; then
+            echo "Legacy ntfy transport reference found in runtime modules."
+            exit 1
+          fi

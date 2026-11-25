@@ -77,8 +77,10 @@ export async function createSupabaseInvitation() {
  * message. Sender identity is derived from the authenticated Supabase session.
  */
 function supabaseOutboxDedupeKey(type, body) {
-  const iv = body?.envelope?.auth?.iv;
-  return typeof iv === "string" && iv ? type + ":" + iv : null;
+  const id = body?.message_id ||
+    (type === "rotation_response" ? body?.rotation_id : null) ||
+    (["hello", "answer", "cancel", "reject"].includes(type) ? body?.sid : null);
+  return typeof id === "string" && id ? type + ":" + id : null;
 }
 
 /** Queue and send one encrypted message to an already linked contact. */
@@ -169,12 +171,14 @@ export async function flushSupabaseOutbox(options) {
     if (outboxFlushFallbacks.get(key) === current) outboxFlushFallbacks.delete(key);
   }
 }
-export async function submitSupabaseInvitationAcceptance({ contact }) {
+export async function submitSupabaseInvitationAcceptance({ contact, sender }) {
   if (!contact || typeof contact !== "object" ||
       typeof contact.supabase_user_id !== "string" ||
       typeof contact.supabase_invitation_id !== "string" ||
-      typeof contact.invitation_secret !== "string") {
-    throw new TypeError("Контакт не содержит полного Supabase-приглашения.");
+      typeof contact.invitation_secret !== "string" ||
+      !sender || typeof sender !== "object" ||
+      typeof sender.user_id !== "string" || !/^[a-f0-9]{64}$/.test(sender.user_id)) {
+    throw new TypeError("Контакт или данные отправителя приглашения неполны.");
   }
 
   const identity = await getSupabaseIdentity();
@@ -182,11 +186,21 @@ export async function submitSupabaseInvitationAcceptance({ contact }) {
     throw new Error("Нельзя принять собственное Supabase-приглашение.");
   }
 
+  const body = {
+    user_id: sender.user_id,
+    invitation_id: contact.invitation_id,
+    request_id: crypto.randomUUID(),
+    shared_secret_created_at: Number(contact.shared_secret_created_at) || Date.now(),
+    ...(typeof sender.display_name === "string" && sender.display_name.trim()
+      ? { display_name: sender.display_name.trim().slice(0, 40) } : {}),
+    ...(typeof sender.push_subscription_id === "string" && sender.push_subscription_id.trim()
+      ? { push_subscription_id: sender.push_subscription_id.trim() } : {})
+  };
   const payload = await encryptSupabaseMessage({
     sharedSecret: contact.invitation_secret,
     senderId: identity.user_id,
     recipientId: contact.supabase_user_id,
-    message: { type: "contact_accept", seq: "1", body: {} }
+    message: { type: "contact_accept", seq: "1", body }
   });
 
   const supabase = getSupabaseClient();

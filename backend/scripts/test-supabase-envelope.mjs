@@ -50,6 +50,28 @@ async function main() {
     message: { type: "data", seq: "1", from: senderId, to: recipientId, body: {} }
   }));
   console.log("PASS: uint64 sequence bounds and prohibition of from/to fields are enforced.");
+
+  const messageTypes = [
+    ["contact_accept", { user_id: "a".repeat(64), invitation_id: "00000000-0000-4000-8000-000000000004", request_id: "00000000-0000-4000-8000-000000000005" }],
+    ["hello", { sid: "00000000-0000-4000-8000-000000000006", expiresAt: 1900000000000, invitation_id: "00000000-0000-4000-8000-000000000004" }],
+    ["answer", { sid: "00000000-0000-4000-8000-000000000006", invitation_id: "00000000-0000-4000-8000-000000000004" }],
+    ["cancel", { sid: "00000000-0000-4000-8000-000000000006", expiresAt: 1900000000000, invitation_id: "00000000-0000-4000-8000-000000000004" }],
+    ["reject", { sid: "00000000-0000-4000-8000-000000000006", expiresAt: 1900000000000, invitation_id: "00000000-0000-4000-8000-000000000004" }],
+    ["rotation_response", { rotation_id: "00000000-0000-4000-8000-000000000007", encrypted_key: "ciphertext", invitation_id: "00000000-0000-4000-8000-000000000004" }],
+    ["data", { sid: "00000000-0000-4000-8000-000000000006", signal: { type: "signal", payload: { candidate: "candidate:1" } }, invitation_id: "00000000-0000-4000-8000-000000000004" }],
+    ["text", { message_id: "00000000-0000-4000-8000-000000000008", created_at: 1800000000000, text: "hello", invitation_id: "00000000-0000-4000-8000-000000000004" }],
+    ["delivered", { message_id: "00000000-0000-4000-8000-000000000008", created_at: 1800000000001, invitation_id: "00000000-0000-4000-8000-000000000004" }]
+  ];
+  for (const [type, body] of messageTypes) {
+    const candidate = { type, seq: "2", body };
+    const encrypted = await encryptSupabaseMessage({ sharedSecret, senderId, recipientId, message: candidate });
+    assert.deepEqual(await decryptSupabaseMessage({ sharedSecret, senderId, recipientId, envelope: encrypted }), candidate);
+    assert.equal(encrypted.data.includes(type), false);
+    assert.equal(Object.hasOwn(body, "from"), false);
+    assert.equal(Object.hasOwn(body, "to"), false);
+  }
+  console.log("PASS: contact bootstrap, call signaling, WebRTC data, chat and receipts all use the same v1 envelope.");
+
   console.log("ALL SUPABASE ENVELOPE TESTS PASSED.");
 }
 main().catch(error => { console.error("Supabase envelope test failed:", error); process.exitCode = 1; });
