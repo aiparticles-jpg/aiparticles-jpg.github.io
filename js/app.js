@@ -1571,7 +1571,16 @@ async function redeemSupabaseInvitationOnce(contact,source="импорт"){
     contact.supabase_invitation_redeemed_at||contact.request_pending)return false;
  await updateContact(contact.user_id,{supabase_invitation_attempted_at:new Date().toISOString()});
  try{
-  const result=await submitSupabaseInvitationAcceptance({contact});
+  const identity=await getCurrentSignalingIdentity();
+  const pushSubscriptionId=await getOptionalOneSignalSubscriptionId();
+  const result=await submitSupabaseInvitationAcceptance({
+   contact,
+   sender:{
+    user_id:identity.user_id,
+    display_name:getProfileDisplayName(),
+    ...(pushSubscriptionId?{push_subscription_id:pushSubscriptionId}:{})
+   }
+  });
   await ensureSupabaseOutgoingSequence(contact.supabase_user_id,"1");
   await updateContact(contact.user_id,{supabase_invitation_redeemed_at:new Date().toISOString()});
   debug("Supabase-приглашение погашено ("+source+"); связь создана, первое зашифрованное сообщение записано (created_at="+result.created_at+").");
@@ -1618,17 +1627,57 @@ async function processSupabaseInboxRecord(record,source){
   debug("Supabase inbox: пропуск recipient_seq (ожидается "+(cursor+1n)+", получено "+recipientSeq+"); требуется восстановление.");
   return false;
  }
- const contact=await findContactBySupabaseUserId(record.sender_id);
+ let contact=await findContactBySupabaseUserId(record.sender_id);
+ let message=null;
  if(!contact){
-  // Never advance the durable recipient cursor for a record we cannot process.
-  // The contact may be saved later (for example, after invite acceptance); recovery
-  // must retry this exact row instead of permanently skipping it.
-  debug("Supabase inbox: отправитель "+record.sender_id+" пока не найден в локальных контактах; recipient_seq="+recipientSeq+" оставлен необработанным, курсор не изменён.");
-  return false;
+  // First contact is also a normal v1 encrypted inbox message. Try the locally
+  // issued one-time invitation secrets; a successful AES-GCM decrypt identifies
+  // the invitation without exposing any routing metadata in the clear.
+  const issuedInvitations=await listIssuedInvitations();
+  for(const issued of issuedInvitations){
+   if(!issued||issued.revoked||typeof issued.secret!=="string")continue;
+   try{
+    const candidate=await decryptSupabaseInboxRecord(record,issued.secret);
+    const body=candidate?.body;
+    if(candidate.type!=="contact_accept"||candidate.seq!=="1"||
+       !body||typeof body!=="object"||body.invitation_id!==issued.id||
+       typeof body.user_id!=="string"||!/^[a-f0-9]{64}$/.test(body.user_id)||
+       typeof body.request_id!=="string"||!/^[0-9a-f-]{36}$/i.test(body.request_id))continue;
+    const activation=await consumeIssuedInvitation({invitationId:issued.id,userId:body.user_id,requestId:body.request_id});
+    if(!activation.accepted)throw new Error("Одноразовое локальное приглашение уже использовано или отозвано.");
+    const existing=await getContact(body.user_id);
+    const acceptedAt=new Date().toISOString();
+    const contactData={
+     ...(existing||{}),user_id:body.user_id,
+     name:issued.local_contact_name||existing?.name||String(body.display_name||"").trim()||await nextGeneratedContactName(),
+     invitation_id:issued.id,invitation_secret:issued.secret,
+     shared_secret_created_at:Number(body.shared_secret_created_at)||issued.created_at,
+     supabase_user_id:record.sender_id,
+     supabase_contact_accepted_at:acceptedAt,
+     supabase_invitation_redeemed_at:acceptedAt,
+     last_interaction_at:existing?.last_interaction_at||acceptedAt,
+     ...(typeof body.push_subscription_id==="string"&&body.push_subscription_id.trim()?{push_subscription_id:body.push_subscription_id.trim()}:{})
+    };
+    await saveContact(contactData);
+    contact=await findContactBySupabaseUserId(record.sender_id);
+    message=candidate;
+    debug("Supabase v1: первое зашифрованное сообщение приняло приглашение и создало контакт «"+contact.name+"»; ntfy для нового контакта не использовался.");
+    break;
+   }catch(error){
+    if(error?.name==="OperationError")continue;
+    if(error?.message?.includes("Одноразовое локальное приглашение"))throw error;
+   }
+  }
+  if(!contact){
+   debug("Supabase inbox: не найден контакт или подходящее локальное приглашение для sender_id="+record.sender_id+"; recipient_seq="+recipientSeq+" оставлен необработанным.");
+   return false;
+  }
  }
- const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
- if(!secrets.length)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
- const message=await decryptSupabaseInboxRecord(record,secrets);
+ if(!message){
+  const secrets=[contact.pending_secret,contact.invitation_secret,contact.previous_secret].filter(value=>typeof value==="string"&&value);
+  if(!secrets.length)throw new Error("У контакта «"+contact.name+"» отсутствует общий ключ.");
+  message=await decryptSupabaseInboxRecord(record,secrets);
+ }
  const sequence=BigInt(message.seq);
  const current=await getSupabaseSequenceState(record.sender_id);
  const last=BigInt(current.incoming);
@@ -1943,8 +1992,15 @@ async function importContactFromInput(){
    .find(item=>item.dataset.peer===verified.user_id);
   if(contactItem)openContactScreen(contactItem,false,{returnTo:"main"});
   else debug("Контакт сохранён, но его карточку не удалось открыть автоматически.");
-  if(!existing)debug("Автоматически отправляем ответное приглашение новому контакту.");
-  void sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
+  const supabaseLinked=!!(savedContact?.supabase_invitation_redeemed_at||
+   (savedContact?.supabase_user_id&&savedContact?.supabase_invitation_id&&
+    await redeemSupabaseInvitationOnce(savedContact,"сразу после импорта")));
+  if(!supabaseLinked){
+   if(!existing)debug("Supabase-приглашение не погашено; используем совместимый старый обмен для этого контакта.");
+   void sendContactRequest(verified.user_id,els.qrStatus,senderDisplayName);
+  }else{
+   debug("Контакт принят через единый Supabase v1 протокол; отдельный ntfy contact_request не отправляется.");
+  }
  }catch(error){
   setInlineStatus(els.qrStatus,error.message||"Не удалось импортировать контакт.",true);
  }finally{importingContact=false;updateImportContactButton()}

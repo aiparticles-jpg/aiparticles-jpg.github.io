@@ -367,7 +367,7 @@ async publish(to,msg){
   }catch(error){this.onError(error);return false}
  }
  async inspectTextMessage(n,m,trustedSupabase=false){
-  const p=m?.payload;if(m?.v!==3||m?.type!=="text"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
+  const p=m?.payload;if((trustedSupabase?m?.v!==1:m?.v!==3)||m?.type!=="text"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
   let valid=false;try{valid=trustedSupabase?await this.verifySupabasePayload("text",p):await this.verifyPeerEnvelope("text",p,m.auth)}catch{return;}
   if(!valid)return;
   const saved=await this.recordConversationEvent("text",p,"incoming",Number(p.created_at));
@@ -382,7 +382,7 @@ async publish(to,msg){
  }
  async inspectDeliveryReceipt(n,m,trustedSupabase=false){
   const p=m?.payload;
-  if(m?.v!==3||m?.type!=="delivered"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
+  if((trustedSupabase?m?.v!==1:m?.v!==3)||m?.type!=="delivered"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
   let valid=false;try{valid=trustedSupabase?await this.verifySupabasePayload("delivered",p):await this.verifyPeerEnvelope("delivered",p,m.auth)}catch(error){this.onDebug("[message] ошибка проверки подтверждения доставки: "+(error.message||String(error)));return;}
   if(!valid)return;
   try{
@@ -420,7 +420,7 @@ async publish(to,msg){
   if(!isUserId(p.from)||p.from===this.me||p.to!==this.me){this.onDebug(`[incoming] ${m.type} пропущен: адресация не для этого устройства; from=${String(p.from||"нет").slice(0,10)}; to=${String(p.to||"нет").slice(0,10)}; me=${this.me.slice(0,10)}; ntfyId=${eventId}.`);return;}
   if(m.type==="rotation_response"){let ok=false;try{ok=trustedSupabase?await this.verifySupabasePayload(m.type,p):await this.verifyPeerEnvelope(m.type,p,m.auth)}catch(error){this.onDebug(`[incoming] rotation_response verification error: ${error.message||String(error)}; ntfyId=${eventId}.`)}if(ok&&n?.id)this.rememberSeen(n.id);return;}
   if(m.type==="cancel"){
-   try{const contact=await getPeerSignalingIdentity(p.from);this.peer=p.from;this.peerName=contact.name;this.peerInvitationId=contact.invitation_id;this.role=this.me<p.from?"A":"B";await this.processCancel(m);if(n?.id)this.rememberSeen(n.id)}
+   try{const contact=await getPeerSignalingIdentity(p.from);this.peer=p.from;this.peerName=contact.name;this.peerInvitationId=contact.invitation_id;this.role=this.me<p.from?"A":"B";await this.processCancel(m,trustedSupabase);if(n?.id)this.rememberSeen(n.id)}
    catch(error){this.onDebug(`[incoming] cancel processing failed: ${error.message||String(error)}; peer=${p.from.slice(0,10)}; ntfyId=${eventId}.`)}return;
   }
   if(m.type!=="hello"){this.onDebug(`[incoming] неизвестный тип ${m.type||"нет"} пропущен; ntfyId=${eventId}.`);return;}
@@ -462,7 +462,7 @@ async publish(to,msg){
   this.onContactRequest({requestId:p.request_id,contact,expiresAt:expires,invitationCreatedAt:activation.created_at,invitationId:p.invitation_id,sharedSecret:issued.secret});
  }
  async processCancel(m,trustedSupabase=false){
-  const p=m?.payload;if(m?.v!==3||!p||p.from!==this.peer||p.to!==this.me)return;
+  const p=m?.payload;if((trustedSupabase?m?.v!==1:m?.v!==3)||!p||p.from!==this.peer||p.to!==this.me)return;
   if(!(trustedSupabase?await this.verifySupabasePayload("cancel",p):await this.verifyPeerEnvelope("cancel",p,m.auth)))throw Error("Аутентификация отмены вызова или разрешение недействительны.");
   if(!p.sid||this.acceptedSids.has(p.sid)||!Number.isFinite(Number(p.expiresAt))||Date.now()>Number(p.expiresAt))return;
   this.onPeerMessage(this.peer);
@@ -647,8 +647,8 @@ async handle(event,trustedSupabase=false){
     return;
    }
    if(m.type==="contact_request"){await this.inspectContactRequest(n,m);return;}
-  if(m.type==="text"){if(m.v===3&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
-  if(m.type==="delivered"){if(m.v===3&&m.payload?.to===this.me)await this.inspectDeliveryReceipt(n,m);return;}
+  if(m.type==="text"){if((trustedSupabase?m.v===1:m.v===3)&&m.payload?.to===this.me)await this.inspectTextMessage(n,m,trustedSupabase);return;}
+  if(m.type==="delivered"){if((trustedSupabase?m.v===1:m.v===3)&&m.payload?.to===this.me)await this.inspectDeliveryReceipt(n,m,trustedSupabase);return;}
   if((trustedSupabase?m.v!==1:m.v!==3)||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me){
    if(m.type==="data")this.onDebug("[signaling] data отклонено до AES-GCM: неверная версия, payload, from или to.");
    return;
