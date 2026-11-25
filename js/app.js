@@ -107,21 +107,6 @@ async function findReusableContactResponseInvitation(userId){
  }
  throw Error("Не удалось однозначно найти ранее отправленное ответное приглашение на этом устройстве. Старое приглашение не заменено.");
 }
-const CONTACT_REPLY_FAILURES_KEY="vl.contactReplyFailures.v1";
-function loadContactReplyFailures(){
- try{const value=JSON.parse(localStorage.getItem(CONTACT_REPLY_FAILURES_KEY)||"[]");return new Set(Array.isArray(value)?value.filter(id=>SupabaseSecureSignaling.validUserId(id)):[])}
- catch{return new Set()}
-}
-const contactReplyFailures=loadContactReplyFailures();
-function setContactReplyFailure(userId,failed){
- if(!SupabaseSecureSignaling.validUserId(userId))return;
- if(failed)contactReplyFailures.add(userId);else contactReplyFailures.delete(userId);
- try{localStorage.setItem(CONTACT_REPLY_FAILURES_KEY,JSON.stringify([...contactReplyFailures]))}
- catch(error){debug("Не удалось сохранить статус ответного приглашения: "+(error.message||String(error)))}
- if(typeof allContacts!=="undefined"&&allContacts.length)renderContactList(allContacts);
- if(els.peer.value===userId)updateCallButtons();
-}
-
 const CONTACT_REQUESTS_CONFIRMED_KEY="vl.contactRequestsConfirmed.v1";
 function loadConfirmedContactRequests(){
  try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_CONFIRMED_KEY)||"[]");return Array.isArray(value)?value.filter(id=>SupabaseSecureSignaling.validUserId(id)):[]}
@@ -1069,11 +1054,6 @@ async function connect(){
  const answering=state.incomingCall;
  if(!answering)setCallPeer(els.peer.value,els.contactScreenName.textContent);
  const peer=state.callPeer;
- if(!answering&&contactReplyFailures.has(peer)){
-  updateCallButtons();
-  showError("Нельзя позвонить: ответное приглашение этому контакту не отправлено.");
-  return;
- }
  openCallScreen();
  state.answeringCall=answering;
  if(answering){state.secure?.acceptIncoming();clearIncomingUi();stopRinging();els.callScreenStatus.textContent="Соединяемся…"}
@@ -1722,7 +1702,12 @@ function startSupabaseInbox(){
   },
   status=>{
    debug("Supabase Realtime status="+status+".");
-   if(status==="SUBSCRIBED")scheduleSupabaseInboxRecovery();
+   if(status==="SUBSCRIBED"){
+    setServiceStatus(els.supabaseStatus,"Подключён");
+    scheduleSupabaseInboxRecovery();
+   }else if(["CHANNEL_ERROR","TIMED_OUT","CLOSED"].includes(status)){
+    setServiceStatus(els.supabaseStatus,"Переподключение…");
+   }
   });
 }
 
