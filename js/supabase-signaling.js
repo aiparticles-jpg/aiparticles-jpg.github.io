@@ -75,8 +75,8 @@ async handle(event){
   this.rememberSeen(n.id);
   let m;try{m=JSON.parse(n.message)}catch{return;}
   if(m.type==="data")this.onDebug("[signaling] Supabase v1 data envelope: v="+m.v+"; from="+String(m.payload?.from||"нет").slice(0,10)+"; expectedFrom="+this.peer.slice(0,10)+"; to="+String(m.payload?.to||"нет").slice(0,10)+"; expectedTo="+this.me.slice(0,10)+"; supabaseMessageId="+String(n.id).slice(0,12));
-  if(m.type==="text"){if((trustedSupabase?m.v===1:m.v===3)&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
-  if(m.type==="delivered"){if((trustedSupabase?m.v===1:m.v===3)&&m.payload?.to===this.me)await this.inspectDeliveryReceipt(n,m);return;}
+  if(m.type==="text"){if(m.v===1&&m.payload?.to===this.me)await this.inspectTextMessage(n,m);return;}
+  if(m.type==="delivered"){if(m.v===1&&m.payload?.to===this.me)await this.inspectDeliveryReceipt(n,m);return;}
   if(m.v!==1||!m.payload||m.payload.from!==this.peer||m.payload.to!==this.me){
    if(m.type==="data")this.onDebug("[signaling] data отклонено до AES-GCM: неверная версия, payload, from или to.");
    return;

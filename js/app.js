@@ -898,7 +898,6 @@ function createSecureSignaling(me,peer=""){
    setServiceStatus(els.supabaseStatus,"Подключён");
   },
   onIncoming:showIncomingCall,
-  onContactRequest:handleIncomingContactRequest,
   onPeerMessage:markContactRequestReceived,
   onConversationEvent:async event=>{await addConversationEvent(event);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить историю контакта: "+(error.message||String(error))))},
   onConversationDelivery:async event=>{await markConversationMessageDelivered(event.contact_user_id,event.message_id,event.delivered_at);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить статус доставки: "+(error.message||String(error))))},
@@ -1770,22 +1769,6 @@ async function nextGeneratedContactName(){
  generatedContactNameNumber++;
  return "Новый контакт "+generatedContactNameNumber;
 }
-async function handleIncomingContactRequest(request){
-  const id=request?.contact?.user_id;if(!SupabaseSecureSignaling.validUserId(id)||id===state.me)return;
-  try{
-   const existing=await getContact(id);
-   if(existing?.request_id===request.requestId){debug("Повторная доставка уже обработанного запроса контакта пропущена.");return}
-   const issuedInvitation=await getIssuedInvitation(request.invitationId);
-   const receivedAt=new Date().toISOString();
-   const localName=String(issuedInvitation?.local_contact_name||"").trim();
-   const remoteName=String(request.contact.display_name||"").trim();
-   const name=localName||existing?.name||remoteName||await nextGeneratedContactName();
-   await saveContact({...existing,...request.contact,name,request_pending:false,...(existing?.request_received_at?{request_received_at:existing.request_received_at}:{request_received_at:receivedAt}),last_interaction_at:existing?.last_interaction_at||receivedAt,request_id:request.requestId,invitation_created_at:request.invitationCreatedAt,authorized_by_invitation_id:request.invitationId});
-   await refreshContactOptions(els.peer.value);
-   debug(existing?"Получено обновлённое приглашение от контакта: "+name+". Локальное имя и история сохранены.":"Получено и сохранено приглашение от контакта: "+name+".");
- }catch(e){debug("Не удалось сохранить запрос контакта: "+(e.message||String(e)))}
-}
-
 async function acceptContactRequest(){
  const peer=els.peer.value;
  const contact=await getContact(peer);
