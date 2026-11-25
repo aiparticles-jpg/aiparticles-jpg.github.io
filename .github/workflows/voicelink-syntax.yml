@@ -11,6 +11,7 @@ on:
       - "js/ntfy-signaling.js"
       - "js/supabase-protocol.mjs"
       - "backend/scripts/apply-supabase-recipient-sequence-migration.js"
+      - "backend/scripts/test-supabase-envelope.mjs"
       - "backend/scripts/test-supabase-flow.js"
       - "backend/scripts/test-supabase-realtime.js"
       - ".github/workflows/voicelink-syntax.yml"
@@ -42,4 +43,6 @@ jobs:
           for file in backend/scripts/apply-supabase-recipient-sequence-migration.js backend/scripts/test-supabase-flow.js backend/scripts/test-supabase-realtime.js; do
             echo "Checking $file"
             node --check "$file"
+          done
+          node backend/scripts/test-supabase-envelope.mjs
           done

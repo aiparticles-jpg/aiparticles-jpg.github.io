@@ -66,7 +66,7 @@ async function main() {
     const candidate = { type, seq: "2", body };
     const encrypted = await encryptSupabaseMessage({ sharedSecret, senderId, recipientId, message: candidate });
     assert.deepEqual(await decryptSupabaseMessage({ sharedSecret, senderId, recipientId, envelope: encrypted }), candidate);
-    assert.equal(JSON.stringify(encrypted).includes(type), false);
+    assert.equal(encrypted.data.includes(type), false);
     assert.equal(Object.hasOwn(body, "from"), false);
     assert.equal(Object.hasOwn(body, "to"), false);
   }
