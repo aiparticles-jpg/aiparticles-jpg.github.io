@@ -689,7 +689,7 @@ function startIncomingAttemptTimer(sid){
  state.callAttemptTimer=window.setTimeout(()=>{
   state.callAttemptTimer=null;
   if(state.callAttemptSid!==sid)return;
-  if(state.secure?.hello?.sid!==sid){clearIncomingAttemptTimer(sid);return}
+  if(state.secure?.hello?.sid!==sid&&state.secure?.incomingHello?.sid!==sid){clearIncomingAttemptTimer(sid);return}
   debug("Истёк локальный 45-секундный срок входящего вызова; sid="+sid+".");
   if(state.incomingCall)dismissIncoming(true);
   else if(state.answeringCall)hangup({notifyPeer:false,failure:true});
@@ -758,9 +758,9 @@ function startOutgoingCall({peer,expiresAt}){
 }
 async function rejectIncoming(){
  if(!state.incomingCall)return;
- clearIncomingAttemptTimer();
  try{
   await state.secure?.rejectIncoming();
+  clearIncomingAttemptTimer();
   clearIncomingUi();stopRinging();
   setStatus("Вызов отклонён","Вызывающий получил подтверждённое уведомление об отказе.","idle");
   debug("Входящий вызов явно отклонён; подтверждённое сообщение отправлено через ntfy.");
