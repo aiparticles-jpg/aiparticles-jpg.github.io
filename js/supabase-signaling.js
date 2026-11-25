@@ -1,8 +1,7 @@
-import { getNtfyTopic, getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./ntfy-identity.js?v=3";
+import { getCurrentSignalingIdentity, getPeerSignalingIdentity, isUserId } from "./local-identity.js?v=1";
 import { decryptContactRequestEnvelope } from "./contact-exchange.js?v=11";
 import { consumeIssuedInvitation, getIssuedInvitation, hasActiveInvitationGrant, getContact, updateContact, getNtfyCursor, saveNtfyCursor } from "./local-store.js?v=24";
 import { sendSupabaseMessage } from "./supabase-client.js?v=8";
-const BASE="https://ntfy.sh/";
 const enc=new TextEncoder();
 const stable=o=>JSON.stringify(o);
 const bytes=b=>b instanceof Uint8Array?b:new Uint8Array(b);
@@ -11,7 +10,7 @@ const un64=s=>{const x=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-
 const hex=b=>Array.from(bytes(b),x=>x.toString(16).padStart(2,"0")).join("");
 const digest=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b));
 
-export class NtfySecureSignaling {
+export class SupabaseSecureSignaling {
  constructor({me,peer,onSignal,onStatus,onReady,onError,onDebug,onIncoming,onContactRequest,onPeerMessage,onCancelIncoming,onDialing,onRejectOutgoing,onConversationEvent,onConversationDelivery,onConversationSent}) {
   this.me=me;this.peer=peer;this.peerName="";this.peerInvitationId=null;this.role=peer?(me<peer?"A":"B"):null;
   this.debugId=Array.from(crypto.getRandomValues(new Uint8Array(3)),x=>x.toString(16).padStart(2,"0")).join("");this.sseOpenCount=0;this.sseErrorCount=0;

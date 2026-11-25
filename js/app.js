@@ -1,6 +1,6 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
-import { NtfySecureSignaling } from "./ntfy-signaling.js?v=58";
-import { getCurrentSignalingIdentity } from "./ntfy-identity.js?v=3";
+import { SupabaseSecureSignaling } from "./supabase-signaling.js?v=1";
+import { getCurrentSignalingIdentity } from "./local-identity.js?v=1";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=26";
 import { verifyContactPackage } from "./contact-exchange.js?v=16";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
@@ -9,7 +9,7 @@ import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitation
 
 const $=id=>document.getElementById(id);
 const els={
- contactList:$("contacts-list"),appNotice:$("app-notice"),ntfyStatus:$("ntfy-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),invitationScreen:$("invitation-screen"),invitationScreenBack:$("invitation-screen-back"),invitationScreenStatus:$("invitation-screen-status"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
+ contactList:$("contacts-list"),appNotice:$("app-notice"),supabaseStatus:$("supabase-status"),renderStatus:$("render-status"),serviceWorkerStatus:$("service-worker-status"),webPushStatus:$("web-push-status"),profileDockButton:$("profile-dock-button"),profileDockLabel:$("profile-dock-label"),profileScreen:$("profile-screen"),profileScreenBack:$("profile-screen-back"),invitationScreen:$("invitation-screen"),invitationScreenBack:$("invitation-screen-back"),invitationScreenStatus:$("invitation-screen-status"),diagnosticDockButton:$("diagnostic-dock-button"),contactDiagnosticButton:$("contact-diagnostic-button"),contactDiagnosticsFooter:$("contact-diagnostics-footer"),debugMode:$("debug-mode"),diagnosticScreen:$("diagnostic-screen"),diagnosticScreenBack:$("diagnostic-screen-back"),addContactFab:$("add-contact-fab"),addContactScreen:$("add-contact-screen"),addContactScreenBack:$("add-contact-screen-back"),firstContactWelcome:$("first-contact-welcome"),contactListItems:$("contacts-list-items"),contactSearch:$("contact-search"),contactSearchClear:$("contact-search-clear"),contactListEmpty:$("contacts-list-empty"),contactsCount:$("contacts-count"),contactScreen:$("contact-screen"),contactScreenBack:$("contact-screen-back"),contactScreenHeader:$("contact-screen-header"),contactScreenHeaderPlaceholder:$("contact-screen-header-placeholder"),callScreen:$("call-screen"),callScreenAvatar:$("call-screen-avatar"),callScreenName:$("call-screen-name"),callScreenStatus:$("call-screen-status"),contactDiagnosticsPlaceholder:$("contact-diagnostics-placeholder"),contactScreenAvatar:$("contact-screen-avatar"),contactScreenName:$("contact-screen-name"),contactScreenCall:$("contact-screen-call"),callError:$("call-error-message"),answerIncoming:$("answer-incoming"),contactScreenMenu:$("contact-screen-menu"),openContactEdit:$("open-contact-edit"),openContactDelete:$("open-contact-delete"),contactEditScreen:$("contact-edit-screen"),contactEditScreenBack:$("contact-edit-screen-back"),contactDeleteScreen:$("contact-delete-screen"),contactDeleteScreenBack:$("contact-delete-screen-back"),contactDeleteName:$("contact-delete-name"),confirmDeleteContact:$("confirm-delete-contact"),cancelDeleteContact:$("cancel-delete-contact"),brandAbout:$("brand-about"),headerMenu:$("header-menu"),openAboutScreen:$("open-about-screen"),openSettingsScreen:$("open-settings-screen"),aboutScreen:$("about-screen"),aboutScreenBack:$("about-screen-back"),settingsScreen:$("settings-screen"),settingsScreenBack:$("settings-screen-back"),peer:$("peer-contact"),connect:$("connect"),dismissIncoming:$("dismiss-incoming"),rejectIncoming:$("reject-incoming"),contactEditTools:$("contact-edit-tools"),editContactName:$("edit-contact-name"),saveContactName:$("save-contact-name"),indicator:$("connection-indicator"),
  statusIcon:$("status-icon"),statusTitle:$("status-title"),statusText:$("status-text"),
  transport:$("transport-label"),tcp:$("tcp-fallback"),hangup:$("hangup"),micToggle:$("mic-toggle"),speakerToggle:$("speaker-toggle"),cameraToggle:$("camera-toggle"),cameraSwitch:$("camera-switch"),
  audio:$("remote-audio"),remoteVideo:$("remote-video"),localVideo:$("local-video"),callVideoStage:$("call-video-stage"),remoteVideoPlaceholder:$("remote-video-placeholder"),pilot:$("diagnostic-pilot"),cameraPilot:$("diagnostic-camera-pilot"),error:$("error-message"),debugLog:$("debug-log"),swDebugLog:$("sw-debug-log"),
@@ -109,12 +109,12 @@ async function findReusableContactResponseInvitation(userId){
 }
 const CONTACT_REPLY_FAILURES_KEY="vl.contactReplyFailures.v1";
 function loadContactReplyFailures(){
- try{const value=JSON.parse(localStorage.getItem(CONTACT_REPLY_FAILURES_KEY)||"[]");return new Set(Array.isArray(value)?value.filter(id=>NtfySecureSignaling.validUserId(id)):[])}
+ try{const value=JSON.parse(localStorage.getItem(CONTACT_REPLY_FAILURES_KEY)||"[]");return new Set(Array.isArray(value)?value.filter(id=>SupabaseSecureSignaling.validUserId(id)):[])}
  catch{return new Set()}
 }
 const contactReplyFailures=loadContactReplyFailures();
 function setContactReplyFailure(userId,failed){
- if(!NtfySecureSignaling.validUserId(userId))return;
+ if(!SupabaseSecureSignaling.validUserId(userId))return;
  if(failed)contactReplyFailures.add(userId);else contactReplyFailures.delete(userId);
  try{localStorage.setItem(CONTACT_REPLY_FAILURES_KEY,JSON.stringify([...contactReplyFailures]))}
  catch(error){debug("Не удалось сохранить статус ответного приглашения: "+(error.message||String(error)))}
@@ -124,7 +124,7 @@ function setContactReplyFailure(userId,failed){
 
 const CONTACT_REQUESTS_CONFIRMED_KEY="vl.contactRequestsConfirmed.v1";
 function loadConfirmedContactRequests(){
- try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_CONFIRMED_KEY)||"[]");return Array.isArray(value)?value.filter(id=>NtfySecureSignaling.validUserId(id)):[]}
+ try{const value=JSON.parse(localStorage.getItem(CONTACT_REQUESTS_CONFIRMED_KEY)||"[]");return Array.isArray(value)?value.filter(id=>SupabaseSecureSignaling.validUserId(id)):[]}
  catch{return []}
 }
 const completedContactRequests=new Set(loadConfirmedContactRequests());
@@ -133,7 +133,7 @@ function persistConfirmedContactRequests(){
  catch(error){debug("Не удалось сохранить подтверждение обмена приглашениями: "+(error.message||String(error)))}
 }
 function markContactRequestReceived(userId){
- if(!NtfySecureSignaling.validUserId(userId))return;
+ if(!SupabaseSecureSignaling.validUserId(userId))return;
  let changed=false;
  if(!completedContactRequests.has(userId)){
   completedContactRequests.add(userId);
@@ -463,7 +463,7 @@ function updateCallButtons(){
  updateCallVideoStage();
  els.answerIncoming.disabled=state.connecting;
  els.dismissIncoming.disabled=state.connecting;
- const selectedPeer=NtfySecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
+ const selectedPeer=SupabaseSecureSignaling.validUserId(els.peer.value)&&els.peer.value!==state.me;
  const callBlocked=!state.incomingCall&&!selectedPeer;
  els.contactScreenCall.disabled=active||state.connecting||callBlocked;
  els.contactScreenCall.setAttribute("aria-label",state.incomingCall?"Ответить на звонок":callBlocked?"Выберите контакт":"Позвонить");
@@ -696,7 +696,7 @@ function startIncomingAttemptTimer(sid,receivedAt=performance.now()){
  },remaining);
 }
 function setCallPeer(peerId,fallbackLabel=""){
- state.callPeer=NtfySecureSignaling.validUserId(peerId)&&peerId!==state.me?peerId:"";
+ state.callPeer=SupabaseSecureSignaling.validUserId(peerId)&&peerId!==state.me?peerId:"";
  const item=state.callPeer?Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(node=>node.dataset.peer===state.callPeer):null;
  const label=item?.querySelector(".contact-list-name")?.textContent?.trim()||String(fallbackLabel||"").trim()||"Контакт";
  state.callPeerLabel=label;
@@ -707,7 +707,7 @@ function setCallPeer(peerId,fallbackLabel=""){
 function showIncomingCall({peer,peerId,sid,receivedAt}){
  if(state.connecting||state.callStarted||state.incomingCall||!sid)return;
  const incomingPeer=peerId||state.secure?.peer||"";
- if(!NtfySecureSignaling.validUserId(incomingPeer)||incomingPeer===state.me)return;
+ if(!SupabaseSecureSignaling.validUserId(incomingPeer)||incomingPeer===state.me)return;
  if(state.outgoingCall){
   if(state.secure?.role!=="A"||state.secure?.hello)return;
   stopOutgoingCall();
@@ -822,7 +822,7 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera
   diagnosticPilot,
   diagnosticCamera,
   audioDiagnostics,
-  initiator:NtfySecureSignaling.validUserId(me)&&NtfySecureSignaling.validUserId(peer)&&me<peer,
+  initiator:SupabaseSecureSignaling.validUserId(me)&&SupabaseSecureSignaling.validUserId(peer)&&me<peer,
   onRemoteHangup:()=>handleRemoteHangup(),
   sendSignal:payload=>state.secure.sendSignal(payload),
   onLocalVideoStream:stream=>{
@@ -905,12 +905,12 @@ async function ensureWebRtc(){
  if(!state.webrtc)state.webrtc=createWebRtcInstance();
 }
 function createSecureSignaling(me,peer=""){
- return new NtfySecureSignaling({
+ return new SupabaseSecureSignaling({
   me,peer,
   onSignal:handleSignal,
   onStatus:m=>{
    els.statusText.textContent=m;debug(m);
-   setServiceStatus(els.ntfyStatus,m.includes("переподключ")?"Переподключается…":"Подключён");
+   setServiceStatus(els.supabaseStatus,"Подключён");
   },
   onIncoming:showIncomingCall,
   onContactRequest:handleIncomingContactRequest,
@@ -937,12 +937,12 @@ function createSecureSignaling(me,peer=""){
  });
 }
 async function subscribeForUser(me){
- if(!NtfySecureSignaling.validUserId(me))return false;
+ if(!SupabaseSecureSignaling.validUserId(me))return false;
  if(!state.supabaseUserId)throw Error("Supabase Auth недоступен. Для защищённого обмена требуется подключение к Supabase.");
  if(state.secure&&state.secure.me===me&&!state.secure.closed){await state.secure.subscribe();return true}
  if(state.secure){state.secure.close();state.secure=null}
  const peer=els.peer.value;
- const subscription=createSecureSignaling(me,NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
+ const subscription=createSecureSignaling(me,SupabaseSecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  state.secure=subscription;
  els.debugUrl.textContent="Supabase · "+state.supabaseUserId.slice(0,12)+"…";
  setStatus("Подключено к Supabase","Входящие сообщения поступают через защищённый Supabase inbox.","live");
@@ -1047,7 +1047,7 @@ async function onSecureReady(){
  setStatus("Защищённый канал установлен","Запускаем голосовой канал.","wait");
  debug("Защищённый канал установлен; secure-role="+state.role+"; peer="+(state.secure?.peer||els.peer.value)+".");
  const peerId=state.secure?.peer||els.peer.value;
- if(NtfySecureSignaling.validUserId(peerId)){
+ if(SupabaseSecureSignaling.validUserId(peerId)){
   try{
    await updateContact(peerId,{last_interaction_at:new Date().toISOString()});
    await refreshContactOptions(peerId);
@@ -1091,7 +1091,7 @@ async function connect(){
   // Keep a matching prepared PC even while its ICE gathering is still running.
   if(state.webrtc){await state.webrtc.close({stopTracks:true});state.webrtc=null}
   state.callStarted=false;state.peerPresent=false;
-  if(!NtfySecureSignaling.validUserId(me)||!NtfySecureSignaling.validUserId(peer)||me===peer)throw Error("Выберите сохранённый контакт. Собеседник должен отличаться от вашей идентичности.");
+  if(!SupabaseSecureSignaling.validUserId(me)||!SupabaseSecureSignaling.validUserId(peer)||me===peer)throw Error("Выберите сохранённый контакт. Собеседник должен отличаться от вашей идентичности.");
   
   if(state.secure&&state.secure.me!==me){state.secure.close();state.secure=null}
   if(!state.secure)state.secure=createSecureSignaling(me,peer);
@@ -1790,7 +1790,7 @@ async function nextGeneratedContactName(){
  return "Новый контакт "+generatedContactNameNumber;
 }
 async function handleIncomingContactRequest(request){
-  const id=request?.contact?.user_id;if(!NtfySecureSignaling.validUserId(id)||id===state.me)return;
+  const id=request?.contact?.user_id;if(!SupabaseSecureSignaling.validUserId(id)||id===state.me)return;
   try{
    const existing=await getContact(id);
    if(existing?.request_id===request.requestId){debug("Повторная доставка уже обработанного запроса контакта пропущена.");return}
@@ -1845,7 +1845,7 @@ async function declineContactRequest(){
 async function saveSelectedContactName(){
  const peer=els.peer.value;
  const name=els.editContactName.value.trim();
- if(!NtfySecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите сохранённый контакт.");return}
+ if(!SupabaseSecureSignaling.validUserId(peer)||peer===state.me){showError("Сначала выберите сохранённый контакт.");return}
  if(!name){showError("Укажите имя контакта.");els.editContactName.focus();return}
  if(state.connecting||state.callStarted||state.peerPresent||state.outgoingCall||state.incomingCall){showError("Завершите текущий вызов, чтобы изменить имя контакта.");return}
  els.saveContactName.disabled=true;
@@ -1874,7 +1874,7 @@ async function saveSelectedContactName(){
 
 async function deleteSelectedContact(){
  const peer=els.peer.value;
- if(!NtfySecureSignaling.validUserId(peer)){
+ if(!SupabaseSecureSignaling.validUserId(peer)){
   showError("Сначала выберите сохранённый контакт.");
   return;
  }
@@ -2349,7 +2349,7 @@ function conversationEventLabel(event){
  return "Событие";
 }
 async function renderConversation(contactUserId){
- if(!els.chatEvents||!NtfySecureSignaling.validUserId(contactUserId))return;
+ if(!els.chatEvents||!SupabaseSecureSignaling.validUserId(contactUserId))return;
  const events=await listConversationEvents(contactUserId);
  if(els.peer.value!==contactUserId)return;
  els.chatEvents.replaceChildren();
@@ -2493,7 +2493,7 @@ function openContactScreen(item,preserveSelection=false,{returnTo="main"}={}){
  els.contactScreenBack.focus();
 }
 async function openChatFromNotification(senderId){
- if(!NtfySecureSignaling.validUserId(senderId)||senderId===state.me)return false;
+ if(!SupabaseSecureSignaling.validUserId(senderId)||senderId===state.me)return false;
  let item=Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(node=>node.dataset.peer===senderId);
  if(!item){
   await refreshContactOptions();
@@ -2591,7 +2591,7 @@ els.peer.addEventListener("change",()=>{
  if(state.incomingCall&&peer!==state.secure?.peer)dismissIncoming(false);
  if(state.secure&&!state.secure.active&&!state.connecting){
   const me=state.me;
-  state.secure.setPeer(NtfySecureSignaling.validUserId(peer)&&peer!==me?peer:"");
+  state.secure.setPeer(SupabaseSecureSignaling.validUserId(peer)&&peer!==me?peer:"");
  }
 
 });
