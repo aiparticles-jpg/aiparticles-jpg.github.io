@@ -180,7 +180,7 @@ function updateReplyInviteStatus(){
  const wasSent=!!sentContactRequests[peer]&&!completedContactRequests.has(peer);
  setInlineStatus(els.replyInviteStatus,wasSent?"Ответное приглашение этому контакту уже отправлялось. При необходимости его можно послать ещё раз.":"");
 }
-const state={secure:null,webrtc:null,supabaseUserId:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callPeer:"",callPeerLabel:"",callReturnFocus:null,micMuted:false,speakerOutputId:null,audioOutputCount:null,audioOutputCheckPending:false};
+const state={secure:null,webrtc:null,supabaseUserId:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callAttemptTimer:null,callAttemptSid:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callPeer:"",callPeerLabel:"",callReturnFocus:null,micMuted:false,speakerOutputId:null,audioOutputCount:null,audioOutputCheckPending:false};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
 function scrollDiagnosticLogToBottom(element){
@@ -678,6 +678,25 @@ function clearIncomingUi(){
  if(state.incomingTimer){clearTimeout(state.incomingTimer);state.incomingTimer=null}
  state.incomingCall=false;els.answerIncoming.classList.add("hidden");els.dismissIncoming.classList.add("hidden");els.rejectIncoming.classList.add("hidden");updateCallButtons();
 }
+function clearIncomingAttemptTimer(sid=null){
+ if(sid&&state.callAttemptSid!==sid)return;
+ if(state.callAttemptTimer){clearTimeout(state.callAttemptTimer);state.callAttemptTimer=null}
+ state.callAttemptSid=null;
+}
+function startIncomingAttemptTimer(sid,receivedAt=performance.now()){
+ clearIncomingAttemptTimer();
+ state.callAttemptSid=sid;
+ const remaining=Math.max(0,45000-(performance.now()-receivedAt));
+ state.callAttemptTimer=window.setTimeout(()=>{
+  state.callAttemptTimer=null;
+  if(state.callAttemptSid!==sid)return;
+  if(state.secure?.hello?.sid!==sid&&state.secure?.incomingHello?.sid!==sid){clearIncomingAttemptTimer(sid);return}
+  debug("Истёк локальный 45-секундный срок входящего вызова; sid="+sid+".");
+  if(state.incomingCall)dismissIncoming(true);
+  else if(state.answeringCall)hangup({notifyPeer:false,failure:true});
+  else clearIncomingAttemptTimer(sid);
+ },remaining);
+}
 function setCallPeer(peerId,fallbackLabel=""){
  state.callPeer=NtfySecureSignaling.validUserId(peerId)&&peerId!==state.me?peerId:"";
  const item=state.callPeer?Array.from(els.contactList.querySelectorAll(".contact-list-item[data-peer]")).find(node=>node.dataset.peer===state.callPeer):null;
@@ -687,10 +706,8 @@ function setCallPeer(peerId,fallbackLabel=""){
  els.callScreenAvatar.textContent=contactInitials(label);
  els.callScreenAvatar.style.backgroundColor=contactAvatarColor(state.callPeer);
 }
-function showIncomingCall({peer,peerId,expiresAt}){
- if(state.connecting||state.callStarted||state.incomingCall)return;
- const remaining=Math.max(0,expiresAt-Date.now());
- if(!remaining)return;
+function showIncomingCall({peer,peerId,sid,receivedAt}){
+ if(state.connecting||state.callStarted||state.incomingCall||!sid)return;
  const incomingPeer=peerId||state.secure?.peer||"";
  if(!NtfySecureSignaling.validUserId(incomingPeer)||incomingPeer===state.me)return;
  if(state.outgoingCall){
@@ -699,6 +716,7 @@ function showIncomingCall({peer,peerId,expiresAt}){
   debug("Одновременный вызов: роль A принимает входящий запрос; исходящий запрос отменён локально.");
  }
  setCallPeer(incomingPeer,peer);
+ startIncomingAttemptTimer(sid,receivedAt);
  state.incomingCall=true;
  els.answerIncoming.classList.remove("hidden");els.dismissIncoming.classList.remove("hidden");els.rejectIncoming.classList.remove("hidden");
  openCallScreen();
@@ -707,7 +725,6 @@ function showIncomingCall({peer,peerId,expiresAt}){
  setStatus("Входящий вызов","Вам звонит "+state.callPeerLabel+". Нажмите «Ответить», «Отклонить» или «Скрыть вызов».","wait");
  debug("Входящий вызов от "+state.callPeerLabel+".");
  startRinging("incoming");
- state.incomingTimer=setTimeout(()=>dismissIncoming(true),remaining);
 }
 function stopOutgoingCall(){
  if(state.callTimer){clearTimeout(state.callTimer);state.callTimer=null}
@@ -744,6 +761,7 @@ async function rejectIncoming(){
  if(!state.incomingCall)return;
  try{
   await state.secure?.rejectIncoming();
+  clearIncomingAttemptTimer();
   clearIncomingUi();stopRinging();
   setStatus("Вызов отклонён","Вызывающий получил подтверждённое уведомление об отказе.","idle");
   debug("Входящий вызов явно отклонён; подтверждённое сообщение отправлено через ntfy.");
@@ -752,6 +770,7 @@ async function rejectIncoming(){
 }
 async function dismissIncoming(timedOut=false){
  if(!state.incomingCall)return;
+ clearIncomingAttemptTimer();
  clearIncomingUi();stopRinging();state.secure?.dismissIncoming();
  if(timedOut){
   setStatus("Вызов скрыт","Время ожидания истекло. Вызывающий не получил уведомление об отклонении.","idle");
@@ -859,6 +878,7 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera
    const event=String(value).match(/(?:^|\s)(connection-[a-z]+|ice-[a-z]+)\.?$/)?.[1]||value;
    if(event==="local-audio-ready"||event==="Симуляция камеры включена: передаётся тестовое изображение."||event==="Камера выключена."||event==="Камера остановлена устройством.")updateCallButtons();
    else if(event==="connection-connected"){
+    clearIncomingAttemptTimer();
     if(state.disconnectTimer){clearTimeout(state.disconnectTimer);state.disconnectTimer=null}
     updateCallButtons();if(els.callScreenStatus)els.callScreenStatus.textContent="На связи";els.transport.textContent="Прямой WebRTC / P2P";setStatus("WebRTC соединение установлено","Проверяем передачу аудио между устройствами.","live")
    }
@@ -902,6 +922,7 @@ function createSecureSignaling(me,peer=""){
   onConversationSent:async event=>{await updateConversationMessageDeliveryStatus(event.contact_user_id,event.message_id,"sent");if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить статус отправки: "+(error.message||String(error))))},
   onCancelIncoming:info=>{
    if(state.incomingCall){
+    clearIncomingAttemptTimer(info.sid);
     clearIncomingUi();
     stopRinging();
     state.secure?.dismissIncoming();
@@ -1129,6 +1150,7 @@ async function connect(){
 }
 async function hangup({notifyPeer=true,remote=false,failure=false}={}){
  if(state.hangingUp)return;
+ clearIncomingAttemptTimer();
  state.hangingUp=true;updateCallButtons();
  if(notifyPeer&&state.outgoingCall&&state.secure?.role==="B"){
   setStatus("Отменяем вызов","Уведомляем собеседника через ntfy.","wait");
