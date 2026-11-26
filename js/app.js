@@ -905,7 +905,21 @@ function createSecureSignaling(me,peer=""){
   },
   onIncoming:showIncomingCall,
   onPeerMessage:markContactRequestReceived,
-  onConversationEvent:async event=>{await addConversationEvent(event);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить историю контакта: "+(error.message||String(error))))},
+  onConversationEvent:async event=>{
+   await addConversationEvent(event);
+   const storedEvents=await listConversationEvents(event.contact_user_id);
+   const storedEvent=storedEvents.find(item=>item.id===event.id);
+   if(!storedEvent||storedEvent.type!==event.type||storedEvent.direction!==event.direction||
+      (event.type==="text"&&storedEvent.text!==event.text)){
+    throw Error("Локальная проверка истории не подтвердила сохранение события "+String(event.id).slice(0,12)+".");
+   }
+   if(event.type==="text")debug("[chat-store] сообщение подтверждено повторным чтением IndexedDB; contact="+event.contact_user_id.slice(0,10)+"; direction="+event.direction+"; textLength="+event.text.length+".");
+   if(els.peer.value===event.contact_user_id){
+    await renderConversation(event.contact_user_id);
+    const rendered=els.chatEvents?.querySelectorAll(".chat-message-bubble").length||0;
+    debug("[chat-ui] история перерисована; contact="+event.contact_user_id.slice(0,10)+"; textBubbles="+rendered+".");
+   }
+  },
   onConversationDelivery:async event=>{await markConversationMessageDelivered(event.contact_user_id,event.message_id,event.delivered_at);if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить статус доставки: "+(error.message||String(error))))},
   onConversationSent:async event=>{await updateConversationMessageDeliveryStatus(event.contact_user_id,event.message_id,"sent");if(els.peer.value===event.contact_user_id)renderConversation(event.contact_user_id).catch(error=>debug("Не удалось обновить статус отправки: "+(error.message||String(error))))},
   onCancelIncoming:info=>{
