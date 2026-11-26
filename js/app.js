@@ -2643,6 +2643,17 @@ async function initializeApp(){
    const supabaseIdentity=await getSupabaseIdentity();
    state.supabaseUserId=supabaseIdentity.user_id;
    debug("Supabase Anonymous Auth готов; UUID="+state.supabaseUserId+".");
+   const fragment=new URLSearchParams(window.location.hash.slice(1));
+   const deepLinkInvitation=fragment.has("contact");
+   if(deepLinkInvitation){
+    els.contactPackage.value=window.location.hash;
+    updatePasteContactButton();
+    openAddContactScreen(false,{preserveInput:true});
+    const cleanUrl=new URL(window.location.href);
+    cleanUrl.hash="";
+    window.history.replaceState(null,"",cleanUrl.href);
+   }
+
   }catch(error){
    state.supabaseUserId=null;
    throw new Error("Supabase Auth недоступен: "+(error.message||String(error)));
@@ -2652,6 +2663,7 @@ async function initializeApp(){
   await redeemPendingSupabaseInvitations();
   await flushPendingSupabaseOutboxes("запуск приложения");
   await refreshContactOptions();
+   if(deepLinkInvitation)await validateContactInvitation(els.contactPackage.value,"Ссылка-приглашение");
   if(!state.supabaseUserId)throw Error("Supabase Auth не инициализирован.");
   const subscribed=await subscribeForUser(state.me);
   try{startSupabaseInbox()}catch(error){throw new Error("Не удалось запустить Supabase inbox: "+(error.message||String(error)))}
@@ -2664,17 +2676,6 @@ async function initializeApp(){
    window.history.replaceState(null,"",cleanUrl.href);
   }
 
-  const fragment=new URLSearchParams(window.location.hash.slice(1));
-  if(fragment.has("contact")){
-    els.contactPackage.value=window.location.hash;
-    updatePasteContactButton();
-    openAddContactScreen(false,{preserveInput:true,fromInvitation:true});
-    // Keep the invitation in the form, but remove it from the address bar
-    // so a page refresh does not reopen the same deep link.
-    const cleanUrl=new URL(window.location.href);
-     cleanUrl.hash="";
-     window.history.replaceState(null,"",cleanUrl.href);
-   }
   const contacts=await listContacts();
   els.debugUrl.textContent="Supabase · "+(state.supabaseUserId?state.supabaseUserId.slice(0,12)+"…":"недоступен");
   setStatus("Локальная идентичность готова",contacts.length?"Выберите контакт для звонка.":"Сохранённых контактов пока нет.","idle");
