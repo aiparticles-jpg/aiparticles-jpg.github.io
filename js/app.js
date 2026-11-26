@@ -2415,7 +2415,12 @@ function syncChatVisualViewport(){
  const height=viewport?.height||window.innerHeight;
  // Chrome on Android may pan the layout viewport to keep the focused textarea visible.
  // pageTop includes that automatic page scroll as well as visual-viewport offset.
- const top=viewport?(Number.isFinite(viewport.pageTop)?viewport.pageTop:(window.scrollY+(viewport.offsetTop||0))):window.scrollY;
+ // Firefox for Android reports document pageTop while the keyboard is open;
+ // using it as the fixed overlay's top makes the whole chat follow page panning.
+ // offsetTop is relative to the layout viewport and keeps the chat aligned
+ // with the visible viewport without moving its header with document scroll.
+ const isFirefox= /Firefox\\//.test(navigator.userAgent);
+ const top=viewport?(isFirefox?(viewport.offsetTop||0):(Number.isFinite(viewport.pageTop)?viewport.pageTop:(window.scrollY+(viewport.offsetTop||0)))):window.scrollY;
  root.style.setProperty("--vl-chat-viewport-height",Math.max(1,height)+"px");
  root.style.setProperty("--vl-chat-viewport-top",Math.max(0,top)+"px");
 }
