@@ -1614,6 +1614,7 @@ async function processSupabaseInboxRecord(record,source){
     };
     await saveContact(contactData);
     contact=await findContactBySupabaseUserId(record.sender_id);
+    await refreshContactOptions();
     message=candidate;
     debug("Supabase v1: первое зашифрованное сообщение приняло приглашение и создало контакт «"+contact.name+"».");
     break;
