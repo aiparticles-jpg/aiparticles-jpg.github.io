@@ -1,4 +1,4 @@
-import { getCurrentSignalingIdentity } from "./ntfy-identity.js";
+import { getCurrentSignalingIdentity } from "./local-identity.js?v=2";
 import { getContact } from "./local-store.js";
 
 const BACKEND_URL = "https://signal-backend-9tai.onrender.com";
