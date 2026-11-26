@@ -276,11 +276,15 @@ async handle(event){
  }
  async inspectTextMessage(n,m){
   const p=m?.payload;
-  if(m?.v!==1||m?.type!=="text"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
-  let valid=false;try{valid=await this.verifySupabasePayload("text",p)}catch(error){this.onDebug("[message] ошибка проверки текста: "+(error.message||String(error)));return;}
-  if(!valid)return;
+  if(m?.v!==1||m?.type!=="text"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me){
+   throw Error("Входящее text отклонено: неверная версия, тип, адресат или идентификатор отправителя.");
+  }
+  let valid=false;
+  try{valid=await this.verifySupabasePayload("text",p)}
+  catch(error){this.onDebug("[message] ошибка проверки текста: "+(error.message||String(error)));throw error;}
+  if(!valid)throw Error("Входящее text не прошло проверку payload или разрешения контакта; recipient cursor не продвинут.");
   const saved=await this.recordConversationEvent("text",p,"incoming",Number(p.created_at));
-  if(!saved){this.onDebug("[message] сообщение проверено, но не удалось сохранить локально; подтверждение доставки не отправлено.");return;}
+  if(!saved)throw Error("Входящее text проверено, но не удалось сохранить его в локальную историю; подтверждение доставки не отправлено.");
   try{
    const receipt={message_id:p.message_id,from:this.me,to:p.from,created_at:Date.now()};
    await this.publish(p.from,await this.authenticated("delivered",receipt));
@@ -291,11 +295,15 @@ async handle(event){
  }
  async inspectDeliveryReceipt(n,m){
   const p=m?.payload;
-  if(m?.v!==1||m?.type!=="delivered"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me)return;
-  let valid=false;try{valid=await this.verifySupabasePayload("delivered",p)}catch(error){this.onDebug("[message] ошибка проверки подтверждения доставки: "+(error.message||String(error)));return;}
-  if(!valid)return;
+  if(m?.v!==1||m?.type!=="delivered"||!p||p.to!==this.me||!isUserId(p.from)||p.from===this.me){
+   throw Error("Подтверждение доставки отклонено: некорректный payload или адресат.");
+  }
+  let valid=false;
+  try{valid=await this.verifySupabasePayload("delivered",p)}
+  catch(error){this.onDebug("[message] ошибка проверки подтверждения доставки: "+(error.message||String(error)));throw error;}
+  if(!valid)throw Error("Подтверждение доставки не прошло проверку payload или разрешения контакта; recipient cursor не продвинут.");
   try{await this.onConversationDelivery({contact_user_id:p.from,message_id:p.message_id,delivered_at:new Date(Number(p.created_at)||Date.now()).toISOString()});}
-  catch(error){this.onDebug("[message] не удалось обновить статус доставки: "+(error.message||String(error)));}
+  catch(error){this.onDebug("[message] не удалось обновить статус доставки: "+(error.message||String(error)));throw error;}
   if(n?.id)this.rememberSeen(n.id);
  }
  async sendText(to,text){

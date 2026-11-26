@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
-import { SupabaseSecureSignaling } from "./supabase-signaling.js?v=3";
+import { SupabaseSecureSignaling } from "./supabase-signaling.js?v=4";
 import { getCurrentSignalingIdentity } from "./local-identity.js?v=2";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=26";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage } from "./contact-exchange.js?v=17";
