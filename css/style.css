@@ -329,7 +329,8 @@ footer { display:flex; justify-content:space-between; gap:12px; padding:20px 3px
 
 
 /* Full-screen contact view */
-body.contact-screen-open{overflow:hidden}
+html:has(body.contact-screen-open){overflow:hidden;overscroll-behavior:none}
+body.contact-screen-open{overflow:hidden;overscroll-behavior:none}
 .contact-screen{
  position:fixed;inset:0;z-index:200;width:100%;height:var(--vl-chat-viewport-height,100dvh);top:var(--vl-chat-viewport-top,0px);bottom:auto;
  display:flex;flex-direction:column;background:var(--bg);
