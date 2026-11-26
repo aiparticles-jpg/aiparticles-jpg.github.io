@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
-import { SupabaseSecureSignaling } from "./supabase-signaling.js?v=2";
+import { SupabaseSecureSignaling } from "./supabase-signaling.js?v=3";
 import { getCurrentSignalingIdentity } from "./local-identity.js?v=2";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=26";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage } from "./contact-exchange.js?v=17";
@@ -893,10 +893,7 @@ function setSecurePeer(peer=""){
  if(!state.secure||state.secure.active||state.connecting)return;
  const nextPeer=SupabaseSecureSignaling.validUserId(peer)&&peer!==state.secure.me?peer:"";
  if(state.secure.peer===nextPeer)return;
- state.secure.peer=nextPeer;
- state.secure.role=nextPeer?(state.secure.me<nextPeer?"A":"B"):null;
- state.secure.peerName="";
- state.secure.peerInvitationId=null;
+ state.secure.setPeer(nextPeer);
 }
 function createSecureSignaling(me,peer=""){
  return new SupabaseSecureSignaling({
