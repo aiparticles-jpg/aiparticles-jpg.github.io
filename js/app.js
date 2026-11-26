@@ -2419,7 +2419,7 @@ function syncChatVisualViewport(){
  // using it as the fixed overlay's top makes the whole chat follow page panning.
  // offsetTop is relative to the layout viewport and keeps the chat aligned
  // with the visible viewport without moving its header with document scroll.
- const isFirefox= /Firefox\\//.test(navigator.userAgent);
+ const isFirefox= navigator.userAgent.includes("Firefox/");
  const top=viewport?(isFirefox?(viewport.offsetTop||0):(Number.isFinite(viewport.pageTop)?viewport.pageTop:(window.scrollY+(viewport.offsetTop||0)))):window.scrollY;
  root.style.setProperty("--vl-chat-viewport-height",Math.max(1,height)+"px");
  root.style.setProperty("--vl-chat-viewport-top",Math.max(0,top)+"px");
