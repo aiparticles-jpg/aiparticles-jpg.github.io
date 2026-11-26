@@ -49,11 +49,11 @@ export class SupabaseSecureSignaling {
    }
    const eventId="supabase:"+record.sender_id+":"+message.seq;
    const payload={...message.body,from:contact.user_id,to:this.me};
-   const event={data:JSON.stringify({
+   const event={
     id:eventId,
     time:Date.parse(record.created_at)/1000,
     message:JSON.stringify({v:1,type:message.type,payload})
-   })};
+   };
    try{
     // Chat and receipts are independent of whichever peer currently owns the
     // single active WebRTC session. Process them through the common v1 validator.
