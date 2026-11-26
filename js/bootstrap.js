@@ -41,7 +41,7 @@ async function startVoiceLink() {
           return;
         }
 
-        await import("./app.js?v=310");
+        await import("./app.js?v=311");
         await new Promise(resolve => window.addEventListener("pagehide", resolve, { once: true }));
       }
     );
