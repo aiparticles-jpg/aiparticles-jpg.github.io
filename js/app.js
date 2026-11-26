@@ -2647,7 +2647,7 @@ async function initializeApp(){
    state.supabaseUserId=supabaseIdentity.user_id;
    debug("Supabase Anonymous Auth готов; UUID="+state.supabaseUserId+".");
    const fragment=new URLSearchParams(window.location.hash.slice(1));
-   const deepLinkInvitation=fragment.has("contact");
+   deepLinkInvitation=fragment.has("contact");
    if(deepLinkInvitation){
     const invitationUrl=new URL(window.location.href);
     invitationUrl.protocol="https:";
