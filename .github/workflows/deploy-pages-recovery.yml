@@ -113,6 +113,19 @@ jobs:
               raise SystemExit("Could not find the application entry-point cache-busting URL in index.html")
 
           path.write_text(html, encoding="utf-8")
+
+          bootstrap_path = Path("js/bootstrap.js")
+          bootstrap = bootstrap_path.read_text(encoding="utf-8")
+          bootstrap, bootstrap_count = re.subn(
+              r'import\("\./app\.js\?v=[^"]+"\)',
+              lambda match: f'import("./app.js?v={cache_version}")',
+              bootstrap,
+              count=1,
+          )
+          if bootstrap_count != 1:
+              raise SystemExit("Could not find the dynamic app.js import in js/bootstrap.js")
+          bootstrap_path.write_text(bootstrap, encoding="utf-8")
+
           print(f"Application version: {version}")
           print(f"JavaScript cache key: {cache_version}")
           PY
