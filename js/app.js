@@ -1,5 +1,5 @@
 import { WebRtcAudio } from "./webrtc.js?v=40";
-import { SupabaseSecureSignaling } from "./supabase-signaling.js?v=5";
+import { SupabaseSecureSignaling } from "./supabase-signaling.js?v=6";
 import { getCurrentSignalingIdentity } from "./local-identity.js?v=2";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=26";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage } from "./contact-exchange.js?v=17";
@@ -1914,17 +1914,18 @@ async function importContactFromInput(){
   await saveContact(existing
    ?{...existing,...verified,name:existing.name,last_interaction_at:addedAt}
    :{...verified,name,last_interaction_at:addedAt});
+  if(saveSenderName){
+   els.profileDisplayName.value=senderDisplayName;
+   persistProfileDisplayName();
+   debug("Имя отправителя сохранено в профиле по выбору пользователя.");
+  }
   const savedContact=await getContact(verified.user_id);
   if(savedContact?.supabase_user_id&&savedContact?.supabase_invitation_id&&!savedContact.supabase_invitation_attempted_at&&!savedContact.supabase_invitation_redeemed_at){
    await redeemSupabaseInvitationOnce(savedContact,"сразу после импорта");
   }
   await refreshContactOptions(verified.user_id);
   if(state.secure&&!state.secure.active&&!state.connecting)setSecurePeer(verified.user_id);
-  if(saveSenderName){
-   els.profileDisplayName.value=senderDisplayName;
-   persistProfileDisplayName();
-   debug("Имя отправителя сохранено в профиле по выбору пользователя.");
-  }
+
   els.contactPackage.value="";
   updatePasteContactButton();
   els.contactName.value="";
