@@ -2648,7 +2648,10 @@ async function initializeApp(){
    const fragment=new URLSearchParams(window.location.hash.slice(1));
    const deepLinkInvitation=fragment.has("contact");
    if(deepLinkInvitation){
-    els.contactPackage.value=window.location.hash;
+    const invitationUrl=new URL(window.location.href);
+    invitationUrl.protocol="https:";
+    invitationUrl.search="";
+    els.contactPackage.value=invitationUrl.href;
     updatePasteContactButton();
     openAddContactScreen(false,{preserveInput:true});
     const cleanUrl=new URL(window.location.href);
