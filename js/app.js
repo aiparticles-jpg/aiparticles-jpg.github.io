@@ -2633,6 +2633,7 @@ try{els.cameraPilot.checked=localStorage.getItem("vl.simulateCamera.v1")==="1"}c
 els.dismissIncoming.classList.add("hidden");
 async function initializeApp(){
  debug("Браузер: "+getBrowserDiagnosticName()+"; платформа: "+(navigator.userAgentData?.platform||navigator.platform||"не определена")+"; UA: "+(navigator.userAgent||"нет"));
+ let deepLinkInvitation=false;
  try{
   // Remove obsolete extractable legacy keys; the active identity and trust records live in IndexedDB.
   try{
