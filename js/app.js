@@ -1185,7 +1185,7 @@ let allContacts=[];
  const list=els.contactList;
  const search=document.querySelector(".contacts-search-strip");
  if(!list||!search)return;
- let reveal=0,lastY=null,activeTouchId=null,mouseDragging=false;
+ let reveal=0,lastY=null,activeTouchId=null,mouseDragging=false,lastMoveAt=0,velocity=0,momentumFrame=0;
  const searchHeight=()=>search.getBoundingClientRect().height||54;
  const setReveal=value=>{
   reveal=Math.max(0,Math.min(searchHeight(),value));
@@ -1203,14 +1203,31 @@ let allContacts=[];
    setReveal(reveal-delta);
   }
  };
- const begin=y=>{lastY=y;};
+ const stopMomentum=()=>{if(momentumFrame){cancelAnimationFrame(momentumFrame);momentumFrame=0;}};
+ const begin=y=>{stopMomentum();lastY=y;lastMoveAt=performance.now();velocity=0;};
  const move=y=>{
   if(lastY===null)return;
-  const delta=lastY-y;
-  if(Math.abs(delta)>0.05)moveBy(delta);
-  lastY=y;
+  const delta=lastY-y,now=performance.now(),elapsed=Math.max(1,now-lastMoveAt);
+  if(Math.abs(delta)>0.05){
+   moveBy(delta);
+   const instant=delta/elapsed;
+   velocity=velocity*0.65+instant*0.35;
+  }
+  lastY=y;lastMoveAt=now;
  };
- const finish=()=>{lastY=null;activeTouchId=null;mouseDragging=false;};
+ const finish=(withMomentum=false)=>{
+  lastY=null;activeTouchId=null;mouseDragging=false;
+  if(!withMomentum||Math.abs(velocity)<0.12){velocity=0;return;}
+  let speed=velocity,previous=performance.now();
+  const tick=now=>{
+   const elapsed=Math.min(32,now-previous);previous=now;
+   moveBy(speed*elapsed);
+   speed*=Math.pow(0.92,elapsed/16.67);
+   if(Math.abs(speed)>0.015)momentumFrame=requestAnimationFrame(tick);
+   else{momentumFrame=0;velocity=0;}
+  };
+  momentumFrame=requestAnimationFrame(tick);
+ };
  // Touch Events are tracked on window so moving across child elements or layer boundaries
  // cannot lose the drag. preventDefault keeps the browser from cancelling it for page scroll.
  list.addEventListener("touchstart",event=>{
@@ -1228,9 +1245,9 @@ let allContacts=[];
  },{passive:false,capture:true});
  window.addEventListener("touchend",event=>{
   if(activeTouchId===null)return;
-  if(Array.from(event.changedTouches).some(item=>item.identifier===activeTouchId))finish();
+  if(Array.from(event.changedTouches).some(item=>item.identifier===activeTouchId))finish(true);
  },{capture:true});
- window.addEventListener("touchcancel",finish,{capture:true});
+ window.addEventListener("touchcancel",()=>finish(false),{capture:true});
  // Mouse/pen support without setPointerCapture or lostpointercapture.
  list.addEventListener("pointerdown",event=>{
   if(event.pointerType==="touch"||event.button!==0)return;
@@ -1242,10 +1259,10 @@ let allContacts=[];
   move(event.clientY);
  },{passive:false});
  window.addEventListener("pointerup",event=>{
-  if(mouseDragging&&event.pointerType!=="touch")finish();
+  if(mouseDragging&&event.pointerType!=="touch")finish(false);
  });
  window.addEventListener("pointercancel",event=>{
-  if(mouseDragging&&event.pointerType!=="touch")finish();
+  if(mouseDragging&&event.pointerType!=="touch")finish(false);
  });
  list.addEventListener("wheel",event=>{
   if(Math.abs(event.deltaY)<0.1)return;
