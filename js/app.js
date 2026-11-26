@@ -4,7 +4,7 @@ import { getCurrentSignalingIdentity } from "./local-identity.js?v=2";
 import { listContacts, getContact, saveContact, updateContact, deleteContact, saveMyInvitation, clearMyInvitation, createIssuedInvitation, getIssuedInvitation, deleteUnusedIssuedInvitation, listIssuedInvitations, consumeIssuedInvitation, addConversationEvent, listConversationEvents, markConversationMessageDelivered, updateConversationMessageDeliveryStatus, findContactBySupabaseUserId, getSupabaseSequenceState, ensureSupabaseOutgoingSequence, advanceSupabaseIncomingSequence, getSupabaseInboxCursor, setSupabaseInboxCursor } from "./local-store.js?v=26";
 import { INVITATION_FORMAT_VERSION, verifyContactPackage } from "./contact-exchange.js?v=17";
 import { initializeOneSignal, enableOneSignalPush, getOptionalOneSignalSubscriptionId, getOneSignalPushDiagnostics } from "./onesignal.js?v=8";
-import { sendPushEventToContact } from "./push-api.js?v=5";
+import { sendPushEventToContact } from "./push-api.js?v=6";
 import { getSupabaseIdentity, createSupabaseInvitation, submitSupabaseInvitationAcceptance, subscribeSupabaseInbox, fetchSupabaseInbox, decryptSupabaseInboxRecord, flushSupabaseOutbox } from "./supabase-client.js?v=10";
 
 const $=id=>document.getElementById(id);
