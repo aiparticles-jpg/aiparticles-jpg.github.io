@@ -64,14 +64,15 @@ export class SupabaseSecureSignaling {
 
 async handle(event){
   if(!this.active){
-   let q;try{q=JSON.parse(event.data)}catch{return;}
-   if(!q.message||!q.id||this.seen.has(q.id))return;
+   let q;try{q=typeof event?.data==="string"?JSON.parse(event.data):event}catch{return;}
+   if(!q?.message||!q?.id||this.seen.has(q.id))return;
    await this.inspectIncoming(q);
    this.rememberSeen(q.id);
    this.preAnswerMessageCount++;
    return;
   }
-  const n=JSON.parse(event.data);if(!n.message||!n.id||this.seen.has(n.id))return;
+  const n=typeof event?.data==="string"?JSON.parse(event.data):event;
+  if(!n?.message||!n?.id||this.seen.has(n.id))return;
   this.rememberSeen(n.id);
   let m;try{m=JSON.parse(n.message)}catch{return;}
   if(m.type==="data")this.onDebug("[signaling] Supabase v1 data envelope: v="+m.v+"; from="+String(m.payload?.from||"нет").slice(0,10)+"; expectedFrom="+this.peer.slice(0,10)+"; to="+String(m.payload?.to||"нет").slice(0,10)+"; expectedTo="+this.me.slice(0,10)+"; supabaseMessageId="+String(n.id).slice(0,12));
