@@ -1346,6 +1346,7 @@ async function createContactInvitationNow({expectedRevision=null}={}){
  const displayName=getProfileDisplayName();
  const inviteContactName=getInviteContactName();
  els.createInvite.disabled=true;
+ els.createInvite.setAttribute("aria-busy","true");
  els.profileDisplayName.disabled=true;
  els.inviteContactName.disabled=true;
  setInlineStatus(els.inviteStatus,"Проверяем разрешение на push-уведомления…");
@@ -1425,6 +1426,7 @@ async function createContactInvitationNow({expectedRevision=null}={}){
    return false;
   }finally{
   els.createInvite.disabled=false;
+  els.createInvite.removeAttribute("aria-busy");
   els.profileDisplayName.disabled=false;
   els.inviteContactName.disabled=false;
  }
