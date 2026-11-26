@@ -889,6 +889,15 @@ function createWebRtcInstance(diagnosticPilot=els.pilot.checked,diagnosticCamera
 async function ensureWebRtc(){
  if(!state.webrtc)state.webrtc=createWebRtcInstance();
 }
+function setSecurePeer(peer=""){
+ if(!state.secure||state.secure.active||state.connecting)return;
+ const nextPeer=SupabaseSecureSignaling.validUserId(peer)&&peer!==state.secure.me?peer:"";
+ if(state.secure.peer===nextPeer)return;
+ state.secure.peer=nextPeer;
+ state.secure.role=nextPeer?(state.secure.me<nextPeer?"A":"B"):null;
+ state.secure.peerName="";
+ state.secure.peerInvitationId=null;
+}
 function createSecureSignaling(me,peer=""){
  return new SupabaseSecureSignaling({
   me,peer,
@@ -1070,7 +1079,7 @@ async function connect(){
   
   if(state.secure&&state.secure.me!==me){state.secure.close();state.secure=null}
   if(!state.secure)state.secure=createSecureSignaling(me,peer);
-  else state.secure.setPeer(peer);
+  else setSecurePeer(peer);
   els.debugUrl.textContent="Supabase · "+(state.supabaseUserId||"недоступен");
 
   // The caller does not request microphone access while ringing.
@@ -1796,7 +1805,7 @@ async function declineContactRequest(){
  els.declineContactRequest.disabled=true;
  try{
   await deleteContact(peer);
-  if(state.secure?.peer===peer)state.secure.setPeer("");
+  if(state.secure?.peer===peer)setSecurePeer("");
   await refreshContactOptions();
   closeContactScreen();
   clearError();
@@ -1853,7 +1862,7 @@ async function deleteSelectedContact(){
  try{
   await deleteContact(peer);
   clearSentContactRequest(peer);
-  if(state.secure?.peer===peer)state.secure.setPeer("");
+  if(state.secure?.peer===peer)setSecurePeer("");
   await refreshContactOptions();
   closeContactScreen();
   clearError();
@@ -1899,7 +1908,7 @@ async function importContactFromInput(){
    await redeemSupabaseInvitationOnce(savedContact,"сразу после импорта");
   }
   await refreshContactOptions(verified.user_id);
-  if(state.secure&&!state.secure.active&&!state.connecting)state.secure.setPeer(verified.user_id);
+  if(state.secure&&!state.secure.active&&!state.connecting)setSecurePeer(verified.user_id);
   if(saveSenderName){
    els.profileDisplayName.value=senderDisplayName;
    persistProfileDisplayName();
@@ -2557,7 +2566,7 @@ els.peer.addEventListener("change",()=>{
  if(state.incomingCall&&peer!==state.secure?.peer)dismissIncoming(false);
  if(state.secure&&!state.secure.active&&!state.connecting){
   const me=state.me;
-  state.secure.setPeer(SupabaseSecureSignaling.validUserId(peer)&&peer!==me?peer:"");
+  setSecurePeer(peer);
  }
 
 });
