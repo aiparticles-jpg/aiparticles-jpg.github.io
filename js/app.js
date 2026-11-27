@@ -168,6 +168,14 @@ function updateReplyInviteStatus(){
 const state={secure:null,webrtc:null,supabaseUserId:null,role:null,peerPresent:false,connecting:false,hangingUp:false,disconnectTimer:null,callStarted:false,answeringCall:false,editingName:false,incomingCall:false,incomingTimer:null,callAttemptTimer:null,callAttemptSid:null,callTimer:null,outgoingCall:false,outgoingCallExpiresAt:null,ringingKind:null,ringContext:null,ringPulseTimer:null,ringOscillators:[],ringMasterGain:null,ringAnalyser:null,ringDiagnosticTimers:[],ringDiagnosticDone:false,ringResumePromise:null,callPeer:"",callPeerLabel:"",callReturnFocus:null,micMuted:false,speakerOutputId:null,audioOutputCount:null,audioOutputCheckPending:false};
 let diagnosticReportStartedPerf=null;
 const diagnosticLogAutoFollow={main:true,serviceWorker:true};
+const MAX_DIAGNOSTIC_LOG_LINES=200;
+function appendBoundedDiagnosticLine(element,line,placeholders=[]){
+ if(!element)return;
+ const current=element.textContent||"";
+ const lines=current&&!placeholders.includes(current)?current.split("\n"):[];
+ lines.push(String(line));
+ element.textContent=lines.slice(-MAX_DIAGNOSTIC_LOG_LINES).join("\n");
+}
 function scrollDiagnosticLogToBottom(element){
  if(element)element.scrollTop=element.scrollHeight;
 }
@@ -247,7 +255,7 @@ function debug(message){
   if(els.debugLog.textContent==="Ожидаем подключения. Здесь появятся события защищённого канала.")els.debugLog.textContent="";
  }
  const timestamp=formatDiagnosticLogTimestamp(now,perfNow-diagnosticReportStartedPerf);
- els.debugLog.textContent=(els.debugLog.textContent+"\n"+timestamp+" "+message).trim();
+ appendBoundedDiagnosticLine(els.debugLog,timestamp+" "+message,["Ожидаем подключения. Здесь появятся события защищённого канала.","Диагностика выключена. Новые записи не сохраняются."]);
  if(diagnosticLogAutoFollow.main)scrollDiagnosticLogToBottom(els.debugLog);
 }
 window.addEventListener("voicelink:onesignal-status",event=>{
@@ -964,13 +972,12 @@ if("serviceWorker" in navigator){
   const now=new Date();
   if(swLogStartedAt===null)swLogStartedAt=now.getTime();
   const line=formatDiagnosticLogTimestamp(now,now.getTime()-swLogStartedAt)+" "+stage+" "+JSON.stringify(details);
-  const current=els.swDebugLog.textContent;
-  els.swDebugLog.textContent=(current==="Ожидаем событий Service Worker."||current==="Записей пока нет."?"":current+"\n")+line;
+  appendBoundedDiagnosticLine(els.swDebugLog,line,["Ожидаем событий Service Worker.","Записей пока нет.","Диагностика выключена. Новые записи не сохраняются."]);
   if(diagnosticLogAutoFollow.serviceWorker)scrollDiagnosticLogToBottom(els.swDebugLog);
  }
  function renderServiceWorkerLog(logs){
   if(!els.debugMode.checked||!els.swDebugLog)return;
-  const entries=Array.isArray(logs)?logs:[];
+  const entries=Array.isArray(logs)?logs.slice(-MAX_DIAGNOSTIC_LOG_LINES):[];
   const firstTime=entries.length?Number(entries[0].time):NaN;
   swLogStartedAt=Number.isFinite(firstTime)?firstTime:null;
   els.swDebugLog.textContent=entries.map(item=>{
